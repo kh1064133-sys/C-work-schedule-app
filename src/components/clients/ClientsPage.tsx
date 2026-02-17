@@ -1,11 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Search, Edit2, Trash2, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Building2, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
 import { cn } from '@/lib/utils';
 import type { Client, ClientType, ClientInput } from '@/types';
+
+// Daum Postcode 타입 선언
+declare global {
+  interface Window {
+    daum: {
+      Postcode: new (options: {
+        oncomplete: (data: {
+          address: string;
+          jibunAddress: string;
+          roadAddress: string;
+          zonecode: string;
+          buildingName: string;
+          bname: string;
+        }) => void;
+      }) => { open: () => void };
+    };
+  }
+}
 
 const CLIENT_TYPES: { value: ClientType | ''; label: string }[] = [
   { value: '', label: '전체' },
@@ -126,6 +144,32 @@ export function ClientsPage() {
       console.error('삭제 실패:', error);
       alert('삭제에 실패했습니다.');
     }
+  };
+
+  // 카카오 주소검색
+  const handleAddressSearch = () => {
+    if (!window.daum) {
+      alert('주소검색 서비스를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    new window.daum.Postcode({
+      oncomplete: (data) => {
+        // 도로명 주소 우선, 없으면 지번 주소 사용
+        const address = data.roadAddress || data.jibunAddress || data.address;
+        
+        // 건물명이 있으면 거래처명에 자동 입력 (비어있을 때만)
+        if (data.buildingName && !formData.name) {
+          setFormData(prev => ({ 
+            ...prev, 
+            address,
+            name: data.buildingName,
+          }));
+        } else {
+          setFormData(prev => ({ ...prev, address }));
+        }
+      },
+    }).open();
   };
 
   return (
@@ -329,13 +373,25 @@ export function ClientsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     주소
                   </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="주소 입력"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder="주소 입력"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddressSearch}
+                      className="shrink-0 gap-1"
+                    >
+                      <MapPin className="h-4 w-4" />
+                      검색
+                    </Button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">

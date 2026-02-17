@@ -201,41 +201,31 @@ export function useSwapSchedules() {
       schedule2: Schedule | null; 
       date: string;
     }) => {
-      // 두 스케줄의 데이터를 스왑 (time_slot 제외한 나머지)
-      const updates: Promise<unknown>[] = [];
-      
       if (schedule1 && schedule2) {
         // 둘 다 있으면 데이터 스왑
-        updates.push(
-          supabase.from('schedules').update({
-            title: schedule2.title,
-            unit: schedule2.unit,
-            memo: schedule2.memo,
-            schedule_type: schedule2.schedule_type,
-            amount: schedule2.amount,
-            payment_method: schedule2.payment_method,
-            is_done: schedule2.is_done,
-            is_reserved: schedule2.is_reserved,
-          }).eq('id', schedule1.id),
-          supabase.from('schedules').update({
-            title: schedule1.title,
-            unit: schedule1.unit,
-            memo: schedule1.memo,
-            schedule_type: schedule1.schedule_type,
-            amount: schedule1.amount,
-            payment_method: schedule1.payment_method,
-            is_done: schedule1.is_done,
-            is_reserved: schedule1.is_reserved,
-          }).eq('id', schedule2.id)
-        );
-      } else if (schedule1 && !schedule2) {
-        // schedule1만 있으면 해당 위치로 이동 (원래 위치는 비움)
-        // 이 경우는 시간대 이동이므로 단순히 time_slot만 변경하면 됨
-      } else if (!schedule1 && schedule2) {
-        // schedule2만 있으면 해당 위치로 이동
+        await supabase.from('schedules').update({
+          title: schedule2.title,
+          unit: schedule2.unit,
+          memo: schedule2.memo,
+          schedule_type: schedule2.schedule_type,
+          amount: schedule2.amount,
+          payment_method: schedule2.payment_method,
+          is_done: schedule2.is_done,
+          is_reserved: schedule2.is_reserved,
+        }).eq('id', schedule1.id);
+        
+        await supabase.from('schedules').update({
+          title: schedule1.title,
+          unit: schedule1.unit,
+          memo: schedule1.memo,
+          schedule_type: schedule1.schedule_type,
+          amount: schedule1.amount,
+          payment_method: schedule1.payment_method,
+          is_done: schedule1.is_done,
+          is_reserved: schedule1.is_reserved,
+        }).eq('id', schedule2.id);
       }
 
-      await Promise.all(updates);
       return { date };
     },
     onSuccess: (_, variables) => {

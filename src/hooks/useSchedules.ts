@@ -1,0 +1,247 @@
+'use client';
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@/lib/supabase/client';
+import type { Schedule, ScheduleInput } from '@/types';
+import { formatDate } from '@/lib/utils/date';
+
+// 임시 user_id (인증 구현 전)
+const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// 특정 날짜의 스케줄 조회
+export function useSchedulesByDate(date: Date) {
+  const supabase = createClient();
+  const dateStr = formatDate(date);
+
+  return useQuery({
+    queryKey: ['schedules', dateStr],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('date', dateStr)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      return data as Schedule[];
+    },
+  });
+}
+
+// 월별 스케줄 조회 (달력용)
+export function useSchedulesByMonth(year: number, month: number) {
+  const supabase = createClient();
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-31`;
+
+  return useQuery({
+    queryKey: ['schedules', 'month', year, month],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true })
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      return data as Schedule[];
+    },
+  });
+}
+
+// 스케줄 생성/수정 (upsert)
+export function useUpsertSchedule() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: ScheduleInput & { id?: string }) => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .upsert({
+          ...input,
+          user_id: TEMP_USER_ID,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Schedule;
+    },
+    onSuccess: (data) => {
+      // 해당 날짜 캐시 무효화
+      queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
+    },
+  });
+}
+
+// 스케줄 삭제
+export function useDeleteSchedule() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, date }: { id: string; date: string }) => {
+      const { error } = await supabase
+        .from('schedules')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return { id, date };
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', variables.date] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
+    },
+  });
+}
+
+// 완료 상태 토글
+export function useToggleScheduleDone() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, is_done, date }: { id: string; is_done: boolean; date: string }) => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .update({ is_done })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Schedule;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
+    },
+  });
+}
+
+// 예약 상태 토글
+export function useToggleScheduleReserved() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, is_reserved, date }: { id: string; is_reserved: boolean; date: string }) => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .update({ is_reserved })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Schedule;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
+    },
+  });
+}
+
+// 스케줄 검색
+export function useSearchSchedules(params: {
+  query?: string;
+  fromDate?: string;
+  toDate?: string;
+  type?: string;
+}) {
+  const supabase = createClient();
+
+  return useQuery({
+    queryKey: ['schedules', 'search', params],
+    queryFn: async () => {
+      let query = supabase.from('schedules').select('*');
+
+      if (params.fromDate) {
+        query = query.gte('date', params.fromDate);
+      }
+      if (params.toDate) {
+        query = query.lte('date', params.toDate);
+      }
+      if (params.type) {
+        query = query.eq('schedule_type', params.type);
+      }
+      if (params.query) {
+        query = query.or(
+          `title.ilike.%${params.query}%,unit.ilike.%${params.query}%,memo.ilike.%${params.query}%`
+        );
+      }
+
+      const { data, error } = await query.order('date', { ascending: false }).order('time_slot');
+
+      if (error) throw error;
+      return data as Schedule[];
+    },
+    enabled: Boolean(params.query || params.fromDate || params.toDate || params.type),
+  });
+}
+
+// 스케줄 순서 스왑
+export function useSwapSchedules() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      schedule1, 
+      schedule2, 
+      date 
+    }: { 
+      schedule1: Schedule | null; 
+      schedule2: Schedule | null; 
+      date: string;
+    }) => {
+      // 두 스케줄의 데이터를 스왑 (time_slot 제외한 나머지)
+      const updates: Promise<unknown>[] = [];
+      
+      if (schedule1 && schedule2) {
+        // 둘 다 있으면 데이터 스왑
+        updates.push(
+          supabase.from('schedules').update({
+            title: schedule2.title,
+            unit: schedule2.unit,
+            memo: schedule2.memo,
+            schedule_type: schedule2.schedule_type,
+            amount: schedule2.amount,
+            payment_method: schedule2.payment_method,
+            is_done: schedule2.is_done,
+            is_reserved: schedule2.is_reserved,
+          }).eq('id', schedule1.id),
+          supabase.from('schedules').update({
+            title: schedule1.title,
+            unit: schedule1.unit,
+            memo: schedule1.memo,
+            schedule_type: schedule1.schedule_type,
+            amount: schedule1.amount,
+            payment_method: schedule1.payment_method,
+            is_done: schedule1.is_done,
+            is_reserved: schedule1.is_reserved,
+          }).eq('id', schedule2.id)
+        );
+      } else if (schedule1 && !schedule2) {
+        // schedule1만 있으면 해당 위치로 이동 (원래 위치는 비움)
+        // 이 경우는 시간대 이동이므로 단순히 time_slot만 변경하면 됨
+      } else if (!schedule1 && schedule2) {
+        // schedule2만 있으면 해당 위치로 이동
+      }
+
+      await Promise.all(updates);
+      return { date };
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', variables.date] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
+    },
+  });
+}
+

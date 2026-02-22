@@ -7,6 +7,7 @@ import { useSearchSchedules } from '@/hooks/useSchedules';
 import { useDateStore } from '@/stores/dateStore';
 import { cn } from '@/lib/utils';
 import { format, subMonths } from 'date-fns';
+import * as XLSX from 'xlsx';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
 
 const SCHEDULE_TYPES = [
@@ -91,32 +92,31 @@ export function SearchPage() {
   const handleExcelExport = () => {
     if (results.length === 0) return;
 
-    // CSV 형식으로 변환
+    // 데이터 준비
     const headers = ['날짜', '시간', '거래처명', '동호수', '내용', '유형', '금액', '결제방법', '완료', '예약'];
-    const rows = results.map((s: Schedule) => [
-      s.date,
-      s.time_slot,
-      s.title || '',
-      s.unit || '',
-      s.memo || '',
-      s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '',
-      s.amount || 0,
-      s.payment_method ? PAYMENT_METHOD_LABELS[s.payment_method] : '',
-      s.is_done ? 'O' : '',
-      s.is_reserved ? 'O' : '',
-    ]);
+    const rows = results.map((s: Schedule) => ({
+      '날짜': s.date,
+      '시간': s.time_slot,
+      '거래처명': s.title || '',
+      '동호수': s.unit || '',
+      '내용': s.memo || '',
+      '유형': s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '',
+      '금액': s.amount || 0,
+      '결제방법': s.payment_method ? PAYMENT_METHOD_LABELS[s.payment_method] : '',
+      '완료': s.is_done ? 'O' : '',
+      '예약': s.is_reserved ? 'O' : '',
+    }));
 
-    // UTF-8 BOM + CSV
-    const BOM = '\uFEFF';
-    const csv = BOM + [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    // xlsx 파일 생성
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '검색결과');
     
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `스케줄_검색결과_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    // 열 너비 자동 조정
+    worksheet['!cols'] = headers.map(() => ({ wch: 15 }));
+    
+    // 다운로드
+    XLSX.writeFile(workbook, `스케줄_검색결과_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
   };
 
   // 날짜 클릭 시 해당 날짜로 이동

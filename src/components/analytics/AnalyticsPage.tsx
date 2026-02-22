@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
-import { useSchedulesByMonth } from '@/hooks/useSchedules';
+import { useSchedulesByMonth, useSchedulesByYear } from '@/hooks/useSchedules';
 import { cn } from '@/lib/utils';
 import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
@@ -28,6 +28,52 @@ export function AnalyticsPage() {
   
   // 선택된 월 기준 데이터
   const { data: monthSchedules = [] } = useSchedulesByMonth(chartYear, selectedMonth);
+  
+  // 연간 데이터
+  const { data: yearSchedules = [] } = useSchedulesByYear(chartYear);
+
+  // 연간 완료된 스케줄
+  const yearCompletedSchedules = useMemo(() => {
+    return yearSchedules.filter((s: Schedule) => s.is_done);
+  }, [yearSchedules]);
+
+  // 연간 매출 합계
+  const yearlyTotal = useMemo(() => {
+    return yearCompletedSchedules.reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+  }, [yearCompletedSchedules]);
+
+  // 연간 결제방법별 통계
+  const yearPaymentStats = useMemo(() => {
+    const stats: Record<string, { count: number; amount: number }> = {
+      cash: { count: 0, amount: 0 },
+      card: { count: 0, amount: 0 },
+      vat: { count: 0, amount: 0 },
+    };
+    yearCompletedSchedules.forEach((s: Schedule) => {
+      if (s.payment_method && stats[s.payment_method]) {
+        stats[s.payment_method].count += 1;
+        stats[s.payment_method].amount += s.amount || 0;
+      }
+    });
+    return stats;
+  }, [yearCompletedSchedules]);
+
+  // 연간 유형별 통계
+  const yearTypeStats = useMemo(() => {
+    const stats: Record<string, { count: number; amount: number }> = {
+      sale: { count: 0, amount: 0 },
+      as: { count: 0, amount: 0 },
+      agency: { count: 0, amount: 0 },
+      group: { count: 0, amount: 0 },
+    };
+    yearCompletedSchedules.forEach((s: Schedule) => {
+      if (s.schedule_type && stats[s.schedule_type]) {
+        stats[s.schedule_type].count += 1;
+        stats[s.schedule_type].amount += s.amount || 0;
+      }
+    });
+    return stats;
+  }, [yearCompletedSchedules]);
 
   // 월별 데이터 수집 (연간 차트용)
   const yearlyData = useMemo(() => {
@@ -130,13 +176,13 @@ export function AnalyticsPage() {
       </div>
 
       {/* 월 선택 */}
-      <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
         {Array.from({ length: 12 }, (_, i) => (
           <button
             key={i}
             onClick={() => setSelectedMonth(i)}
             className={cn(
-              'py-2 px-3 rounded-lg text-sm font-medium transition-colors',
+              'py-2 px-3 rounded-lg text-sm font-medium transition-colors flex-shrink-0',
               selectedMonth === i
                 ? 'bg-primary text-white'
                 : 'bg-white border hover:bg-gray-50'
@@ -151,10 +197,10 @@ export function AnalyticsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border p-4">
           <div className="flex items-center gap-2 text-gray-600 mb-1">
-            <DollarSign className="h-4 w-4" />
+            <span className="text-base font-bold">₩</span>
             <span className="text-sm">월 매출</span>
           </div>
-          <div className="text-2xl font-bold text-emerald-600">
+          <div className="text-xl sm:text-2xl font-bold text-emerald-600 whitespace-nowrap">
             {monthlyTotal.toLocaleString()}원
           </div>
         </div>
@@ -163,19 +209,19 @@ export function AnalyticsPage() {
             <Calendar className="h-4 w-4" />
             <span className="text-sm">완료 건수</span>
           </div>
-          <div className="text-2xl font-bold text-blue-600">
+          <div className="text-xl sm:text-2xl font-bold text-blue-600 whitespace-nowrap">
             {completedSchedules.length}건
           </div>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <div className="text-sm text-gray-600 mb-1">전체 일정</div>
-          <div className="text-2xl font-bold text-gray-700">
+          <div className="text-xl sm:text-2xl font-bold text-gray-700 whitespace-nowrap">
             {monthSchedules.length}건
           </div>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <div className="text-sm text-gray-600 mb-1">건당 평균</div>
-          <div className="text-2xl font-bold text-purple-600">
+          <div className="text-xl sm:text-2xl font-bold text-purple-600 whitespace-nowrap">
             {completedSchedules.length > 0
               ? Math.round(monthlyTotal / completedSchedules.length).toLocaleString()
               : 0}원
@@ -233,38 +279,6 @@ export function AnalyticsPage() {
                 </div>
               </div>
             ))}
-          </div>
-          
-          {/* 파이 차트 시뮬레이션 */}
-          <div className="mt-4 flex justify-center">
-            <div className="relative w-32 h-32">
-              <svg viewBox="0 0 32 32" className="w-full h-full -rotate-90">
-                {(() => {
-                  const total = Object.values(paymentStats).reduce((s, d) => s + d.amount, 0) || 1;
-                  let offset = 0;
-                  const colors = ['#22c55e', '#3b82f6', '#f97316'];
-                  return Object.entries(paymentStats).map(([key, data], i) => {
-                    const pct = (data.amount / total) * 100;
-                    const dashArray = `${pct} ${100 - pct}`;
-                    const dashOffset = -offset;
-                    offset += pct;
-                    return (
-                      <circle
-                        key={key}
-                        r="16"
-                        cx="16"
-                        cy="16"
-                        fill="none"
-                        stroke={colors[i]}
-                        strokeWidth="32"
-                        strokeDasharray={dashArray}
-                        strokeDashoffset={dashOffset}
-                      />
-                    );
-                  });
-                })()}
-              </svg>
-            </div>
           </div>
         </div>
 
@@ -384,6 +398,52 @@ export function AnalyticsPage() {
               </tfoot>
             )}
           </table>
+        </div>
+      </div>
+
+      {/* 년매출 현황 */}
+      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl p-4 shadow-lg">
+        <h3 className="text-lg font-bold mb-3">💰 {chartYear}년 매출 현황</h3>
+        
+        <div className="bg-white/15 rounded-xl p-4 backdrop-blur-sm">
+          <div className="space-y-2 text-sm">
+            {/* 유형별 매출 */}
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
+              <span className="font-semibold">{yearTypeStats.sale.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
+              <span className="font-semibold">{yearTypeStats.as.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
+              <span className="font-semibold">{yearTypeStats.agency.amount.toLocaleString()}원</span>
+            </div>
+            
+            <div className="border-t border-white/20 my-2" />
+            
+            <div className="flex justify-between items-center font-bold">
+              <span>합계</span>
+              <span className="text-lg">{yearlyTotal.toLocaleString()}원</span>
+            </div>
+            
+            <div className="border-t border-white/20 my-2" />
+            
+            {/* 결제방법별 */}
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">현금</span>
+              <span className="text-green-200">{yearPaymentStats.cash.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">카드</span>
+              <span className="text-blue-200">{yearPaymentStats.card.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-orange-600 px-2 py-0.5 rounded-full text-xs font-bold">VAT</span>
+              <span className="text-orange-200">{yearPaymentStats.vat.amount.toLocaleString()}원</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

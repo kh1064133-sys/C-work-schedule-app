@@ -32,7 +32,9 @@ export function useSchedulesByDate(date: Date) {
 export function useSchedulesByMonth(year: number, month: number) {
   const supabase = createClient();
   const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-31`;
+  // 해당 월의 실제 마지막 날 계산 (다음 달 0일 = 이번 달 마지막 날)
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
   return useQuery({
     queryKey: ['schedules', 'month', year, month],
@@ -51,6 +53,28 @@ export function useSchedulesByMonth(year: number, month: number) {
   });
 }
 
+// 연간 스케줄 조회
+export function useSchedulesByYear(year: number) {
+  const supabase = createClient();
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+
+  return useQuery({
+    queryKey: ['schedules', 'year', year],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+      if (error) throw error;
+      return data as Schedule[];
+    },
+  });
+}
+
 // 스케줄 생성/수정 (upsert)
 export function useUpsertSchedule() {
   const supabase = createClient();
@@ -58,10 +82,15 @@ export function useUpsertSchedule() {
 
   return useMutation({
     mutationFn: async (input: ScheduleInput & { id?: string }) => {
+      // undefined 필드 제거 (null은 유지하여 DB에 null로 저장)
+      const cleanedInput = Object.fromEntries(
+        Object.entries(input).filter(([, value]) => value !== undefined)
+      );
+      
       const { data, error } = await supabase
         .from('schedules')
         .upsert({
-          ...input,
+          ...cleanedInput,
           user_id: TEMP_USER_ID,
         })
         .select()

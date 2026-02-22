@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, TouchEvent } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TimeSlotRow } from './TimeSlotRow';
@@ -10,7 +10,7 @@ import { useClients } from '@/hooks/useClients';
 import { useItems } from '@/hooks/useItems';
 import { formatDateKorean, formatDate, getHolidayName, isSunday, isSaturday } from '@/lib/utils/date';
 import { cn } from '@/lib/utils';
-import type { Schedule } from '@/types';
+import type { Schedule, ScheduleType, PaymentMethod, ScheduleInput } from '@/types';
 
 // 요일 가져오기
 function getDayOfWeek(date: Date): string {
@@ -32,12 +32,10 @@ function isHoliday(date: Date): boolean {
   return getHolidayName(date) !== null;
 }
 
-// 시간 슬롯 생성 (기본 시간대)
+// 시간 슬롯 생성 (기본 시간대 - 1시간 단위)
 const DEFAULT_TIME_SLOTS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-  '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-  '17:00', '17:30', '18:00', '18:30', '19:00', '19:30',
+  '09:00', '10:00', '11:00', '12:00', '13:00',
+  '14:00', '15:00', '16:00', '17:00', '18:00', '19:00',
 ];
 
 export function SchedulePage() {
@@ -62,6 +60,45 @@ export function SchedulePage() {
   const [showAddTime, setShowAddTime] = useState(false);
   const [newHour, setNewHour] = useState('09');
   const [newMinute, setNewMinute] = useState('00');
+
+  // 스와이프 처리
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+  const touchEndX = useRef<number>(0);
+  const touchEndY = useRef<number>(0);
+  
+  const handleTouchStart = (e: TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    touchEndX.current = e.touches[0].clientX;
+    touchEndY.current = e.touches[0].clientY;
+  };
+  
+  const handleTouchMove = (e: TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+    touchEndY.current = e.touches[0].clientY;
+  };
+  
+  const handleTouchEnd = () => {
+    const diffX = touchStartX.current - touchEndX.current;
+    const diffY = touchStartY.current - touchEndY.current;
+    const threshold = 50; // 최소 스와이프 거리
+    
+    // 수평 이동이 수직 이동보다 클 때만 스와이프로 처리
+    if (Math.abs(diffX) > threshold && Math.abs(diffX) > Math.abs(diffY)) {
+      if (diffX > 0) {
+        // 왼쪽으로 밀기 -> 다음 일
+        moveDay(1);
+      } else {
+        // 오른쪽으로 밀기 -> 이전 일
+        moveDay(-1);
+      }
+    }
+    touchStartX.current = 0;
+    touchStartY.current = 0;
+    touchEndX.current = 0;
+    touchEndY.current = 0;
+  };
 
   // 날짜 정보
   const dayInfo = getDayInfo(selectedDate);
@@ -88,9 +125,16 @@ export function SchedulePage() {
   const handleUpdate = async (timeSlot: string, data: Partial<Schedule>) => {
     const existing = scheduleMap[timeSlot];
     
+    // 빈 문자열을 null로 변환 (DB 체크 제약 조건 위반 방지)
+    // null을 받으면 그대로 null 유지
+    const scheduleType = data.schedule_type === null ? null : 
+                         (data.schedule_type as string) === '' ? null : data.schedule_type;
+    const paymentMethod = data.payment_method === null ? null :
+                          (data.payment_method as string) === '' ? null : data.payment_method;
+    
     if (existing) {
       // 기존 스케줄 업데이트
-      await upsertSchedule.mutateAsync({
+      const updateData: Record<string, unknown> = {
         id: existing.id,
         date: dateStr,
         time_slot: timeSlot,
@@ -98,11 +142,19 @@ export function SchedulePage() {
         memo: data.memo ?? undefined,
         unit: data.unit ?? undefined,
         amount: data.amount,
-        schedule_type: data.schedule_type ?? undefined,
-        payment_method: data.payment_method ?? undefined,
         is_done: data.is_done,
         is_reserved: data.is_reserved,
-      });
+      };
+      
+      // schedule_type과 payment_method는 null도 명시적으로 전송
+      if ('schedule_type' in data) {
+        updateData.schedule_type = scheduleType;
+      }
+      if ('payment_method' in data) {
+        updateData.payment_method = paymentMethod;
+      }
+      
+      await upsertSchedule.mutateAsync(updateData as unknown as ScheduleInput & { id?: string });
     } else if (data.title || data.memo || data.amount) {
       // 새 스케줄 생성 (내용이 있을 때만)
       await upsertSchedule.mutateAsync({
@@ -112,8 +164,8 @@ export function SchedulePage() {
         memo: data.memo || '',
         unit: data.unit || '',
         amount: data.amount || 0,
-        schedule_type: data.schedule_type ?? undefined,
-        payment_method: data.payment_method ?? undefined,
+        schedule_type: 'schedule_type' in data ? (scheduleType as ScheduleType | undefined) : undefined,
+        payment_method: 'payment_method' in data ? (paymentMethod as PaymentMethod | undefined) : undefined,
         is_done: data.is_done || false,
         is_reserved: data.is_reserved || false,
         sort_order: allTimeSlots.indexOf(timeSlot),
@@ -232,17 +284,22 @@ export function SchedulePage() {
   }, [schedules]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div 
+      className="flex flex-col h-full"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* 헤더: 날짜 네비게이션 */}
-      <div className="flex items-center justify-between mb-4 px-2">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => moveDay(-1)}>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 px-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="icon" onClick={() => moveDay(-1)} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className={cn(
-              'text-2xl font-bold',
+              'text-lg lg:text-2xl font-bold',
               dayInfo.isHoliday && 'text-red-500',
               dayInfo.dayOfWeek === '일' && 'text-red-500',
               dayInfo.dayOfWeek === '토' && 'text-blue-500'
@@ -256,36 +313,36 @@ export function SchedulePage() {
             )}
           </div>
 
-          <Button variant="outline" size="icon" onClick={() => moveDay(1)}>
+          <Button variant="outline" size="icon" onClick={() => moveDay(1)} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronRight className="h-4 w-4" />
           </Button>
 
-          <Button variant="outline" size="sm" onClick={goToToday} className="ml-2">
+          <Button variant="outline" size="sm" onClick={goToToday} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
             <RotateCcw className="h-3 w-3 mr-1" />
             오늘
           </Button>
         </div>
 
         {/* 요약 정보 */}
-        <div className="flex items-center gap-4 text-sm">
-          <div className="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg font-medium">
-            금일 매출: <span className="font-bold">{todaySales.toLocaleString()}원</span>
+        <div className="flex items-center gap-2 lg:gap-4 text-xs lg:text-sm flex-wrap">
+          <div className="px-2 lg:px-3 py-1 lg:py-1.5 bg-green-100 text-green-700 rounded-lg font-medium">
+            매출: <span className="font-bold">{todaySales.toLocaleString()}원</span>
           </div>
           {pendingCount > 0 && (
-            <div className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg font-medium">
+            <div className="px-2 lg:px-3 py-1 lg:py-1.5 bg-red-100 text-red-700 rounded-lg font-medium">
               미완료: <span className="font-bold">{pendingCount}건</span>
             </div>
           )}
           {reservedCount > 0 && (
-            <div className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg font-medium">
+            <div className="px-2 lg:px-3 py-1 lg:py-1.5 bg-blue-100 text-blue-700 rounded-lg font-medium">
               예약: <span className="font-bold">{reservedCount}건</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* 테이블 헤더 */}
-      <div className="bg-gray-100 border rounded-t-lg">
+      {/* 테이블 헤더 - 데스크탑만 */}
+      <div className="hidden lg:block bg-gray-100 border rounded-t-lg">
         <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_60px_70px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700">
           <div></div>
           <div>시간</div>
@@ -298,6 +355,11 @@ export function SchedulePage() {
           <div className="text-center">예약</div>
           <div className="text-center">완료</div>
         </div>
+      </div>
+
+      {/* 모바일 헤더 */}
+      <div className="lg:hidden bg-gray-100 border rounded-t-lg px-3 py-2 text-sm font-semibold text-gray-700">
+        스케줄 목록
       </div>
 
       {/* 스케줄 목록 */}
@@ -348,7 +410,11 @@ export function SchedulePage() {
               onChange={(e) => setNewMinute(e.target.value)}
             >
               <option value="00">00</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
               <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="50">50</option>
             </select>
             <Button size="sm" onClick={handleAddTime}>추가</Button>
             <Button size="sm" variant="outline" onClick={() => setShowAddTime(false)}>취소</Button>
@@ -365,7 +431,7 @@ export function SchedulePage() {
       </div>
 
       {/* 하단 안내 */}
-      <div className="mt-3 px-2 text-xs text-gray-500">
+      <div className="mt-3 px-2 text-xs text-gray-500 hidden lg:block">
         💡 거래처명과 내용 필드에서 🔍 아이콘을 클릭하면 등록된 데이터를 검색할 수 있습니다. ⠿ 아이콘을 드래그하면 순서를 변경할 수 있습니다.
       </div>
     </div>

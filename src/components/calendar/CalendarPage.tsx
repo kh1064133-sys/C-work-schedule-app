@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, Check } from 'lucide-react';
+import { useMemo, useState, useRef, useCallback, TouchEvent } from 'react';
+import { useEffect } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
+import { useUIStore } from '@/stores/uiStore';
 import { useSchedulesByMonth, useUpsertSchedule } from '@/hooks/useSchedules';
 import { formatMonthKorean, getHolidayName, getLunarInfo } from '@/lib/utils/date';
 import { cn } from '@/lib/utils';
@@ -19,6 +21,7 @@ import {
   isBefore,
   startOfDay,
 } from 'date-fns';
+import { ko } from 'date-fns/locale';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
@@ -36,18 +39,115 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   vat: 'VAT',
 };
 
+// 미결/예약 테이블 렌더 헬퍼
+function PendingTable({
+  items,
+  onMarkDone,
+}: {
+  items: Schedule[];
+  onMarkDone: (s: Schedule) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left border-b">
+            <th className="py-1 px-1">날짜</th>
+            <th className="py-1 px-1">시간</th>
+            <th className="py-1 px-1">거래처</th>
+            <th className="py-1 px-1">동호수</th>
+            <th className="py-1 px-1">유형</th>
+            <th className="py-1 px-1 text-right">금액</th>
+            <th className="py-1 px-1 text-center">완료</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((s) => (
+            <tr key={s.id} className="border-b last:border-b-0 hover:bg-gray-50">
+              <td className="py-1 px-1 whitespace-nowrap">{s.date.slice(5)}</td>
+              <td className="py-1 px-1">{s.time_slot}</td>
+              <td className="py-1 px-1 font-medium truncate max-w-[100px]">{s.title || '-'}</td>
+              <td className="py-1 px-1">{s.unit || '-'}</td>
+              <td className="py-1 px-1">{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
+              <td className="py-1 px-1 text-right whitespace-nowrap">₩{(s.amount || 0).toLocaleString()}</td>
+              <td className="py-1 px-1 text-center">
+                <button
+                  onClick={() => onMarkDone(s)}
+                  className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors"
+                  title="완료 처리"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function CalendarPage() {
+  // 스와이프 처리 후 상태 초기화 함수
+  const handleTouchEnd = () => {
+    if (touchStartX.current !== null && touchEndX.current !== null) {
+      const diffX = touchStartX.current - touchEndX.current;
+      const diffY = (touchStartY.current || 0) - (touchEndY.current || 0);
+      const threshold = 50;
+      if (Math.abs(diffX) > threshold && Math.abs(diffX) > Math.abs(diffY)) {
+        if (diffX > 0) {
+          moveMonth(1);
+        } else {
+          moveMonth(-1);
+        }
+      }
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+    touchEndX.current = null;
+    touchEndY.current = null;
+  };
+
+  useEffect(() => {
+    const handler = () => {};
+    document.addEventListener('touchmove', handler as any, { passive: false });
+    return () => {
+      document.removeEventListener('touchmove', handler as any);
+    };
+  }, []);
+
+  const { setActiveTab } = useUIStore();
   const { selectedDate, calendarDate, setSelectedDate, moveMonth } = useDateStore();
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
+  const today = startOfDay(new Date());
 
-  // 미결 섹션 상태
+  // 섹션 접기/펼치기 상태
   const [showPrevPending, setShowPrevPending] = useState(true);
-  const [showCurrentPending, setShowCurrentPending] = useState(true);
+  const [showReserved, setShowReserved] = useState(true);
+
+  // 스와이프 처리
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+  const touchEndY = useRef<number | null>(null);
+
+  const handleTouchStart = (e: TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    touchEndX.current = null;
+    touchEndY.current = null;
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX;
+    touchEndY.current = e.touches[0].clientY;
+  };
 
   // 해당 월의 스케줄 데이터
   const { data: schedules = [], isLoading } = useSchedulesByMonth(year, month);
-  
+
   // 완료 처리 mutation
   const upsertSchedule = useUpsertSchedule();
 
@@ -80,15 +180,52 @@ export function CalendarPage() {
       .reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
   };
 
-  // 날짜별 일정 수
+  // 날짜별 일정 수 (제목이 있는 일정만 카운트)
   const getScheduleCountForDate = (date: Date): number => {
     const dateKey = format(date, 'yyyy-MM-dd');
-    return (schedulesByDate[dateKey] || []).length;
+    return (schedulesByDate[dateKey] || []).filter((s: Schedule) => s.title && s.title.trim() !== '').length;
   };
 
-  // 날짜 클릭
-  const handleDateClick = (date: Date) => {
+  // 날짜별 미결/예약 정보 (오늘 기준으로 구분)
+  const getPendingForDate = useCallback((date: Date): {
+    overdue: { count: number; amount: number };
+    reserved: { count: number; amount: number };
+  } => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const daySchedules = schedulesByDate[dateKey] || [];
+    const pending = daySchedules.filter((s: Schedule) => s.title && !s.is_done);
+    const scheduleDate = startOfDay(date);
+    const isOverdue = isBefore(scheduleDate, today);
+    const count = pending.length;
+    const amount = pending.reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+    return {
+      overdue: isOverdue ? { count, amount } : { count: 0, amount: 0 },
+      reserved: !isOverdue ? { count, amount } : { count: 0, amount: 0 },
+    };
+  }, [schedulesByDate, today]);
+
+  // 더블탭 감지를 위한 ref
+  const lastTapRef = useRef<{ time: number; dateKey: string }>({ time: 0, dateKey: '' });
+
+  // 날짜 클릭/탭 핸들러 (모바일 더블탭 지원)
+  const handleDateTap = useCallback((date: Date) => {
+    const now = Date.now();
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const lastTap = lastTapRef.current;
+    if (now - lastTap.time < 300 && lastTap.dateKey === dateKey) {
+      setSelectedDate(date);
+      setActiveTab('schedule');
+      lastTapRef.current = { time: 0, dateKey: '' };
+    } else {
+      setSelectedDate(date);
+      lastTapRef.current = { time: now, dateKey };
+    }
+  }, [setSelectedDate, setActiveTab]);
+
+  // 날짜 더블클릭 - 일별 스케줄 탭으로 이동 (데스크탑용)
+  const handleDateDoubleClick = (date: Date) => {
     setSelectedDate(date);
+    setActiveTab('schedule');
   };
 
   // 미결 스케줄 (제목이 있고 완료되지 않은 것)
@@ -96,31 +233,25 @@ export function CalendarPage() {
     return schedules.filter((s: Schedule) => s.title && !s.is_done);
   }, [schedules]);
 
-  // 오늘 이전 미결 / 이번달 미결 분리
-  const today = startOfDay(new Date());
-  const { prevPending, currentPending } = useMemo(() => {
+  // 오늘 이전 미결 / 예약(오늘 이후) 분리
+  const { prevPending, reservedSchedules } = useMemo(() => {
     const prev: Schedule[] = [];
-    const current: Schedule[] = [];
-    
+    const reserved: Schedule[] = [];
     pendingSchedules.forEach((s: Schedule) => {
       const scheduleDate = new Date(s.date);
       if (isBefore(scheduleDate, today)) {
         prev.push(s);
       } else {
-        current.push(s);
+        reserved.push(s);
       }
     });
-    
-    // 날짜순 정렬
-    prev.sort((a, b) => a.date.localeCompare(b.date));
-    current.sort((a, b) => a.date.localeCompare(b.date));
-    
-    return { prevPending: prev, currentPending: current };
+    prev.sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
+    reserved.sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
+    return { prevPending: prev, reservedSchedules: reserved };
   }, [pendingSchedules, today]);
 
-  // 미결 금액 계산
   const prevPendingAmount = prevPending.reduce((sum, s) => sum + (s.amount || 0), 0);
-  const currentPendingAmount = currentPending.reduce((sum, s) => sum + (s.amount || 0), 0);
+  const reservedAmount = reservedSchedules.reduce((sum, s) => sum + (s.amount || 0), 0);
 
   // 완료 처리
   const handleMarkDone = async (schedule: Schedule) => {
@@ -132,340 +263,263 @@ export function CalendarPage() {
     });
   };
 
+  // 선택된 날짜의 일정 목록
+  const selectedDateSchedules = useMemo(() => {
+    const dateKey = format(selectedDate, 'yyyy-MM-dd');
+    return (schedulesByDate[dateKey] || [])
+      .filter((s: Schedule) => s.title && s.title.trim() !== '')
+      .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
+  }, [selectedDate, schedulesByDate]);
+
+  // ===== 월 매출현황 계산 =====
+  const monthlySalesStats = useMemo(() => {
+    const doneSchedules = schedules.filter((s: Schedule) => s.is_done);
+    const byType = {
+      sale: doneSchedules.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + (s.amount || 0), 0),
+      as: doneSchedules.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + (s.amount || 0), 0),
+      agency: doneSchedules.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + (s.amount || 0), 0),
+      total: doneSchedules.reduce((sum, s) => sum + (s.amount || 0), 0),
+    };
+    const byPayment = {
+      cash: doneSchedules.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + (s.amount || 0), 0),
+      card: doneSchedules.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + (s.amount || 0), 0),
+      vat: doneSchedules.filter(s => s.payment_method === 'vat').reduce((sum, s) => sum + (s.amount || 0), 0),
+    };
+    const allPending = schedules.filter((s: Schedule) => s.title && !s.is_done);
+    const pendingCount = allPending.length;
+    const pendingAmount = allPending.reduce((sum, s) => sum + (s.amount || 0), 0);
+    return { byType, byPayment, pendingCount, pendingAmount };
+  }, [schedules]);
+
+  // 선택 날짜 포맷
+  const selectedDateFormatted = format(selectedDate, 'yyyy년 M월 d일 (EEE)', { locale: ko });
+
   return (
-    <div className="space-y-4">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-          📆 월별 달력
-        </h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => moveMonth(-1)}>
-            <ChevronLeft className="h-4 w-4" />
+    <div
+      className="space-y-4 max-w-5xl mx-auto"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* ===== 1. 월별 달력 ===== */}
+      <div>
+        {/* 월별 달력 헤더 */}
+        <div className="flex items-center justify-between mb-2">
+          <Button size="icon" variant="ghost" onClick={() => moveMonth(-1)}>
+            <ChevronLeft />
           </Button>
-          <span className="text-lg font-semibold min-w-[140px] text-center">
+          <span className="font-bold text-lg">
             {formatMonthKorean(calendarDate)}
           </span>
-          <Button variant="outline" size="icon" onClick={() => moveMonth(1)}>
-            <ChevronRight className="h-4 w-4" />
+          <Button size="icon" variant="ghost" onClick={() => moveMonth(1)}>
+            <ChevronRight />
           </Button>
         </div>
-      </div>
 
-      {/* 달력 */}
-      <div className="bg-white rounded-lg border overflow-hidden">
         {/* 요일 헤더 */}
-        <div className="grid grid-cols-7 bg-gray-50 border-b">
-          {DAY_NAMES.map((day, i) => (
-            <div
-              key={day}
-              className={cn(
-                'py-3 text-center text-sm font-semibold',
-                i === 0 && 'text-red-500',
-                i === 6 && 'text-blue-500'
-              )}
-            >
-              {day}
-            </div>
+        <div className="grid grid-cols-7 text-center text-xs font-semibold mb-1">
+          {DAY_NAMES.map((name, i) => (
+            <div key={name} className={cn(
+              i === 0 && 'text-red-400',
+              i === 6 && 'text-blue-400',
+              i > 0 && i < 6 && 'text-gray-500'
+            )}>{name}</div>
           ))}
         </div>
 
-        {/* 날짜 그리드 */}
-        <div className="grid grid-cols-7">
-          {calendarDays.map((date, index) => {
+        {/* 달력 날짜 렌더링 */}
+        <div className="grid grid-cols-7 gap-[2px]">
+          {calendarDays.map((date) => {
             const isCurrentMonth = isSameMonth(date, calendarDate);
+            const isToday = isSameDay(date, today);
             const isSelected = isSameDay(date, selectedDate);
-            const isToday = isSameDay(date, new Date());
-            const holidayName = getHolidayName(date);
-            const lunarInfo = getLunarInfo(date);
-            const isSunday = date.getDay() === 0;
-            const isSaturday = date.getDay() === 6;
-            const sales = getSalesForDate(date);
             const scheduleCount = getScheduleCountForDate(date);
+            const sales = getSalesForDate(date);
+            const pending = getPendingForDate(date);
+            const holiday = getHolidayName(date);
+            const lunar = getLunarInfo(date);
+            const isSun = date.getDay() === 0;
+            const isSat = date.getDay() === 6;
 
             return (
               <div
-                key={index}
+                key={format(date, 'yyyy-MM-dd')}
                 className={cn(
-                  'min-h-[100px] border-b border-r p-1.5 cursor-pointer transition-colors',
-                  !isCurrentMonth && 'bg-gray-50',
-                  isSelected && 'bg-blue-50 ring-2 ring-inset ring-blue-400',
-                  !isSelected && 'hover:bg-gray-100'
+                  'relative p-1 min-h-[5.5rem] border rounded cursor-pointer flex flex-col items-start gap-[1px] transition-colors',
+                  !isCurrentMonth && 'bg-gray-50 opacity-40',
+                  isCurrentMonth && 'bg-white',
+                  isToday && 'border-blue-500 bg-blue-50/60',
+                  isSelected && !isToday && 'border-indigo-400 bg-indigo-50/40',
                 )}
-                onClick={() => handleDateClick(date)}
+                onClick={() => handleDateTap(date)}
+                onDoubleClick={() => handleDateDoubleClick(date)}
               >
-                <div className="flex flex-col h-full">
-                  {/* 날짜 숫자 */}
-                  <div className="flex items-center gap-1">
-                    <span
-                      className={cn(
-                        'text-sm font-semibold w-6 h-6 flex items-center justify-center rounded-full',
-                        !isCurrentMonth && 'text-gray-300',
-                        isCurrentMonth && isSunday && 'text-red-500',
-                        isCurrentMonth && isSaturday && 'text-blue-500',
-                        isCurrentMonth && holidayName && 'text-red-500',
-                        isToday && 'bg-primary text-white'
-                      )}
-                    >
-                      {format(date, 'd')}
-                    </span>
-                    {lunarInfo && isCurrentMonth && (
-                      <span className="text-[10px] text-gray-400">{lunarInfo}</span>
-                    )}
-                  </div>
-
-                  {/* 공휴일 이름 */}
-                  {holidayName && isCurrentMonth && (
-                    <div className="text-[10px] text-red-500 truncate">{holidayName}</div>
+                {/* 날짜 숫자 + 공휴일/음력 */}
+                <div className="flex items-center gap-1 w-full">
+                  <span className={cn(
+                    'text-sm font-medium leading-none',
+                    isToday && 'font-bold text-blue-600',
+                    !isToday && (holiday || isSun) && 'text-red-500',
+                    !isToday && !holiday && isSat && 'text-blue-500',
+                  )}>{date.getDate()}</span>
+                  {holiday && (
+                    <span className="text-[9px] text-red-400 truncate leading-none">{holiday}</span>
                   )}
-
-                  {/* 매출 및 일정 수 */}
-                  {isCurrentMonth && (
-                    <div className="mt-auto space-y-0.5">
-                      {scheduleCount > 0 && (
-                        <div className="text-[10px] text-gray-500">
-                          일정 {scheduleCount}건
-                        </div>
-                      )}
-                      {sales > 0 && (
-                        <div className="text-xs font-medium text-green-600">
-                          {sales.toLocaleString()}원
-                        </div>
-                      )}
-                    </div>
+                  {!holiday && lunar && (
+                    <span className="text-[9px] text-gray-400 leading-none">{lunar}</span>
                   )}
                 </div>
+                {/* 매출 금액 (녹색) */}
+                {sales > 0 && (
+                  <span className="text-[10px] text-green-600 font-bold leading-tight">
+                    {sales >= 10000 ? `${Math.floor(sales / 10000)}만` : `₩${sales.toLocaleString()}`}
+                  </span>
+                )}
+                {/* 건수 (회색) */}
+                {scheduleCount > 0 && (
+                  <span className="text-[10px] text-gray-400 leading-tight">{scheduleCount}건</span>
+                )}
+                {/* 미결 빨간 박스 */}
+                {pending.overdue.count > 0 && (
+                  <span className="text-[9px] bg-red-100 text-red-600 rounded px-0.5 leading-tight">
+                    미결{pending.overdue.count}
+                  </span>
+                )}
+                {/* 예약 파란 박스 */}
+                {pending.reserved.count > 0 && (
+                  <span className="text-[9px] bg-blue-100 text-blue-600 rounded px-0.5 leading-tight">
+                    예약{pending.reserved.count}
+                  </span>
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* 선택된 날짜 정보 */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-semibold text-gray-800 mb-2">
-          {format(selectedDate, 'yyyy년 M월 d일')} ({DAY_NAMES[selectedDate.getDay()]})
-          {getHolidayName(selectedDate) && (
-            <span className="ml-2 text-red-500 text-sm">
-              - {getHolidayName(selectedDate)}
-            </span>
-          )}
+      {/* ===== 2. 선택 날짜 섹션 ===== */}
+      <div className="bg-white rounded-lg border p-4 shadow-sm">
+        <h3 className="font-bold text-base mb-3 flex items-center gap-2">
+          📋 {selectedDateFormatted}
         </h3>
-        <div className="text-sm text-gray-600">
-          {(() => {
-            const dateKey = format(selectedDate, 'yyyy-MM-dd');
-            const daySchedules = schedulesByDate[dateKey] || [];
-            if (daySchedules.length === 0) {
-              return <p>등록된 일정이 없습니다.</p>;
-            }
-            return (
-              <div className="space-y-1">
-                {daySchedules.map((schedule: Schedule) => (
-                  <div
-                    key={schedule.id}
-                    className={cn(
-                      'flex items-center justify-between p-2 rounded',
-                      schedule.is_done ? 'bg-green-50' : 'bg-gray-50'
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{schedule.time_slot}</span>
-                      <span className="font-medium">{schedule.title || '(제목 없음)'}</span>
-                      {schedule.is_done && <span className="text-green-600">✓</span>}
-                    </div>
-                    {schedule.amount > 0 && (
-                      <span className="text-green-600 font-medium">
-                        {schedule.amount.toLocaleString()}원
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
+        {selectedDateSchedules.length === 0 ? (
+          <p className="text-sm text-gray-400">등록된 일정이 없습니다.</p>
+        ) : (
+          <ul className="space-y-2">
+            {selectedDateSchedules.map((s) => (
+              <li key={s.id} className="flex items-center gap-3 text-sm border-b pb-2 last:border-b-0 last:pb-0">
+                <span className="text-gray-500 font-mono w-12 shrink-0">{s.time_slot}</span>
+                <span className="font-semibold flex-1 truncate">{s.title}</span>
+                {s.unit && <span className="text-gray-400 text-xs">{s.unit}</span>}
+                <span className={cn(
+                  'text-xs font-bold whitespace-nowrap',
+                  s.is_done ? 'text-green-600' : 'text-orange-500',
+                )}>
+                  ₩{(s.amount || 0).toLocaleString()}
+                </span>
+                {s.is_done && <span className="text-green-500 text-xs">✓</span>}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {/* 월 매출 요약 */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-semibold text-gray-800 mb-2">
-          {formatMonthKorean(calendarDate)} 매출 현황
-        </h3>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div className="p-3 bg-blue-50 rounded-lg">
-            <div className="text-sm text-gray-600">전체 일정</div>
-            <div className="text-xl font-bold text-blue-600">{schedules.length}건</div>
-          </div>
-          <div className="p-3 bg-green-50 rounded-lg">
-            <div className="text-sm text-gray-600">완료</div>
-            <div className="text-xl font-bold text-green-600">
-              {schedules.filter((s: Schedule) => s.is_done).length}건
-            </div>
-          </div>
-          <div className="p-3 bg-emerald-50 rounded-lg">
-            <div className="text-sm text-gray-600">월 매출</div>
-            <div className="text-xl font-bold text-emerald-600">
-              {schedules
-                .filter((s: Schedule) => s.is_done)
-                .reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0)
-                .toLocaleString()}원
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 미결 현황 */}
-      {(prevPending.length > 0 || currentPending.length > 0) && (
-        <div className="space-y-3">
-          {/* 이전 미결 (오늘 이전) */}
-          {prevPending.length > 0 && (
-            <div className="bg-white rounded-lg border overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 transition-colors"
-                onClick={() => setShowPrevPending(!showPrevPending)}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <span className="font-bold text-red-700">⚠️ 이전 미결</span>
-                  <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
-                    {prevPending.length}건
-                  </span>
-                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full border border-red-300">
-                    {prevPendingAmount.toLocaleString()}원
-                  </span>
-                </div>
-                {showPrevPending ? <ChevronUp className="h-5 w-5 text-gray-500" /> : <ChevronDown className="h-5 w-5 text-gray-500" />}
-              </button>
-              
-              {showPrevPending && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">날짜</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">시간</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">거래처</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">동호수</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">유형</th>
-                        <th className="px-4 py-2 text-right font-semibold text-gray-600">금액</th>
-                        <th className="px-4 py-2 text-center font-semibold text-gray-600">완료</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {prevPending.map((s) => (
-                        <tr key={s.id} className="border-b hover:bg-red-50/50">
-                          <td className="px-4 py-2 text-primary font-medium whitespace-nowrap">{s.date}</td>
-                          <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{s.time_slot}</td>
-                          <td className="px-4 py-2 font-medium">{s.title}</td>
-                          <td className="px-4 py-2 text-gray-600">{s.unit || '-'}</td>
-                          <td className="px-4 py-2">
-                            {s.schedule_type && (
-                              <span className={cn(
-                                'px-2 py-0.5 rounded text-xs font-bold',
-                                s.schedule_type === 'sale' && 'bg-green-100 text-green-700',
-                                s.schedule_type === 'as' && 'bg-orange-100 text-orange-700',
-                                s.schedule_type === 'agency' && 'bg-indigo-100 text-indigo-700',
-                              )}>
-                                {SCHEDULE_TYPE_LABELS[s.schedule_type]}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right font-bold text-red-600 whitespace-nowrap">
-                            {s.amount ? `${s.amount.toLocaleString()}원` : '-'}
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            <button
-                              className="w-8 h-8 rounded-full border-2 border-gray-300 hover:border-green-500 hover:bg-green-50 transition-all flex items-center justify-center mx-auto"
-                              onClick={() => handleMarkDone(s)}
-                              title="완료 처리"
-                            >
-                              <Check className="h-4 w-4 text-gray-400 hover:text-green-600" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 이번달 미결 */}
-          {currentPending.length > 0 && (
-            <div className="bg-white rounded-lg border overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between p-4 bg-orange-50 hover:bg-orange-100 transition-colors"
-                onClick={() => setShowCurrentPending(!showCurrentPending)}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-orange-500" />
-                  <span className="font-bold text-orange-700">📋 이번달 미결</span>
-                  <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded-full">
-                    {currentPending.length}건
-                  </span>
-                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-full border border-orange-300">
-                    {currentPendingAmount.toLocaleString()}원
-                  </span>
-                </div>
-                {showCurrentPending ? <ChevronUp className="h-5 w-5 text-gray-500" /> : <ChevronDown className="h-5 w-5 text-gray-500" />}
-              </button>
-              
-              {showCurrentPending && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">날짜</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">시간</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">거래처</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">동호수</th>
-                        <th className="px-4 py-2 text-left font-semibold text-gray-600">유형</th>
-                        <th className="px-4 py-2 text-right font-semibold text-gray-600">금액</th>
-                        <th className="px-4 py-2 text-center font-semibold text-gray-600">완료</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentPending.map((s) => (
-                        <tr key={s.id} className="border-b hover:bg-orange-50/50">
-                          <td className="px-4 py-2 text-primary font-medium whitespace-nowrap">{s.date}</td>
-                          <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{s.time_slot}</td>
-                          <td className="px-4 py-2 font-medium">{s.title}</td>
-                          <td className="px-4 py-2 text-gray-600">{s.unit || '-'}</td>
-                          <td className="px-4 py-2">
-                            {s.schedule_type && (
-                              <span className={cn(
-                                'px-2 py-0.5 rounded text-xs font-bold',
-                                s.schedule_type === 'sale' && 'bg-green-100 text-green-700',
-                                s.schedule_type === 'as' && 'bg-orange-100 text-orange-700',
-                                s.schedule_type === 'agency' && 'bg-indigo-100 text-indigo-700',
-                              )}>
-                                {SCHEDULE_TYPE_LABELS[s.schedule_type]}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right font-bold text-orange-600 whitespace-nowrap">
-                            {s.amount ? `${s.amount.toLocaleString()}원` : '-'}
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            <button
-                              className="w-8 h-8 rounded-full border-2 border-gray-300 hover:border-green-500 hover:bg-green-50 transition-all flex items-center justify-center mx-auto"
-                              onClick={() => handleMarkDone(s)}
-                              title="완료 처리"
-                            >
-                              <Check className="h-4 w-4 text-gray-400 hover:text-green-600" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+      {/* ===== 3. 이전 미결 섹션 ===== */}
+      {prevPending.length > 0 && (
+        <div className="rounded-lg border overflow-hidden shadow-sm">
+          <button
+            onClick={() => setShowPrevPending(!showPrevPending)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-red-100 text-red-700 font-semibold text-sm"
+          >
+            <span>⚠️ 이전 미결 {prevPending.length}건 / ₩{prevPendingAmount.toLocaleString()}</span>
+            {showPrevPending ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          {showPrevPending && (
+            <div className="bg-white p-3">
+              <PendingTable items={prevPending} onMarkDone={handleMarkDone} />
             </div>
           )}
         </div>
       )}
+
+      {/* ===== 4. 예약 섹션 ===== */}
+      {reservedSchedules.length > 0 && (
+        <div className="rounded-lg border overflow-hidden shadow-sm">
+          <button
+            onClick={() => setShowReserved(!showReserved)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-blue-100 text-blue-700 font-semibold text-sm"
+          >
+            <span>📅 예약 {reservedSchedules.length}건 / ₩{reservedAmount.toLocaleString()}</span>
+            {showReserved ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          {showReserved && (
+            <div className="bg-white p-3">
+              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== 5. 월 매출현황 섹션 ===== */}
+      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl p-4 shadow-lg">
+        <h2 className="text-lg font-bold mb-3">💰 {formatMonthKorean(calendarDate)} 매출 현황</h2>
+
+        <div className="bg-white/15 rounded-xl p-4 backdrop-blur-sm">
+          <div className="space-y-2 text-sm">
+            {/* 유형별 매출 */}
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
+              <span className="font-semibold">{monthlySalesStats.byType.sale.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
+              <span className="font-semibold">{monthlySalesStats.byType.as.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
+              <span className="font-semibold">{monthlySalesStats.byType.agency.toLocaleString()}원</span>
+            </div>
+
+            <div className="border-t border-white/20 my-2" />
+
+            <div className="flex justify-between items-center font-bold">
+              <span>합계</span>
+              <span className="text-lg">{monthlySalesStats.byType.total.toLocaleString()}원</span>
+            </div>
+
+            <div className="border-t border-white/20 my-2" />
+
+            {/* 결제방법별 */}
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">현금</span>
+              <span className="text-green-200">{monthlySalesStats.byPayment.cash.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">카드</span>
+              <span className="text-blue-200">{monthlySalesStats.byPayment.card.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-orange-600 px-2 py-0.5 rounded-full text-xs font-bold">VAT</span>
+              <span className="text-orange-200">{monthlySalesStats.byPayment.vat.toLocaleString()}원</span>
+            </div>
+
+            {/* 미결 */}
+            {monthlySalesStats.pendingCount > 0 && (
+              <>
+                <div className="border-t border-white/20 my-2" />
+                <div className="flex justify-between items-center bg-red-500/20 rounded-lg px-2 py-1">
+                  <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">⚠ 미결</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-200 font-bold">{monthlySalesStats.pendingCount}건</span>
+                    <span className="text-white/50">/</span>
+                    <span className="text-red-100">{monthlySalesStats.pendingAmount.toLocaleString()}원</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

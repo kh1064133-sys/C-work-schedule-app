@@ -48,36 +48,64 @@ function PendingTable({
   onMarkDone: (s: Schedule) => void;
 }) {
   if (items.length === 0) return null;
+
+  const clampFont = 'clamp(9px, 2vw, 13px)';
+
+  const thStyle = (width: string, textAlign?: string): React.CSSProperties => ({
+    padding: '2px 3px',
+    whiteSpace: 'nowrap',
+    width,
+    textAlign: (textAlign as any) || 'left',
+    borderBottom: '1px solid #e5e7eb',
+    fontSize: clampFont,
+    fontWeight: 600,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    boxSizing: 'border-box',
+  });
+
+  const tdStyle = (width: string, textAlign?: string): React.CSSProperties => ({
+    padding: '2px 3px',
+    whiteSpace: 'nowrap',
+    width,
+    textAlign: (textAlign as any) || 'left',
+    borderBottom: '1px solid #f3f4f6',
+    fontSize: clampFont,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    boxSizing: 'border-box',
+  });
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+    <div style={{ width: '100%', overflowX: 'hidden' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
-          <tr className="text-left border-b">
-            <th className="py-1 px-1">날짜</th>
-            <th className="py-1 px-1">시간</th>
-            <th className="py-1 px-1">거래처</th>
-            <th className="py-1 px-1">동호수</th>
-            <th className="py-1 px-1">유형</th>
-            <th className="py-1 px-1 text-right">금액</th>
-            <th className="py-1 px-1 text-center">완료</th>
+          <tr>
+            <th style={thStyle('10%')}>날짜</th>
+            <th style={thStyle('10%')}>시간</th>
+            <th style={thStyle('25%')}>거래처</th>
+            <th style={thStyle('13%')}>동호수</th>
+            <th style={thStyle('10%')}>유형</th>
+            <th style={thStyle('18%', 'right')}>금액</th>
+            <th style={thStyle('7%', 'center')}>완료</th>
           </tr>
         </thead>
         <tbody>
           {items.map((s) => (
-            <tr key={s.id} className="border-b last:border-b-0 hover:bg-gray-50">
-              <td className="py-1 px-1 whitespace-nowrap">{s.date.slice(5)}</td>
-              <td className="py-1 px-1">{s.time_slot}</td>
-              <td className="py-1 px-1 font-medium truncate max-w-[100px]">{s.title || '-'}</td>
-              <td className="py-1 px-1">{s.unit || '-'}</td>
-              <td className="py-1 px-1">{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
-              <td className="py-1 px-1 text-right whitespace-nowrap">₩{(s.amount || 0).toLocaleString()}</td>
-              <td className="py-1 px-1 text-center">
+            <tr key={s.id}>
+              <td style={tdStyle('10%')}>{s.date.slice(5)}</td>
+              <td style={tdStyle('10%')}>{s.time_slot}</td>
+              <td style={{ ...tdStyle('25%'), fontWeight: 500 }}>{s.title || '-'}</td>
+              <td style={tdStyle('13%')}>{s.unit || '-'}</td>
+              <td style={tdStyle('10%')}>{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
+              <td style={tdStyle('18%', 'right')}>{(s.amount || 0).toLocaleString()}</td>
+              <td style={tdStyle('7%', 'center')}>
                 <button
                   onClick={() => onMarkDone(s)}
-                  className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors"
+                  style={{ padding: 2, borderRadius: 4, border: 'none', background: 'transparent', color: '#16a34a', cursor: 'pointer' }}
                   title="완료 처리"
                 >
-                  <Check className="h-3.5 w-3.5" />
+                  <Check style={{ width: 14, height: 14 }} />
                 </button>
               </td>
             </tr>
@@ -344,52 +372,114 @@ export function CalendarPage() {
             return (
               <div
                 key={format(date, 'yyyy-MM-dd')}
-                className={cn(
-                  'relative p-1 min-h-[5.5rem] border rounded cursor-pointer flex flex-col items-start gap-[1px] transition-colors',
-                  !isCurrentMonth && 'bg-gray-50 opacity-40',
-                  isCurrentMonth && 'bg-white',
-                  isToday && 'border-blue-500 bg-blue-50/60',
-                  isSelected && !isToday && 'border-indigo-400 bg-indigo-50/40',
-                )}
+                style={{
+                  position: 'relative',
+                  padding: 3,
+                  minHeight: '5.5rem',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                  gap: 0,
+                  transition: 'background-color 0.15s, border-color 0.15s',
+                  backgroundColor: !isCurrentMonth ? '#f9fafb' : isToday ? '#FFFEF5' : (isSelected ? 'rgba(224,231,255,0.4)' : '#fff'),
+                  opacity: !isCurrentMonth ? 0.4 : 1,
+                  borderColor: isToday ? '#ef4444' : (isSelected && !isToday ? '#818cf8' : '#e5e7eb'),
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
+                }}
                 onClick={() => handleDateTap(date)}
                 onDoubleClick={() => handleDateDoubleClick(date)}
               >
                 {/* 날짜 숫자 + 공휴일/음력 */}
-                <div className="flex items-center gap-1 w-full">
-                  <span className={cn(
-                    'text-sm font-medium leading-none',
-                    isToday && 'font-bold text-blue-600',
-                    !isToday && (holiday || isSun) && 'text-red-500',
-                    !isToday && !holiday && isSat && 'text-blue-500',
-                  )}>{date.getDate()}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, width: '100%', flexShrink: 0 }}>
+                  <span style={{
+                    fontSize: 13,
+                    fontWeight: isToday ? 700 : 500,
+                    lineHeight: 1,
+                    color: isToday ? '#dc2626' : (holiday || isSun) ? '#ef4444' : isSat ? '#3b82f6' : undefined,
+                  }}>{date.getDate()}</span>
                   {holiday && (
-                    <span className="text-[9px] text-red-400 truncate leading-none">{holiday}</span>
+                    <span style={{ fontSize: 8, color: '#f87171', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1 }}>{holiday}</span>
                   )}
                   {!holiday && lunar && (
-                    <span className="text-[9px] text-gray-400 leading-none">{lunar}</span>
+                    <span style={{ fontSize: 8, color: '#9ca3af', lineHeight: 1 }}>{lunar}</span>
                   )}
                 </div>
                 {/* 매출 금액 (녹색) */}
                 {sales > 0 && (
-                  <span className="text-[10px] text-green-600 font-bold leading-tight">
-                    {sales >= 10000 ? `${Math.floor(sales / 10000)}만` : `₩${sales.toLocaleString()}`}
+                  <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, lineHeight: 1.2, flexShrink: 0 }}>
+                    {sales >= 10000 ? `${Math.floor(sales / 10000)}만` : sales.toLocaleString()}
                   </span>
                 )}
                 {/* 건수 (회색) */}
                 {scheduleCount > 0 && (
-                  <span className="text-[10px] text-gray-400 leading-tight">{scheduleCount}건</span>
+                  <span style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2, flexShrink: 0 }}>{scheduleCount}건</span>
                 )}
-                {/* 미결 빨간 박스 */}
-                {pending.overdue.count > 0 && (
-                  <span className="text-[9px] bg-red-100 text-red-600 rounded px-0.5 leading-tight">
-                    미결{pending.overdue.count}
-                  </span>
-                )}
-                {/* 예약 파란 박스 */}
-                {pending.reserved.count > 0 && (
-                  <span className="text-[9px] bg-blue-100 text-blue-600 rounded px-0.5 leading-tight">
-                    예약{pending.reserved.count}
-                  </span>
+                {/* 뱃지 영역 - 남은 공간 꽉 채움 */}
+                {(pending.overdue.count > 0 || pending.reserved.count > 0) && (
+                  <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2,
+                    width: '100%',
+                    marginTop: 2,
+                    minHeight: 0,
+                  }}>
+                    {/* 미결 빨간 박스 */}
+                    {pending.overdue.count > 0 && (
+                      <div style={{
+                        flex: 1,
+                        width: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#FEE2E2',
+                        border: '1px solid #FCA5A5',
+                        borderRadius: 3,
+                        padding: '2px 0',
+                        lineHeight: 1.3,
+                        boxSizing: 'border-box',
+                        minHeight: 26,
+                      }}>
+                        <span style={{ fontSize: 'clamp(8px, 1.8vw, 11px)', color: '#DC2626', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          미결 {pending.overdue.count}
+                        </span>
+                        <span style={{ fontSize: 'clamp(8px, 1.8vw, 11px)', color: '#DC2626', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {pending.overdue.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    {/* 예약 파란 박스 */}
+                    {pending.reserved.count > 0 && (
+                      <div style={{
+                        flex: 1,
+                        width: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#DBEAFE',
+                        border: '1px solid #93C5FD',
+                        borderRadius: 3,
+                        padding: '2px 0',
+                        lineHeight: 1.3,
+                        boxSizing: 'border-box',
+                        minHeight: 26,
+                      }}>
+                        <span style={{ fontSize: 'clamp(8px, 1.8vw, 11px)', color: '#2563EB', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          예약 {pending.reserved.count}
+                        </span>
+                        <span style={{ fontSize: 'clamp(8px, 1.8vw, 11px)', color: '#2563EB', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {pending.reserved.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -403,24 +493,36 @@ export function CalendarPage() {
           📋 {selectedDateFormatted}
         </h3>
         {selectedDateSchedules.length === 0 ? (
-          <p className="text-sm text-gray-400">등록된 일정이 없습니다.</p>
+          <p style={{ fontSize: 'clamp(9px, 2vw, 13px)', color: '#9ca3af' }}>등록된 일정이 없습니다.</p>
         ) : (
-          <ul className="space-y-2">
-            {selectedDateSchedules.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 text-sm border-b pb-2 last:border-b-0 last:pb-0">
-                <span className="text-gray-500 font-mono w-12 shrink-0">{s.time_slot}</span>
-                <span className="font-semibold flex-1 truncate">{s.title}</span>
-                {s.unit && <span className="text-gray-400 text-xs">{s.unit}</span>}
-                <span className={cn(
-                  'text-xs font-bold whitespace-nowrap',
-                  s.is_done ? 'text-green-600' : 'text-orange-500',
-                )}>
-                  ₩{(s.amount || 0).toLocaleString()}
-                </span>
-                {s.is_done && <span className="text-green-500 text-xs">✓</span>}
-              </li>
-            ))}
-          </ul>
+          <div style={{ width: '100%', overflowX: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '12%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>시간</th>
+                  <th style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>거래처</th>
+                  <th style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>동호수</th>
+                  <th style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>금액</th>
+                  <th style={{ width: '10%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>상태</th>
+                  <th style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>미결</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedDateSchedules.map((s) => (
+                  <tr key={s.id}>
+                    <td style={{ width: '12%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6' }}>{s.time_slot}</td>
+                    <td style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 500, textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title || '-'}</td>
+                    <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', color: '#9ca3af' }}>{s.unit || '-'}</td>
+                    <td style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #f3f4f6', color: s.is_done ? '#16a34a' : '#f97316' }}>{(s.amount || 0).toLocaleString()}</td>
+                    <td style={{ width: '10%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6', color: '#22c55e' }}>{s.is_done ? '✓' : ''}</td>
+                    <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                      {!s.is_done && <span style={{ backgroundColor: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: 9999, fontSize: 'clamp(8px, 1.8vw, 11px)', fontWeight: 700 }}>⚠ 미결</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -431,7 +533,7 @@ export function CalendarPage() {
             onClick={() => setShowPrevPending(!showPrevPending)}
             className="w-full flex items-center justify-between px-4 py-3 bg-red-100 text-red-700 font-semibold text-sm"
           >
-            <span>⚠️ 이전 미결 {prevPending.length}건 / ₩{prevPendingAmount.toLocaleString()}</span>
+            <span>⚠️ 이전 미결 {prevPending.length}건 / {prevPendingAmount.toLocaleString()}</span>
             {showPrevPending ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showPrevPending && (
@@ -449,7 +551,7 @@ export function CalendarPage() {
             onClick={() => setShowReserved(!showReserved)}
             className="w-full flex items-center justify-between px-4 py-3 bg-blue-100 text-blue-700 font-semibold text-sm"
           >
-            <span>📅 예약 {reservedSchedules.length}건 / ₩{reservedAmount.toLocaleString()}</span>
+            <span>📅 예약 {reservedSchedules.length}건 / {reservedAmount.toLocaleString()}</span>
             {showReserved ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showReserved && (

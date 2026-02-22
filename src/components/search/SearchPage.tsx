@@ -154,30 +154,62 @@ export function SearchPage() {
       </div>
 
       {/* 필터 */}
-      <div className="flex flex-wrap items-center gap-4 p-4 bg-white rounded-lg border">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">기간:</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#fff', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4, width: '100%', flexWrap: 'nowrap', overflow: 'hidden' }}>
+          <span style={{ fontSize: 13, color: '#4b5563', flexShrink: 0, whiteSpace: 'nowrap' }}>기간:</span>
           <input
             type="date"
-            className="px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
+            style={{
+              flex: '1 1 0%',
+              minWidth: 0,
+              maxWidth: '40%',
+              height: 34,
+              fontSize: 13,
+              paddingLeft: 6,
+              paddingRight: 6,
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              boxSizing: 'border-box',
+              WebkitAppearance: 'none',
+              MozAppearance: 'none',
+              appearance: 'none',
+              outline: 'none',
+              backgroundColor: '#fff',
+            }}
           />
-          <span className="text-gray-400">~</span>
+          <span style={{ color: '#9ca3af', flexShrink: 0 }}>~</span>
           <input
             type="date"
-            className="px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
+            style={{
+              flex: '1 1 0%',
+              minWidth: 0,
+              maxWidth: '40%',
+              height: 34,
+              fontSize: 13,
+              paddingLeft: 6,
+              paddingRight: 6,
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              boxSizing: 'border-box',
+              WebkitAppearance: 'none',
+              MozAppearance: 'none',
+              appearance: 'none',
+              outline: 'none',
+              backgroundColor: '#fff',
+            }}
           />
         </div>
         
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">유형:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: '#4b5563', flexShrink: 0 }}>유형:</span>
           <select
-            className="px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
             value={scheduleType}
             onChange={(e) => setScheduleType(e.target.value)}
+            style={{ padding: '4px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, backgroundColor: '#fff', outline: 'none' }}
           >
             {SCHEDULE_TYPES.map((type) => (
               <option key={type.value} value={type.value}>{type.label}</option>
@@ -192,20 +224,20 @@ export function SearchPage() {
       </div>
 
       {/* 결과 정보 */}
-      <div className="flex items-center justify-between text-sm">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3">
           {Object.keys(searchParams).length > 0 && (
             <>
-              <span className="text-gray-600">
+              <span className="text-gray-600 whitespace-nowrap">
                 검색결과: <span className="font-bold text-primary">{stats.totalCount}건</span>
               </span>
-              <span className="text-gray-600">
+              <span className="text-gray-600 whitespace-nowrap">
                 완료: <span className="font-bold text-green-600">{stats.doneCount}건</span>
               </span>
-              <span className="text-gray-600">
+              <span className="text-gray-600 whitespace-nowrap">
                 미결: <span className="font-bold text-red-500">{stats.pendingCount}건</span>
               </span>
-              <span className="text-gray-600">
+              <span className="text-gray-600 whitespace-nowrap">
                 매출합계: <span className="font-bold text-emerald-600">{stats.totalAmount.toLocaleString()}원</span>
               </span>
             </>
@@ -222,37 +254,37 @@ export function SearchPage() {
 
       {/* 결과 테이블 */}
       <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto max-h-[60vh]">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b sticky top-0 z-10">
-              <tr className="text-sm font-semibold text-gray-700">
-                <th className="px-4 py-3 text-left whitespace-nowrap">날짜</th>
-                <th className="px-4 py-3 text-left whitespace-nowrap">시간</th>
-                <th className="px-4 py-3 text-left">거래처명</th>
-                <th className="px-4 py-3 text-left">동호수</th>
-                <th className="px-4 py-3 text-left">내용</th>
-                <th className="px-4 py-3 text-left whitespace-nowrap">유형</th>
-                <th className="px-4 py-3 text-right whitespace-nowrap">금액</th>
-                <th className="px-4 py-3 text-center whitespace-nowrap">결제</th>
-                <th className="px-4 py-3 text-center whitespace-nowrap">상태</th>
+        <div style={{ overflowX: 'auto', maxHeight: '60vh', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+          <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 'clamp(9px, 2vw, 13px)' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 10 }}>
+                <th style={{ width: '11%', minWidth: 55, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>날짜</th>
+                <th style={{ width: '9%', minWidth: 42, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>시간</th>
+                <th style={{ width: '20%', minWidth: 70, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>거래처명</th>
+                <th style={{ width: '11%', minWidth: 50, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>동호수</th>
+                <th style={{ width: '15%', minWidth: 55, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>내용</th>
+                <th style={{ width: '8%', minWidth: 35, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>유형</th>
+                <th style={{ width: '13%', minWidth: 55, padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>금액</th>
+                <th style={{ width: '7%', minWidth: 30, padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>결제</th>
+                <th style={{ width: '6%', minWidth: 28, padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>상태</th>
               </tr>
             </thead>
             <tbody>
               {isLoading || isFetching ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
                     검색 중...
                   </td>
                 </tr>
               ) : Object.keys(searchParams).length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
                     검색어를 입력하거나 필터를 설정한 후 검색 버튼을 클릭하세요.
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
                     검색 결과가 없습니다.
                   </td>
                 </tr>
@@ -260,58 +292,56 @@ export function SearchPage() {
                 results.map((schedule: Schedule) => (
                   <tr
                     key={schedule.id}
-                    className={cn(
-                      'border-b hover:bg-gray-50 cursor-pointer transition-colors',
-                      schedule.is_done && 'bg-green-50/50'
-                    )}
+                    style={{
+                      borderBottom: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                      backgroundColor: schedule.is_done ? 'rgba(240,253,244,0.5)' : undefined,
+                    }}
                     onClick={() => handleDateClick(schedule.date)}
                   >
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-primary font-medium">{schedule.date}</span>
+                    <td style={{ padding: '4px 3px', whiteSpace: 'nowrap', color: '#4f46e5', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {schedule.date.slice(5)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                    <td style={{ padding: '4px 3px', whiteSpace: 'nowrap', color: '#6b7280' }}>
                       {schedule.time_slot}
                     </td>
-                    <td className="px-4 py-3 font-medium">{schedule.title || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{schedule.unit || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{schedule.memo || '-'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td style={{ padding: '4px 3px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{schedule.title || '-'}</td>
+                    <td style={{ padding: '4px 3px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{schedule.unit || '-'}</td>
+                    <td style={{ padding: '4px 3px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{schedule.memo || '-'}</td>
+                    <td style={{ padding: '4px 3px', whiteSpace: 'nowrap' }}>
                       {schedule.schedule_type && (
                         <span className={cn(
-                          'px-2 py-0.5 rounded-full text-xs font-bold',
+                          'px-1 py-0.5 rounded-full font-bold',
                           schedule.schedule_type === 'sale' && 'bg-green-100 text-green-700',
                           schedule.schedule_type === 'as' && 'bg-orange-100 text-orange-700',
                           schedule.schedule_type === 'agency' && 'bg-indigo-100 text-indigo-700',
                           schedule.schedule_type === 'group' && 'bg-pink-100 text-pink-700',
-                        )}>
+                        )} style={{ fontSize: 'clamp(8px, 1.8vw, 12px)' }}>
                           {SCHEDULE_TYPE_LABELS[schedule.schedule_type]}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap font-bold text-emerald-600">
-                      {schedule.amount ? `${schedule.amount.toLocaleString()}원` : '-'}
+                    <td style={{ padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: '#059669' }}>
+                      {schedule.amount ? schedule.amount.toLocaleString() : '-'}
                     </td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                    <td style={{ padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {schedule.payment_method && (
                         <span className={cn(
-                          'px-2 py-0.5 rounded text-xs font-bold',
+                          'px-1 py-0.5 rounded font-bold',
                           schedule.payment_method === 'cash' && 'bg-green-100 text-green-700',
                           schedule.payment_method === 'card' && 'bg-blue-100 text-blue-700',
                           schedule.payment_method === 'vat' && 'bg-orange-100 text-orange-700',
-                        )}>
+                        )} style={{ fontSize: 'clamp(8px, 1.8vw, 12px)' }}>
                           {PAYMENT_METHOD_LABELS[schedule.payment_method]}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                    <td style={{ padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {schedule.is_done ? (
-                        <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 text-xs font-bold">완료</span>
+                        <span style={{ padding: '1px 4px', borderRadius: 4, backgroundColor: '#dcfce7', color: '#15803d', fontSize: 'clamp(8px, 1.8vw, 12px)', fontWeight: 700 }}>완료</span>
                       ) : schedule.title ? (
-                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-600 text-xs font-bold">미결</span>
+                        <span style={{ padding: '1px 4px', borderRadius: 4, backgroundColor: '#fee2e2', color: '#dc2626', fontSize: 'clamp(8px, 1.8vw, 12px)', fontWeight: 700 }}>미결</span>
                       ) : null}
-                      {schedule.is_reserved && (
-                        <span className="ml-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-bold">예약</span>
-                      )}
                     </td>
                   </tr>
                 ))

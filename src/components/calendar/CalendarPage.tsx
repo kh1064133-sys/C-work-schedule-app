@@ -43,9 +43,11 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 function PendingTable({
   items,
   onMarkDone,
+  amountColor,
 }: {
   items: Schedule[];
   onMarkDone: (s: Schedule) => void;
+  amountColor?: string;
 }) {
   if (items.length === 0) return null;
 
@@ -98,15 +100,45 @@ function PendingTable({
               <td style={{ ...tdStyle('25%'), fontWeight: 500 }}>{s.title || '-'}</td>
               <td style={tdStyle('13%')}>{s.unit || '-'}</td>
               <td style={tdStyle('10%')}>{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
-              <td style={tdStyle('18%', 'right')}>{(s.amount || 0).toLocaleString()}</td>
+              <td style={{ ...tdStyle('18%', 'right'), color: amountColor || undefined }}>{(s.amount || 0).toLocaleString()}</td>
               <td style={tdStyle('7%', 'center')}>
-                <button
-                  onClick={() => onMarkDone(s)}
-                  style={{ padding: 2, borderRadius: 4, border: 'none', background: 'transparent', color: '#16a34a', cursor: 'pointer' }}
-                  title="완료 처리"
-                >
-                  <Check style={{ width: 14, height: 14 }} />
-                </button>
+                {s.is_done ? (
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    border: '2px solid #16a34a',
+                    backgroundColor: 'transparent',
+                    color: '#16a34a',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                  }}>✓</span>
+                ) : (
+                  <button
+                    onClick={() => onMarkDone(s)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      border: '2px solid #d1d5db',
+                      background: 'transparent',
+                      color: '#d1d5db',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      lineHeight: 1,
+                    }}
+                    title="완료 처리"
+                  >✓</button>
+                )}
               </td>
             </tr>
           ))}
@@ -533,12 +565,12 @@ export function CalendarPage() {
             onClick={() => setShowPrevPending(!showPrevPending)}
             className="w-full flex items-center justify-between px-4 py-3 bg-red-100 text-red-700 font-semibold text-sm"
           >
-            <span>⚠️ 이전 미결 {prevPending.length}건 / {prevPendingAmount.toLocaleString()}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>⚠️ 이전 미결 <span style={{ backgroundColor: '#DC2626', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{prevPending.length}건</span> / {prevPendingAmount.toLocaleString()}</span>
             {showPrevPending ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showPrevPending && (
             <div className="bg-white p-3">
-              <PendingTable items={prevPending} onMarkDone={handleMarkDone} />
+              <PendingTable items={prevPending} onMarkDone={handleMarkDone} amountColor="#DC2626" />
             </div>
           )}
         </div>
@@ -551,7 +583,7 @@ export function CalendarPage() {
             onClick={() => setShowReserved(!showReserved)}
             className="w-full flex items-center justify-between px-4 py-3 bg-blue-100 text-blue-700 font-semibold text-sm"
           >
-            <span>📅 예약 {reservedSchedules.length}건 / {reservedAmount.toLocaleString()}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>📅 예약 <span style={{ backgroundColor: '#2563EB', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{reservedSchedules.length}건</span> / {reservedAmount.toLocaleString()}</span>
             {showReserved ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showReserved && (

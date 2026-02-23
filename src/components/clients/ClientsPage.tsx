@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Building2, ChevronLeft, ChevronRight, MapPin, X } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Building2, ChevronLeft, ChevronRight, MapPin, X, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
 import { cn } from '@/lib/utils';
@@ -332,6 +332,17 @@ export function ClientsPage() {
                   }}>{client.memo}</div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px', marginTop: '8px' }}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      alert(`'${client.name}' 견적서 기능은 준비 중입니다.`);
+                    }}
+                    style={{ height: '28px', width: '28px', padding: 0, color: '#3B82F6', background: '#EFF6FF' }}
+                    title="견적서"
+                  >
+                    <FileText style={{ width: '18px', height: '18px' }} />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Rotate
 import { Button } from '@/components/ui/button';
 import { TimeSlotRow } from './TimeSlotRow';
 import { useDateStore } from '@/stores/dateStore';
+import { useUIStore } from '@/stores/uiStore';
 import { useSchedulesByDate, useUpsertSchedule, useDeleteSchedule, useSwapSchedules } from '@/hooks/useSchedules';
 import { useClients } from '@/hooks/useClients';
 import { useItems } from '@/hooks/useItems';
@@ -274,7 +275,7 @@ export function SchedulePage() {
   }, [schedules]);
 
   // 매출현황 접기/펼치기
-  const [showSalesSummary, setShowSalesSummary] = useState(true);
+  const { showSalesSummary, toggleSection } = useUIStore();
 
   // 유형별 매출
   const salesByType = useMemo(() => {
@@ -456,7 +457,7 @@ export function SchedulePage() {
       {/* 매출현황 섹션 */}
       <div className="mt-3 bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
         <button
-          onClick={() => setShowSalesSummary(!showSalesSummary)}
+          onClick={() => toggleSection('showSalesSummary')}
           className="w-full flex items-center justify-between px-4 py-3"
         >
           <span className="text-sm font-bold">💰 매출 현황</span>

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, TrendingUp, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
+import { useUIStore } from '@/stores/uiStore';
 import { useSchedulesByMonth, useSchedulesByYear } from '@/hooks/useSchedules';
 import { cn } from '@/lib/utils';
 import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
@@ -25,7 +26,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 export function AnalyticsPage() {
   const { chartYear, setChartYear } = useDateStore();
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [showYearlySales, setShowYearlySales] = useState(true);
+  const { showYearlySales, toggleSection } = useUIStore();
   
   // 선택된 월 기준 데이터
   const { data: monthSchedules = [] } = useSchedulesByMonth(chartYear, selectedMonth);
@@ -464,7 +465,7 @@ export function AnalyticsPage() {
       {/* 년매출 현황 */}
       <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
         <button
-          onClick={() => setShowYearlySales(!showYearlySales)}
+          onClick={() => toggleSection('showYearlySales')}
           className="w-full flex items-center justify-between px-4 py-3"
         >
           <h3 className="text-lg font-bold">💰 {chartYear}년 매출 현황</h3>

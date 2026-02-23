@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check } from 'lucide
 import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
 import { useUIStore } from '@/stores/uiStore';
-import { useSchedulesByMonth, useUpsertSchedule } from '@/hooks/useSchedules';
+import { useSchedulesByMonth, useUpsertSchedule, useAllPendingSchedules } from '@/hooks/useSchedules';
 import { formatMonthKorean, getHolidayName, getLunarInfo } from '@/lib/utils/date';
 import { cn } from '@/lib/utils';
 import {
@@ -198,17 +198,11 @@ export function CalendarPage() {
     };
   }, []);
 
-  const { setActiveTab } = useUIStore();
+  const { setActiveTab, showSelectedDate, showPrevPending, showReserved, showMonthlySales, toggleSection } = useUIStore();
   const { selectedDate, calendarDate, setSelectedDate, moveMonth } = useDateStore();
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
   const today = startOfDay(new Date());
-
-  // 섹션 접기/펼치기 상태
-  const [showSelectedDate, setShowSelectedDate] = useState(true);
-  const [showPrevPending, setShowPrevPending] = useState(true);
-  const [showReserved, setShowReserved] = useState(true);
-  const [showMonthlySales, setShowMonthlySales] = useState(true);
 
   // 스와이프 처리
   const touchStartX = useRef<number | null>(null);
@@ -230,6 +224,10 @@ export function CalendarPage() {
 
   // 해당 월의 스케줄 데이터
   const { data: schedules = [], isLoading } = useSchedulesByMonth(year, month);
+
+  // 오늘 이전 모든 미결 데이터 (전체 기간)
+  const todayStr = format(today, 'yyyy-MM-dd');
+  const { data: allPrevPending = [] } = useAllPendingSchedules(todayStr);
 
   // 완료 처리 mutation
   const upsertSchedule = useUpsertSchedule();
@@ -311,27 +309,25 @@ export function CalendarPage() {
     setActiveTab('schedule');
   };
 
-  // 미결 스케줄 (제목이 있고 완료되지 않은 것)
+  // 미결 스케줄 (제목이 있고 완료되지 않은 것) - 현재 월 데이터 기준 (예약 분리용)
   const pendingSchedules = useMemo(() => {
     return schedules.filter((s: Schedule) => s.title && !s.is_done);
   }, [schedules]);
 
-  // 오늘 이전 미결 / 예약(오늘 이후) 분리
+  // 이전 미결: 전체 기간 데이터 사용 / 예약: 현재 월 데이터에서 분리
   const { prevPending, reservedSchedules } = useMemo(() => {
-    const prev: Schedule[] = [];
+    // 예약: 현재 월 데이터에서 오늘 이후 미완료
     const reserved: Schedule[] = [];
     pendingSchedules.forEach((s: Schedule) => {
       const scheduleDate = new Date(s.date);
-      if (isBefore(scheduleDate, today)) {
-        prev.push(s);
-      } else {
+      if (!isBefore(scheduleDate, today)) {
         reserved.push(s);
       }
     });
-    prev.sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
     reserved.sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
-    return { prevPending: prev, reservedSchedules: reserved };
-  }, [pendingSchedules, today]);
+    // 이전 미결: 전체 기간 데이터 (이미 정렬됨)
+    return { prevPending: allPrevPending, reservedSchedules: reserved };
+  }, [pendingSchedules, allPrevPending, today]);
 
   const prevPendingAmount = prevPending.reduce((sum, s) => sum + (s.amount || 0), 0);
   const reservedAmount = reservedSchedules.reduce((sum, s) => sum + (s.amount || 0), 0);
@@ -545,7 +541,7 @@ export function CalendarPage() {
       {/* ===== 2. 선택 날짜 섹션 ===== */}
       <div className="bg-white rounded-lg border overflow-hidden shadow-sm">
         <button
-          onClick={() => setShowSelectedDate(!showSelectedDate)}
+          onClick={() => toggleSection('showSelectedDate')}
           className="w-full flex items-center justify-between px-4 py-3 font-bold text-base"
           style={{ background: '#f8fafc' }}
         >
@@ -601,7 +597,7 @@ export function CalendarPage() {
       {prevPending.length > 0 && (
         <div className="rounded-lg border overflow-hidden shadow-sm">
           <button
-            onClick={() => setShowPrevPending(!showPrevPending)}
+            onClick={() => toggleSection('showPrevPending')}
             className="w-full flex items-center justify-between px-4 py-3 bg-red-100 text-red-700 font-semibold text-sm"
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>⚠️ 이전 미결 <span style={{ backgroundColor: '#DC2626', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{prevPending.length}건</span> / {prevPendingAmount.toLocaleString()}</span>
@@ -619,7 +615,7 @@ export function CalendarPage() {
       {reservedSchedules.length > 0 && (
         <div className="rounded-lg border overflow-hidden shadow-sm">
           <button
-            onClick={() => setShowReserved(!showReserved)}
+            onClick={() => toggleSection('showReserved')}
             className="w-full flex items-center justify-between px-4 py-3 bg-blue-100 text-blue-700 font-semibold text-sm"
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>📅 예약 <span style={{ backgroundColor: '#2563EB', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{reservedSchedules.length}건</span> / {reservedAmount.toLocaleString()}</span>
@@ -636,7 +632,7 @@ export function CalendarPage() {
       {/* ===== 5. 월 매출현황 섹션 ===== */}
       <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
         <button
-          onClick={() => setShowMonthlySales(!showMonthlySales)}
+          onClick={() => toggleSection('showMonthlySales')}
           className="w-full flex items-center justify-between px-4 py-3"
         >
           <h2 className="text-lg font-bold">💰 {formatMonthKorean(calendarDate)} 매출 현황</h2>

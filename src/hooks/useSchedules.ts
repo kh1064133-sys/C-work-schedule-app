@@ -53,6 +53,29 @@ export function useSchedulesByMonth(year: number, month: number) {
   });
 }
 
+// 오늘 이전의 모든 미완료 스케줄 조회 (이전 미결용)
+export function useAllPendingSchedules(beforeDate: string) {
+  const supabase = createClient();
+
+  return useQuery({
+    queryKey: ['schedules', 'allPending', beforeDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('is_done', false)
+        .neq('title', '')
+        .lt('date', beforeDate)
+        .order('date', { ascending: true })
+        .order('time_slot', { ascending: true });
+
+      if (error) throw error;
+      // title이 null인 경우도 제외
+      return (data as Schedule[]).filter(s => s.title && s.title.trim() !== '');
+    },
+  });
+}
+
 // 연간 스케줄 조회
 export function useSchedulesByYear(year: number) {
   const supabase = createClient();
@@ -103,6 +126,7 @@ export function useUpsertSchedule() {
       // 해당 날짜 캐시 무효화
       queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
       queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'allPending'] });
     },
   });
 }

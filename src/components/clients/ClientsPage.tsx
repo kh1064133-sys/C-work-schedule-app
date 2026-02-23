@@ -256,35 +256,26 @@ export function ClientsPage() {
             {paginatedClients.map((client: Client) => (
               <div key={client.id} style={{
                 display: 'flex',
-                WebkitDisplay: 'flex',
                 flexDirection: 'column',
-                WebkitFlexDirection: 'column',
                 justifyContent: 'space-between',
-                WebkitJustifyContent: 'space-between',
                 width: '320px',
                 minWidth: '0',
                 minHeight: '90px',
                 background: '#f9fafb',
                 borderRadius: '8px',
-                WebkitBorderRadius: '8px',
                 boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                WebkitBoxShadow: '0 1px 4px rgba(0,0,0,0.04)',
                 padding: '16px',
                 overflow: 'hidden',
                 border: '1px solid #e5e7eb',
               }}>
                 <div style={{
                   display: 'flex',
-                  WebkitDisplay: 'flex',
                   alignItems: 'center',
-                  WebkitAlignItems: 'center',
                   gap: '8px',
-                  WebkitGap: '8px',
                   marginBottom: '6px',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  WebkitTextOverflow: 'ellipsis',
                   fontWeight: 600,
                   fontSize: '16px',
                 }}>
@@ -292,31 +283,26 @@ export function ClientsPage() {
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    WebkitTextOverflow: 'ellipsis',
                     maxWidth: '180px',
                     display: 'inline-block',
-                    WebkitBoxOrient: 'vertical',
                   }}>{client.name}</span>
                   <span style={{
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    WebkitTextOverflow: 'ellipsis',
                     fontSize: '13px',
                     background: '#e0e7ff',
                     color: '#3730a3',
                     borderRadius: '6px',
-                    WebkitBorderRadius: '6px',
                     padding: '2px 8px',
                     fontWeight: 500,
                     display: 'inline-block',
-                  }}>{CLIENT_TYPE_LABELS[client.type]}</span>
+                  }}>{client.type ? CLIENT_TYPE_LABELS[client.type] : '기타'}</span>
                 </div>
                 <div style={{
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  WebkitTextOverflow: 'ellipsis',
                   color: '#555',
                   fontSize: '14px',
                   marginBottom: '4px',
@@ -328,7 +314,6 @@ export function ClientsPage() {
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  WebkitTextOverflow: 'ellipsis',
                   color: '#888',
                   fontSize: '13px',
                   marginBottom: '4px',
@@ -341,13 +326,12 @@ export function ClientsPage() {
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
-                    WebkitTextOverflow: 'ellipsis',
                     color: '#aaa',
                     fontSize: '12px',
                     display: 'block',
                   }}>{client.memo}</div>
                 )}
-                <div style={{ display: 'flex', WebkitDisplay: 'flex', justifyContent: 'flex-end', WebkitJustifyContent: 'flex-end', gap: '4px', WebkitGap: '4px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px', marginTop: '8px' }}>
                   <Button
                     variant="ghost"
                     size="sm"

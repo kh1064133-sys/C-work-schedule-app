@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useRef, useCallback, TouchEvent } from 'react';
+import { useMemo, useState, useRef, useCallback, TouchEvent, MouseEvent } from 'react';
 import { useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,12 +43,27 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 function PendingTable({
   items,
   onMarkDone,
+  onRowDoubleClick,
   amountColor,
 }: {
   items: Schedule[];
   onMarkDone: (s: Schedule) => void;
+  onRowDoubleClick?: (s: Schedule) => void;
   amountColor?: string;
 }) {
+  const lastTapRef = useRef<{ time: number; id: string }>({ time: 0, id: '' });
+
+  const handleRowTap = useCallback((s: Schedule) => {
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (now - last.time < 350 && last.id === s.id) {
+      onRowDoubleClick?.(s);
+      lastTapRef.current = { time: 0, id: '' };
+    } else {
+      lastTapRef.current = { time: now, id: s.id };
+    }
+  }, [onRowDoubleClick]);
+
   if (items.length === 0) return null;
 
   const clampFont = 'clamp(9px, 2vw, 13px)';
@@ -94,7 +109,13 @@ function PendingTable({
         </thead>
         <tbody>
           {items.map((s) => (
-            <tr key={s.id}>
+            <tr
+              key={s.id}
+              onClick={() => handleRowTap(s)}
+              onDoubleClick={() => onRowDoubleClick?.(s)}
+              style={{ cursor: 'pointer' }}
+              title="더블탭하면 해당일 스케줄로 이동"
+            >
               <td style={tdStyle('10%')}>{s.date.slice(5)}</td>
               <td style={tdStyle('10%')}>{s.time_slot}</td>
               <td style={{ ...tdStyle('25%'), fontWeight: 500 }}>{s.title || '-'}</td>
@@ -184,8 +205,10 @@ export function CalendarPage() {
   const today = startOfDay(new Date());
 
   // 섹션 접기/펼치기 상태
+  const [showSelectedDate, setShowSelectedDate] = useState(true);
   const [showPrevPending, setShowPrevPending] = useState(true);
   const [showReserved, setShowReserved] = useState(true);
+  const [showMonthlySales, setShowMonthlySales] = useState(true);
 
   // 스와이프 처리
   const touchStartX = useRef<number | null>(null);
@@ -520,14 +543,26 @@ export function CalendarPage() {
       </div>
 
       {/* ===== 2. 선택 날짜 섹션 ===== */}
-      <div className="bg-white rounded-lg border p-4 shadow-sm">
-        <h3 className="font-bold text-base mb-3 flex items-center gap-2">
-          📋 {selectedDateFormatted}
-        </h3>
-        {selectedDateSchedules.length === 0 ? (
-          <p style={{ fontSize: 'clamp(9px, 2vw, 13px)', color: '#9ca3af' }}>등록된 일정이 없습니다.</p>
+      <div className="bg-white rounded-lg border overflow-hidden shadow-sm">
+        <button
+          onClick={() => setShowSelectedDate(!showSelectedDate)}
+          className="w-full flex items-center justify-between px-4 py-3 font-bold text-base"
+          style={{ background: '#f8fafc' }}
+        >
+          <span className="flex items-center gap-2">
+            📋 {selectedDateFormatted}
+            {selectedDateSchedules.length > 0 && (
+              <span style={{ backgroundColor: '#6366f1', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{selectedDateSchedules.length}건</span>
+            )}
+          </span>
+          {showSelectedDate ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
+        </button>
+        {showSelectedDate && (selectedDateSchedules.length === 0 ? (
+          <div className="px-4 pb-3">
+            <p style={{ fontSize: 'clamp(9px, 2vw, 13px)', color: '#9ca3af' }}>등록된 일정이 없습니다.</p>
+          </div>
         ) : (
-          <div style={{ width: '100%', overflowX: 'hidden' }}>
+          <div className="p-3" style={{ width: '100%', overflowX: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
@@ -535,8 +570,7 @@ export function CalendarPage() {
                   <th style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>거래처</th>
                   <th style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>동호수</th>
                   <th style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>금액</th>
-                  <th style={{ width: '10%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>상태</th>
-                  <th style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>미결</th>
+                  <th style={{ width: '25%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>상태</th>
                 </tr>
               </thead>
               <tbody>
@@ -546,16 +580,21 @@ export function CalendarPage() {
                     <td style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 500, textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title || '-'}</td>
                     <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', color: '#9ca3af' }}>{s.unit || '-'}</td>
                     <td style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #f3f4f6', color: s.is_done ? '#16a34a' : '#f97316' }}>{(s.amount || 0).toLocaleString()}</td>
-                    <td style={{ width: '10%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6', color: '#22c55e' }}>{s.is_done ? '✓' : ''}</td>
-                    <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
-                      {!s.is_done && <span style={{ backgroundColor: '#ef4444', color: '#fff', padding: '1px 4px', borderRadius: 9999, fontSize: 'clamp(8px, 1.8vw, 11px)', fontWeight: 700 }}>⚠ 미결</span>}
+                    <td style={{ width: '25%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                      {s.is_done ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', border: '2px solid #16a34a', backgroundColor: 'transparent', color: '#16a34a', fontSize: 12, fontWeight: 700, lineHeight: 1 }}>✓</span>
+                      ) : isBefore(startOfDay(new Date(s.date)), today) ? (
+                        <span style={{ backgroundColor: '#FEE2E2', color: '#DC2626', border: '1px solid #EF4444', padding: '1px 6px', borderRadius: 9999, fontSize: 'clamp(8px, 1.8vw, 11px)', fontWeight: 700, whiteSpace: 'nowrap' }}>⚠ 미결</span>
+                      ) : (
+                        <span style={{ backgroundColor: '#DBEAFE', color: '#2563EB', border: '1px solid #3B82F6', padding: '1px 6px', borderRadius: 9999, fontSize: 'clamp(8px, 1.8vw, 11px)', fontWeight: 700, whiteSpace: 'nowrap' }}>📅 예약</span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* ===== 3. 이전 미결 섹션 ===== */}
@@ -570,7 +609,7 @@ export function CalendarPage() {
           </button>
           {showPrevPending && (
             <div className="bg-white p-3">
-              <PendingTable items={prevPending} onMarkDone={handleMarkDone} amountColor="#DC2626" />
+              <PendingTable items={prevPending} onMarkDone={handleMarkDone} amountColor="#DC2626" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
             </div>
           )}
         </div>
@@ -588,17 +627,24 @@ export function CalendarPage() {
           </button>
           {showReserved && (
             <div className="bg-white p-3">
-              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} />
+              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
             </div>
           )}
         </div>
       )}
 
       {/* ===== 5. 월 매출현황 섹션 ===== */}
-      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl p-4 shadow-lg">
-        <h2 className="text-lg font-bold mb-3">💰 {formatMonthKorean(calendarDate)} 매출 현황</h2>
+      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
+        <button
+          onClick={() => setShowMonthlySales(!showMonthlySales)}
+          className="w-full flex items-center justify-between px-4 py-3"
+        >
+          <h2 className="text-lg font-bold">💰 {formatMonthKorean(calendarDate)} 매출 현황</h2>
+          {showMonthlySales ? <ChevronUp className="h-5 w-5 text-white/80" /> : <ChevronDown className="h-5 w-5 text-white/80" />}
+        </button>
 
-        <div className="bg-white/15 rounded-xl p-4 backdrop-blur-sm">
+        {showMonthlySales && (
+        <div className="bg-white/15 rounded-xl mx-4 mb-4 p-4 backdrop-blur-sm">
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
             <div className="flex justify-between items-center">
@@ -653,6 +699,7 @@ export function CalendarPage() {
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useRef, TouchEvent } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TimeSlotRow } from './TimeSlotRow';
 import { useDateStore } from '@/stores/dateStore';
@@ -273,6 +273,29 @@ export function SchedulePage() {
       .reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
   }, [schedules]);
 
+  // 매출현황 접기/펼치기
+  const [showSalesSummary, setShowSalesSummary] = useState(true);
+
+  // 유형별 매출
+  const salesByType = useMemo(() => {
+    const done = schedules.filter((s: Schedule) => s.is_done);
+    return {
+      sale: done.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + (s.amount || 0), 0),
+      as: done.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + (s.amount || 0), 0),
+      agency: done.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + (s.amount || 0), 0),
+    };
+  }, [schedules]);
+
+  // 결제방법별 매출
+  const salesByPayment = useMemo(() => {
+    const done = schedules.filter((s: Schedule) => s.is_done);
+    return {
+      cash: done.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + (s.amount || 0), 0),
+      card: done.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + (s.amount || 0), 0),
+      vat: done.filter(s => s.payment_method === 'vat').reduce((sum, s) => sum + (s.amount || 0), 0),
+    };
+  }, [schedules]);
+
   // 미완료 건수
   const pendingCount = useMemo(() => {
     return schedules.filter((s: Schedule) => !s.is_done && s.title).length;
@@ -427,6 +450,60 @@ export function SchedulePage() {
             <Plus className="h-4 w-4" />
             시간 추가
           </button>
+        )}
+      </div>
+
+      {/* 매출현황 섹션 */}
+      <div className="mt-3 bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
+        <button
+          onClick={() => setShowSalesSummary(!showSalesSummary)}
+          className="w-full flex items-center justify-between px-4 py-3"
+        >
+          <span className="text-sm font-bold">💰 매출 현황</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold">{todaySales.toLocaleString()}원</span>
+            {showSalesSummary ? <ChevronUp className="h-4 w-4 text-white/80" /> : <ChevronDown className="h-4 w-4 text-white/80" />}
+          </div>
+        </button>
+        {showSalesSummary && (
+          <div className="bg-white/15 rounded-xl mx-3 mb-3 p-3 backdrop-blur-sm">
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
+                <span className="font-semibold">{salesByType.sale.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
+                <span className="font-semibold">{salesByType.as.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
+                <span className="font-semibold">{salesByType.agency.toLocaleString()}원</span>
+              </div>
+              <div className="border-t border-white/20 my-1" />
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">현금</span>
+                <span className="text-green-200">{salesByPayment.cash.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">카드</span>
+                <span className="text-blue-200">{salesByPayment.card.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-orange-600 px-2 py-0.5 rounded-full text-xs font-bold">VAT</span>
+                <span className="text-orange-200">{salesByPayment.vat.toLocaleString()}원</span>
+              </div>
+              {pendingCount > 0 && (
+                <>
+                  <div className="border-t border-white/20 my-1" />
+                  <div className="flex justify-between items-center bg-red-500/20 rounded-lg px-2 py-1">
+                    <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">⚠ 미완료</span>
+                    <span className="text-red-200 font-bold">{pendingCount}건</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

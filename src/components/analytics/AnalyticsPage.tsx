@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, TrendingUp, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
 import { useSchedulesByMonth, useSchedulesByYear } from '@/hooks/useSchedules';
@@ -25,6 +25,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 export function AnalyticsPage() {
   const { chartYear, setChartYear } = useDateStore();
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [showYearlySales, setShowYearlySales] = useState(true);
   
   // 선택된 월 기준 데이터
   const { data: monthSchedules = [] } = useSchedulesByMonth(chartYear, selectedMonth);
@@ -127,30 +128,32 @@ export function AnalyticsPage() {
     return stats;
   }, [completedSchedules]);
 
-  // 일별 매출 데이터
-  const dailyData = useMemo(() => {
-    const daysInMonth = getDaysInMonth(new Date(chartYear, selectedMonth));
-    const data: { day: number; amount: number; count: number }[] = [];
-    
-    for (let i = 1; i <= daysInMonth; i++) {
-      data.push({ day: i, amount: 0, count: 0 });
+  // 월별 매출 데이터 (연간 차트용)
+  const monthlyData = useMemo(() => {
+    const data: { month: number; amount: number; count: number }[] = [];
+    for (let i = 0; i < 12; i++) {
+      data.push({ month: i + 1, amount: 0, count: 0 });
     }
-
-    completedSchedules.forEach((s: Schedule) => {
-      const day = parseInt(s.date.split('-')[2], 10);
-      if (day >= 1 && day <= daysInMonth) {
-        data[day - 1].amount += s.amount || 0;
-        data[day - 1].count += 1;
+    yearCompletedSchedules.forEach((s: Schedule) => {
+      const m = parseInt(s.date.split('-')[1], 10);
+      if (m >= 1 && m <= 12) {
+        data[m - 1].amount += s.amount || 0;
+        data[m - 1].count += 1;
       }
     });
-
     return data;
-  }, [completedSchedules, chartYear, selectedMonth]);
+  }, [yearCompletedSchedules]);
 
-  // 최대 일별 매출 (차트 스케일용)
-  const maxDailyAmount = useMemo(() => {
-    return Math.max(...dailyData.map(d => d.amount), 1);
-  }, [dailyData]);
+  // 최대 월별 매출 (차트 스케일용)
+  const maxMonthlyAmount = useMemo(() => {
+    return Math.max(...monthlyData.map(d => d.amount), 1);
+  }, [monthlyData]);
+
+  // Y축 최대값: 천만원 단위로 올림 (최소 1천만)
+  const yAxisMax = useMemo(() => {
+    const step = 10000000;
+    return Math.max(Math.ceil(maxMonthlyAmount / step) * step, step);
+  }, [maxMonthlyAmount]);
 
   const monthName = new Date(chartYear, selectedMonth).toLocaleDateString('ko-KR', { month: 'long' });
 
@@ -229,28 +232,85 @@ export function AnalyticsPage() {
         </div>
       </div>
 
-      {/* 일별 매출 차트 */}
+      {/* 월별 매출 차트 */}
       <div className="bg-white rounded-xl border p-4">
-        <h3 className="font-semibold text-gray-800 mb-4">{monthName} 일별 매출</h3>
+        <h3 className="font-semibold text-gray-800 mb-4">{chartYear}년 월별 매출</h3>
         <div className="overflow-x-auto">
-          <div className="flex items-end gap-1 min-w-[600px] h-40">
-            {dailyData.map((data, index) => (
-              <div key={index} className="flex-1 flex flex-col items-center">
-                <div className="w-full flex flex-col items-center justify-end h-32">
-                  <div
-                    className={cn(
-                      'w-full max-w-[20px] rounded-t transition-all',
-                      data.amount > 0 ? 'bg-emerald-500' : 'bg-gray-200'
-                    )}
-                    style={{
-                      height: `${Math.max((data.amount / maxDailyAmount) * 100, 2)}%`,
-                    }}
-                    title={`${data.day}일: ${data.amount.toLocaleString()}원 (${data.count}건)`}
-                  />
-                </div>
-                <span className="text-[10px] text-gray-500 mt-1">{data.day}</span>
+          <div className="flex min-w-[400px]" style={{ height: 180 }}>
+            {/* Y축 레이블 영역 */}
+            <div className="flex flex-col justify-end relative" style={{ width: 48, height: 160 }}>
+              {(() => {
+                const step = 10000000;
+                const lines: number[] = [];
+                for (let v = step; v <= yAxisMax; v += step) {
+                  lines.push(v);
+                }
+                return lines.map((v) => {
+                  const pct = (v / yAxisMax) * 100;
+                  return (
+                    <span
+                      key={v}
+                      className="absolute right-1 text-[10px] text-gray-400 leading-none"
+                      style={{ bottom: `${pct}%`, transform: 'translateY(50%)' }}
+                    >
+                      {(v / 10000000).toLocaleString()}천만
+                    </span>
+                  );
+                });
+              })()}
+            </div>
+            {/* 차트 영역 */}
+            <div className="flex-1 relative" style={{ height: 180 }}>
+              {/* 기준선 (천만원 단위) */}
+              {(() => {
+                const step = 10000000;
+                const lines: number[] = [];
+                for (let v = step; v <= yAxisMax; v += step) {
+                  lines.push(v);
+                }
+                return lines.map((v) => {
+                  const pct = (v / yAxisMax) * 100;
+                  return (
+                    <div
+                      key={v}
+                      className="absolute left-0 right-0"
+                      style={{
+                        bottom: `${(pct / 100) * 160 + 20}px`,
+                        borderTop: '1.5px dashed #9CA3AF',
+                        zIndex: 1,
+                      }}
+                    />
+                  );
+                });
+              })()}
+              {/* 막대 그래프 */}
+              <div className="flex items-end gap-2 h-full" style={{ paddingBottom: 20 }}>
+                {monthlyData.map((data, index) => (
+                  <div key={index} className="flex-1 flex flex-col items-center">
+                    <div className="w-full flex flex-col items-center justify-end" style={{ height: 160 }}>
+                      <div
+                        className={cn(
+                          'w-full max-w-[30px] rounded-t transition-all',
+                          data.amount > 0
+                            ? index === selectedMonth ? 'bg-emerald-600' : 'bg-emerald-400'
+                            : 'bg-gray-200'
+                        )}
+                        style={{
+                          height: `${Math.max((data.amount / yAxisMax) * 100, 2)}%`,
+                          position: 'relative',
+                          zIndex: 2,
+                        }}
+                        title={`${data.month}월: ${data.amount.toLocaleString()}원 (${data.count}건)`}
+                      />
+                    </div>
+                    <span className={cn(
+                      'text-[11px] mt-1',
+                      index === selectedMonth ? 'text-emerald-700 font-bold' : 'text-gray-500'
+                    )}>{data.month}월</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>
@@ -402,10 +462,17 @@ export function AnalyticsPage() {
       </div>
 
       {/* 년매출 현황 */}
-      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl p-4 shadow-lg">
-        <h3 className="text-lg font-bold mb-3">💰 {chartYear}년 매출 현황</h3>
+      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
+        <button
+          onClick={() => setShowYearlySales(!showYearlySales)}
+          className="w-full flex items-center justify-between px-4 py-3"
+        >
+          <h3 className="text-lg font-bold">💰 {chartYear}년 매출 현황</h3>
+          {showYearlySales ? <ChevronUp className="h-5 w-5 text-white/80" /> : <ChevronDown className="h-5 w-5 text-white/80" />}
+        </button>
         
-        <div className="bg-white/15 rounded-xl p-4 backdrop-blur-sm">
+        {showYearlySales && (
+        <div className="bg-white/15 rounded-xl mx-4 mb-4 p-4 backdrop-blur-sm">
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
             <div className="flex justify-between items-center">
@@ -445,6 +512,7 @@ export function AnalyticsPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

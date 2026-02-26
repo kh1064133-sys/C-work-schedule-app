@@ -15,13 +15,20 @@ interface TimeSlotRowProps {
   onUpdate: (data: Partial<Schedule>) => void;
   onToggleDone: () => void;
   onToggleReserved: () => void;
-  // 드래그 관련
+  // 드래그 관련 (PC)
   isDragging?: boolean;
   isDragOver?: boolean;
   onDragStart?: () => void;
   onDragOver?: () => void;
   onDragEnd?: () => void;
   onDrop?: () => void;
+  // 모바일 터치 드래그
+  isMobileDragging?: boolean;
+  isMobileDragOver?: boolean;
+  registerRowRef?: (timeSlot: string, el: HTMLDivElement | null) => void;
+  onMobileDragTouchStart?: (y: number) => void;
+  onMobileDragTouchMove?: (y: number) => void;
+  onMobileDragTouchEnd?: () => void;
 }
 
 const SCHEDULE_TYPES = [
@@ -53,6 +60,12 @@ export function TimeSlotRow({
   onDragOver,
   onDragEnd,
   onDrop,
+  isMobileDragging = false,
+  isMobileDragOver = false,
+  registerRowRef,
+  onMobileDragTouchStart,
+  onMobileDragTouchMove,
+  onMobileDragTouchEnd,
 }: TimeSlotRowProps) {
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showClientPickerMobile, setShowClientPickerMobile] = useState(false);
@@ -71,6 +84,10 @@ export function TimeSlotRow({
   
   const clientInputRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
+
+  // 터치 탭/스크롤 구분용 (모바일 검색 목록)
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isTouchScrollingRef = useRef(false);
 
   // schedule 값이 변경되면 로컬 상태 동기화
   useEffect(() => {
@@ -423,16 +440,44 @@ export function TimeSlotRow({
 
       {/* 모바일 카드 레이아웃 */}
       <div
+        ref={(el) => registerRowRef?.(timeSlot, el)}
         className={cn(
           'lg:hidden p-3 border-b border-l-4 transition-colors',
           isPending && 'bg-red-50 border-l-red-500',
           isDone && 'bg-green-50 border-l-green-500',
-          !isPending && !isDone && 'border-l-transparent hover:bg-gray-50'
+          !isPending && !isDone && 'border-l-transparent hover:bg-gray-50',
+          isMobileDragging && 'opacity-40 bg-blue-100',
+          isMobileDragOver && 'border-t-2 border-t-blue-500 bg-blue-50'
         )}
       >
         {/* 헤더: 시간 + 버튼들 */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
+            {/* 모바일 드래그 핸들 */}
+            <div
+              style={{
+                padding: '6px 2px',
+                cursor: 'grab',
+                touchAction: 'none',
+                color: '#9ca3af',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                onMobileDragTouchStart?.(e.touches[0].clientY);
+              }}
+              onTouchMove={(e) => {
+                e.stopPropagation();
+                onMobileDragTouchMove?.(e.touches[0].clientY);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                onMobileDragTouchEnd?.();
+              }}
+            >
+              <GripVertical style={{ width: '18px', height: '18px' }} />
+            </div>
             <span className={cn(
               'font-bold text-lg',
               isPending && 'text-red-500',
@@ -502,7 +547,6 @@ export function TimeSlotRow({
                 className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="거래처 🔍"
                 value={titleValue}
-                onTouchStart={(e) => e.stopPropagation()}
                 onChange={(e) => {
                   setTitleValue(e.target.value);
                   // 항상 검색 업데이트 (한글 조합 중에도 실시간 검색)
@@ -527,7 +571,11 @@ export function TimeSlotRow({
               
               {/* 모바일 거래처 드롭다운 */}
               {showClientPickerMobile && (
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                <div
+                  className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg"
+                  style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
                   <div>
                     {filteredClients.length === 0 ? (
                       <div className="p-3 text-sm text-gray-500 text-center">
@@ -535,14 +583,36 @@ export function TimeSlotRow({
                       </div>
                     ) : (
                       filteredClients.slice(0, 10).map((client) => (
-                        <button
+                        <div
                           key={client.id}
-                          type="button"
-                          className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center gap-2 text-sm border-b last:border-b-0"
-                          onTouchStart={() => {
-                            setTitleValue(client.name);
-                            onUpdate({ title: client.name });
-                            setShowClientPickerMobile(false);
+                          style={{
+                            width: '100%', padding: '8px 12px', textAlign: 'left',
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            fontSize: '14px', borderBottom: '1px solid #f0f0f0',
+                            cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none',
+                            background: 'white',
+                          }}
+                          onTouchStart={(e) => {
+                            touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                            isTouchScrollingRef.current = false;
+                          }}
+                          onTouchMove={(e) => {
+                            if (touchStartPosRef.current) {
+                              const dx = e.touches[0].clientX - touchStartPosRef.current.x;
+                              const dy = e.touches[0].clientY - touchStartPosRef.current.y;
+                              if (Math.sqrt(dx * dx + dy * dy) > 10) {
+                                isTouchScrollingRef.current = true;
+                              }
+                            }
+                          }}
+                          onTouchEnd={(e) => {
+                            if (!isTouchScrollingRef.current) {
+                              e.preventDefault();
+                              setTitleValue(client.name);
+                              onUpdate({ title: client.name });
+                              setShowClientPickerMobile(false);
+                            }
+                            touchStartPosRef.current = null;
                           }}
                           onMouseDown={() => {
                             setTitleValue(client.name);
@@ -551,11 +621,11 @@ export function TimeSlotRow({
                           }}
                         >
                           <span>🏢</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{client.name}</div>
-                            <div className="text-xs text-gray-500 truncate">{client.address} {client.bunji}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</div>
+                            <div style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address} {client.bunji}</div>
                           </div>
-                        </button>
+                        </div>
                       ))
                     )}
                   </div>
@@ -567,7 +637,6 @@ export function TimeSlotRow({
               className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="동호수"
               value={unitValue}
-              onTouchStart={(e) => e.stopPropagation()}
               onChange={(e) => setUnitValue(e.target.value)}
               onBlur={(e) => onUpdate({ unit: e.target.value })}
             />
@@ -580,7 +649,6 @@ export function TimeSlotRow({
               className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="내용 🔍"
               value={memoValue}
-              onTouchStart={(e) => e.stopPropagation()}
               onChange={(e) => {
                 setMemoValue(e.target.value);
                 // 항상 검색 업데이트 (한글 조합 중에도 실시간 검색)
@@ -605,7 +673,11 @@ export function TimeSlotRow({
             
             {/* 모바일 품목 드롭다운 */}
             {showItemPickerMobile && (
-              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div
+                className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg"
+                style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
                 <div>
                   {filteredItems.length === 0 ? (
                     <div className="p-3 text-sm text-gray-500 text-center">
@@ -613,32 +685,54 @@ export function TimeSlotRow({
                     </div>
                   ) : (
                     filteredItems.slice(0, 10).map((item) => (
-                      <button
+                      <div
                         key={item.id}
-                        type="button"
-                        className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center justify-between text-sm border-b last:border-b-0"
-                        onTouchStart={() => {
-                          setMemoValue(item.name);
-                          onUpdate({ 
-                            memo: item.name,
-                            amount: item.price || schedule?.amount || 0
-                          });
-                          setShowItemPickerMobile(false);
+                        style={{
+                          width: '100%', padding: '8px 12px', textAlign: 'left',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          fontSize: '14px', borderBottom: '1px solid #f0f0f0',
+                          cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none',
+                          background: 'white',
+                        }}
+                        onTouchStart={(e) => {
+                          touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                          isTouchScrollingRef.current = false;
+                        }}
+                        onTouchMove={(e) => {
+                          if (touchStartPosRef.current) {
+                            const dx = e.touches[0].clientX - touchStartPosRef.current.x;
+                            const dy = e.touches[0].clientY - touchStartPosRef.current.y;
+                            if (Math.sqrt(dx * dx + dy * dy) > 10) {
+                              isTouchScrollingRef.current = true;
+                            }
+                          }
+                        }}
+                        onTouchEnd={(e) => {
+                          if (!isTouchScrollingRef.current) {
+                            e.preventDefault();
+                            setMemoValue(item.name);
+                            onUpdate({
+                              memo: item.name,
+                              amount: item.price || schedule?.amount || 0,
+                            });
+                            setShowItemPickerMobile(false);
+                          }
+                          touchStartPosRef.current = null;
                         }}
                         onMouseDown={() => {
                           setMemoValue(item.name);
-                          onUpdate({ 
+                          onUpdate({
                             memo: item.name,
-                            amount: item.price || schedule?.amount || 0
+                            amount: item.price || schedule?.amount || 0,
                           });
                           setShowItemPickerMobile(false);
                         }}
                       >
-                        <span className="font-medium truncate">📦 {item.name}</span>
+                        <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📦 {item.name}</span>
                         {item.price && (
-                          <span className="text-xs text-gray-500 ml-2">{item.price.toLocaleString()}원</span>
+                          <span style={{ fontSize: '12px', color: '#6b7280', marginLeft: '8px', flexShrink: 0 }}>{item.price.toLocaleString()}원</span>
                         )}
-                      </button>
+                      </div>
                     ))
                   )}
                 </div>
@@ -651,7 +745,6 @@ export function TimeSlotRow({
             <select
               className="w-full px-2 py-2 border rounded-md text-sm bg-white appearance-auto cursor-pointer"
               value={scheduleTypeValue}
-              onTouchStart={(e) => e.stopPropagation()}
               onChange={(e) => {
                 setScheduleTypeValue(e.target.value);
                 onUpdate({ schedule_type: e.target.value as ScheduleType });
@@ -667,7 +760,6 @@ export function TimeSlotRow({
                 paymentStyles[paymentMethodValue]
               )}
               value={paymentMethodValue}
-              onTouchStart={(e) => e.stopPropagation()}
               onChange={(e) => {
                 setPaymentMethodValue(e.target.value);
                 onUpdate({ payment_method: e.target.value as PaymentMethod });
@@ -683,7 +775,6 @@ export function TimeSlotRow({
                 className="w-full px-2 py-2 pr-6 border rounded-md text-sm text-right"
                 placeholder="0"
                 value={schedule?.amount ? schedule.amount.toLocaleString() : ''}
-                onTouchStart={(e) => e.stopPropagation()}
                 onChange={(e) => {
                   const value = e.target.value.replace(/[^0-9]/g, '');
                   onUpdate({ amount: value ? parseInt(value, 10) : 0 });

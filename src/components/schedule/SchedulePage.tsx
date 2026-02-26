@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef, TouchEvent } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, TouchEvent } from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TimeSlotRow } from './TimeSlotRow';
@@ -57,6 +57,68 @@ export function SchedulePage() {
   const [dragSourceSlot, setDragSourceSlot] = useState<string | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
 
+  // 모바일 터치 드래그 상태
+  const [mobileDragSource, setMobileDragSource] = useState<string | null>(null);
+  const [mobileDragOver, setMobileDragOver] = useState<string | null>(null);
+  const [mobileDragY, setMobileDragY] = useState<number>(0);
+  const [mobileDragLabel, setMobileDragLabel] = useState<string>('');
+  const mobileDragActive = useRef(false);
+  const mobileLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const mobileTouchStartY = useRef(0);
+
+  // 모바일 드래그 row ref 등록
+  const registerRowRef = useCallback((timeSlot: string, el: HTMLDivElement | null) => {
+    if (el) {
+      mobileRowRefs.current.set(timeSlot, el);
+    } else {
+      mobileRowRefs.current.delete(timeSlot);
+    }
+  }, []);
+
+  // 모바일 드래그: 길게 누르기 시작
+  const handleMobileDragTouchStart = useCallback((timeSlot: string, y: number) => {
+    mobileTouchStartY.current = y;
+    mobileLongPressTimer.current = setTimeout(() => {
+      mobileDragActive.current = true;
+      setMobileDragSource(timeSlot);
+      setMobileDragY(y);
+      setMobileDragLabel(timeSlot);
+      // 햅틱 피드백 (지원 시)
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 250);
+  }, []);
+
+  // 모바일 드래그: 움직이기
+  const handleMobileDragTouchMove = useCallback((y: number) => {
+    // 길게 누르기 전에 10px 이상 움직이면 타이머 취소 (일반 스크롤)
+    if (!mobileDragActive.current) {
+      if (Math.abs(y - mobileTouchStartY.current) > 10 && mobileLongPressTimer.current) {
+        clearTimeout(mobileLongPressTimer.current);
+        mobileLongPressTimer.current = null;
+      }
+      return;
+    }
+    setMobileDragY(y);
+    // 현재 터치 위치에 해당하는 row 찾기
+    let foundSlot: string | null = null;
+    mobileRowRefs.current.forEach((el, slot) => {
+      const rect = el.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) {
+        foundSlot = slot;
+      }
+    });
+    setMobileDragOver(foundSlot);
+  }, []);
+
+  // 모바일 드래그 중일 때 body 스크롤 방지
+  useEffect(() => {
+    if (!mobileDragSource) return;
+    const prevent = (e: globalThis.TouchEvent) => { e.preventDefault(); };
+    document.addEventListener('touchmove', prevent, { passive: false });
+    return () => document.removeEventListener('touchmove', prevent);
+  }, [mobileDragSource]);
+
   // 시간 추가 상태
   const [showAddTime, setShowAddTime] = useState(false);
   const [newHour, setNewHour] = useState('09');
@@ -67,26 +129,44 @@ export function SchedulePage() {
   const touchStartY = useRef<number>(0);
   const touchEndX = useRef<number>(0);
   const touchEndY = useRef<number>(0);
+  const isVerticalScrolling = useRef(false);
   
   const handleTouchStart = (e: TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     touchEndX.current = e.touches[0].clientX;
     touchEndY.current = e.touches[0].clientY;
+    isVerticalScrolling.current = false;
   };
   
   const handleTouchMove = (e: TouchEvent) => {
     touchEndX.current = e.touches[0].clientX;
     touchEndY.current = e.touches[0].clientY;
+    // 세로 이동이 가로보다 크면 스크롤로 판단 → 스와이프 차단
+    const dx = Math.abs(touchEndX.current - touchStartX.current);
+    const dy = Math.abs(touchEndY.current - touchStartY.current);
+    if (dy > dx && dy > 10) {
+      isVerticalScrolling.current = true;
+    }
   };
   
   const handleTouchEnd = () => {
+    // 세로 스크롤 중이었으면 스와이프 무시
+    if (isVerticalScrolling.current) {
+      touchStartX.current = 0;
+      touchStartY.current = 0;
+      touchEndX.current = 0;
+      touchEndY.current = 0;
+      isVerticalScrolling.current = false;
+      return;
+    }
+
     const diffX = touchStartX.current - touchEndX.current;
     const diffY = touchStartY.current - touchEndY.current;
     const threshold = 50; // 최소 스와이프 거리
     
-    // 수평 이동이 수직 이동보다 클 때만 스와이프로 처리
-    if (Math.abs(diffX) > threshold && Math.abs(diffX) > Math.abs(diffY)) {
+    // 수평 이동이 수직 이동의 2배 이상일 때만 스와이프
+    if (Math.abs(diffX) > threshold && Math.abs(diffX) > Math.abs(diffY) * 2) {
       if (diffX > 0) {
         // 왼쪽으로 밀기 -> 다음 일
         moveDay(1);
@@ -99,7 +179,36 @@ export function SchedulePage() {
     touchStartY.current = 0;
     touchEndX.current = 0;
     touchEndY.current = 0;
+    isVerticalScrolling.current = false;
   };
+
+  // 스케줄 목록 컨테이너 ref (세로 스크롤 시 스와이프 차단)
+  const scheduleListRef = useRef<HTMLDivElement>(null);
+  const listTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const el = scheduleListRef.current;
+    if (!el) return;
+    const onTouchStart = (e: globalThis.TouchEvent) => {
+      listTouchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+    const onTouchMove = (e: globalThis.TouchEvent) => {
+      if (!listTouchStartRef.current) return;
+      const dx = Math.abs(e.touches[0].clientX - listTouchStartRef.current.x);
+      const dy = Math.abs(e.touches[0].clientY - listTouchStartRef.current.y);
+      // 세로 이동이 가로보다 클 때만 부모 전파 차단 (세로 스크롤 보호)
+      // 가로 이동이 더 크면 전파 허용 → 부모의 좌우 스와이프 동작
+      if (dy > dx) {
+        e.stopPropagation();
+      }
+    };
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+    };
+  }, []);
 
   // 날짜 정보
   const dayInfo = getDayInfo(selectedDate);
@@ -121,6 +230,45 @@ export function SchedulePage() {
     const combined = new Set([...DEFAULT_TIME_SLOTS, ...scheduleSlots]);
     return Array.from(combined).sort();
   }, [schedules]);
+
+  // 모바일 드래그: 떼기 (scheduleMap 선언 이후에 위치해야 함)
+  const handleMobileDragTouchEnd = useCallback(async () => {
+    if (mobileLongPressTimer.current) {
+      clearTimeout(mobileLongPressTimer.current);
+      mobileLongPressTimer.current = null;
+    }
+    if (!mobileDragActive.current || !mobileDragSource) {
+      mobileDragActive.current = false;
+      setMobileDragSource(null);
+      setMobileDragOver(null);
+      return;
+    }
+    mobileDragActive.current = false;
+
+    const targetSlot = mobileDragOver;
+    setMobileDragSource(null);
+    setMobileDragOver(null);
+    setMobileDragLabel('');
+
+    if (!targetSlot || targetSlot === mobileDragSource) return;
+
+    const sourceSchedule = scheduleMap[mobileDragSource];
+    const targetSchedule = scheduleMap[targetSlot];
+
+    if (sourceSchedule && targetSchedule) {
+      await swapSchedules.mutateAsync({
+        schedule1: sourceSchedule,
+        schedule2: targetSchedule,
+        date: dateStr,
+      });
+    } else if (sourceSchedule && !targetSchedule) {
+      await upsertSchedule.mutateAsync({
+        id: sourceSchedule.id,
+        date: dateStr,
+        time_slot: targetSlot,
+      });
+    }
+  }, [mobileDragSource, mobileDragOver, scheduleMap, dateStr, swapSchedules, upsertSchedule]);
 
   // 일정 생성/업데이트
   const handleUpdate = async (timeSlot: string, data: Partial<Schedule>) => {
@@ -387,7 +535,11 @@ export function SchedulePage() {
       </div>
 
       {/* 스케줄 목록 */}
-      <div className="flex-1 overflow-y-auto border border-t-0 bg-white">
+      <div
+        ref={scheduleListRef}
+        className="flex-1 overflow-y-auto border border-t-0 bg-white"
+        style={{ touchAction: 'pan-y' }}
+      >
         {schedulesLoading ? (
           <div className="flex items-center justify-center h-40 text-gray-500">
             <div className="animate-spin mr-2">⏳</div>
@@ -410,8 +562,35 @@ export function SchedulePage() {
               onDragOver={() => handleDragOver(timeSlot)}
               onDragEnd={handleDragEnd}
               onDrop={() => handleDrop(timeSlot)}
+              // 모바일 터치 드래그
+              isMobileDragging={mobileDragSource === timeSlot}
+              isMobileDragOver={mobileDragOver === timeSlot}
+              registerRowRef={registerRowRef}
+              onMobileDragTouchStart={(y) => handleMobileDragTouchStart(timeSlot, y)}
+              onMobileDragTouchMove={handleMobileDragTouchMove}
+              onMobileDragTouchEnd={handleMobileDragTouchEnd}
             />
           ))
+        )}
+        {/* 모바일 드래그 인디케이터 */}
+        {mobileDragSource && (
+          <div style={{
+            position: 'fixed',
+            left: '50%',
+            top: mobileDragY - 20,
+            transform: 'translateX(-50%)',
+            background: 'rgba(26, 35, 126, 0.9)',
+            color: 'white',
+            padding: '6px 18px',
+            borderRadius: '16px',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            zIndex: 9999,
+            pointerEvents: 'none',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+          }}>
+            ⠿ {mobileDragLabel} 이동 중...
+          </div>
         )}
       </div>
 

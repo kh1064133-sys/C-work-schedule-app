@@ -10,6 +10,7 @@ import { ItemsPage } from '@/components/items';
 import { CalendarPage } from '@/components/calendar';
 import { AnalyticsPage } from '@/components/analytics';
 import { SearchPage } from '@/components/search';
+import { EstimateForm } from '@/components/estimate';
 import { useUIStore } from '@/stores/uiStore';
 
 // 탭별 콘텐츠 컴포넌트
@@ -57,6 +58,14 @@ function SearchContent() {
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
       <SearchPage />
+    </div>
+  );
+}
+
+function EstimateContent() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm">
+      <EstimateForm />
     </div>
   );
 }
@@ -113,6 +122,8 @@ export default function Home() {
         return <ItemsContent />;
       case 'search':
         return <SearchContent />;
+      case 'estimate':
+        return <EstimateContent />;
       default:
         return <ScheduleContent />;
     }

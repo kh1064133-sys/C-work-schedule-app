@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search';
+type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate';
 
 interface UIState {
   activeTab: Tab;

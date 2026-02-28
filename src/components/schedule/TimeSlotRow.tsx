@@ -88,6 +88,9 @@ export function TimeSlotRow({
   // 터치 탭/스크롤 구분용 (모바일 검색 목록)
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isTouchScrollingRef = useRef(false);
+  const clientMobileDropdownRef = useRef<HTMLDivElement>(null);
+  const itemMobileDropdownRef = useRef<HTMLDivElement>(null);
+  const onUpdateRef = useRef(onUpdate);
 
   // schedule 값이 변경되면 로컬 상태 동기화
   useEffect(() => {
@@ -109,6 +112,100 @@ export function TimeSlotRow({
   useEffect(() => {
     setPaymentMethodValue(schedule?.payment_method || '');
   }, [schedule?.payment_method]);
+
+  // onUpdate 콜백 최신 참조 유지
+  useEffect(() => { onUpdateRef.current = onUpdate; });
+
+  // 모바일 거래처 드롭다운: 네이티브 터치 이벤트 (passive: false)
+  useEffect(() => {
+    const el = clientMobileDropdownRef.current;
+    if (!el) return;
+    let startX = 0, startY = 0, scrolled = false;
+
+    const onTouchStart = (e: globalThis.TouchEvent) => {
+      e.stopPropagation();
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      scrolled = false;
+    };
+    const onTouchMove = (e: globalThis.TouchEvent) => {
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        scrolled = true;
+      }
+    };
+    const onTouchEnd = (e: globalThis.TouchEvent) => {
+      if (scrolled) return;
+      e.preventDefault();
+      const target = (e.target as HTMLElement).closest('[data-client-name]') as HTMLElement | null;
+      if (target?.dataset.clientName) {
+        setTitleValue(target.dataset.clientName);
+        onUpdateRef.current({ title: target.dataset.clientName });
+        setShowClientPickerMobile(false);
+      }
+    };
+    const onScroll = () => { scrolled = true; };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [showClientPickerMobile]);
+
+  // 모바일 품목 드롭다운: 네이티브 터치 이벤트 (passive: false)
+  useEffect(() => {
+    const el = itemMobileDropdownRef.current;
+    if (!el) return;
+    let startX = 0, startY = 0, scrolled = false;
+
+    const onTouchStart = (e: globalThis.TouchEvent) => {
+      e.stopPropagation();
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      scrolled = false;
+    };
+    const onTouchMove = (e: globalThis.TouchEvent) => {
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        scrolled = true;
+      }
+    };
+    const onTouchEnd = (e: globalThis.TouchEvent) => {
+      if (scrolled) return;
+      e.preventDefault();
+      const target = (e.target as HTMLElement).closest('[data-item-name]') as HTMLElement | null;
+      if (target?.dataset.itemName) {
+        const name = target.dataset.itemName;
+        const price = parseInt(target.dataset.itemPrice || '0', 10);
+        setMemoValue(name);
+        onUpdateRef.current({
+          memo: name,
+          amount: price || schedule?.amount || 0,
+        });
+        setShowItemPickerMobile(false);
+      }
+    };
+    const onScroll = () => { scrolled = true; };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [showItemPickerMobile, schedule?.amount]);
 
   const isDone = schedule?.is_done || false;
   const isReserved = schedule?.is_reserved || false;
@@ -572,9 +669,9 @@ export function TimeSlotRow({
               {/* 모바일 거래처 드롭다운 */}
               {showClientPickerMobile && (
                 <div
+                  ref={clientMobileDropdownRef}
                   className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg"
-                  style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                 >
                   <div>
                     {filteredClients.length === 0 ? (
@@ -585,34 +682,13 @@ export function TimeSlotRow({
                       filteredClients.slice(0, 10).map((client) => (
                         <div
                           key={client.id}
+                          data-client-name={client.name}
                           style={{
                             width: '100%', padding: '8px 12px', textAlign: 'left',
                             display: 'flex', alignItems: 'center', gap: '8px',
                             fontSize: '14px', borderBottom: '1px solid #f0f0f0',
                             cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none',
-                            background: 'white',
-                          }}
-                          onTouchStart={(e) => {
-                            touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                            isTouchScrollingRef.current = false;
-                          }}
-                          onTouchMove={(e) => {
-                            if (touchStartPosRef.current) {
-                              const dx = e.touches[0].clientX - touchStartPosRef.current.x;
-                              const dy = e.touches[0].clientY - touchStartPosRef.current.y;
-                              if (Math.sqrt(dx * dx + dy * dy) > 10) {
-                                isTouchScrollingRef.current = true;
-                              }
-                            }
-                          }}
-                          onTouchEnd={(e) => {
-                            if (!isTouchScrollingRef.current) {
-                              e.preventDefault();
-                              setTitleValue(client.name);
-                              onUpdate({ title: client.name });
-                              setShowClientPickerMobile(false);
-                            }
-                            touchStartPosRef.current = null;
+                            background: 'white', touchAction: 'pan-y',
                           }}
                           onMouseDown={() => {
                             setTitleValue(client.name);
@@ -674,9 +750,9 @@ export function TimeSlotRow({
             {/* 모바일 품목 드롭다운 */}
             {showItemPickerMobile && (
               <div
+                ref={itemMobileDropdownRef}
                 className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg"
-                style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
-                onTouchStart={(e) => e.stopPropagation()}
+                style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
               >
                 <div>
                   {filteredItems.length === 0 ? (
@@ -687,37 +763,14 @@ export function TimeSlotRow({
                     filteredItems.slice(0, 10).map((item) => (
                       <div
                         key={item.id}
+                        data-item-name={item.name}
+                        data-item-price={String(item.price || 0)}
                         style={{
                           width: '100%', padding: '8px 12px', textAlign: 'left',
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           fontSize: '14px', borderBottom: '1px solid #f0f0f0',
                           cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none',
-                          background: 'white',
-                        }}
-                        onTouchStart={(e) => {
-                          touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                          isTouchScrollingRef.current = false;
-                        }}
-                        onTouchMove={(e) => {
-                          if (touchStartPosRef.current) {
-                            const dx = e.touches[0].clientX - touchStartPosRef.current.x;
-                            const dy = e.touches[0].clientY - touchStartPosRef.current.y;
-                            if (Math.sqrt(dx * dx + dy * dy) > 10) {
-                              isTouchScrollingRef.current = true;
-                            }
-                          }
-                        }}
-                        onTouchEnd={(e) => {
-                          if (!isTouchScrollingRef.current) {
-                            e.preventDefault();
-                            setMemoValue(item.name);
-                            onUpdate({
-                              memo: item.name,
-                              amount: item.price || schedule?.amount || 0,
-                            });
-                            setShowItemPickerMobile(false);
-                          }
-                          touchStartPosRef.current = null;
+                          background: 'white', touchAction: 'pan-y',
                         }}
                         onMouseDown={() => {
                           setMemoValue(item.name);

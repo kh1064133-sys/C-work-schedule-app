@@ -22,6 +22,12 @@ interface TimeSlotRowProps {
   onDragOver?: () => void;
   onDragEnd?: () => void;
   onDrop?: () => void;
+  // 선택/복사/붙여넣기
+  isSelected?: boolean;
+  onSelect?: () => void;
+  copiedScheduleExists?: boolean;
+  onCopySchedule?: () => void;
+  onPasteSchedule?: () => void;
   // 모바일 터치 드래그
   isMobileDragging?: boolean;
   isMobileDragOver?: boolean;
@@ -44,6 +50,7 @@ const PAYMENT_METHODS = [
   { value: 'cash', label: '현금' },
   { value: 'card', label: '카드' },
   { value: 'vat', label: 'VAT' },
+  { value: 'free', label: '무상' },
 ];
 
 export function TimeSlotRow({
@@ -60,6 +67,11 @@ export function TimeSlotRow({
   onDragOver,
   onDragEnd,
   onDrop,
+  isSelected = false,
+  onSelect,
+  copiedScheduleExists = false,
+  onCopySchedule,
+  onPasteSchedule,
   isMobileDragging = false,
   isMobileDragOver = false,
   registerRowRef,
@@ -115,6 +127,12 @@ export function TimeSlotRow({
 
   // onUpdate 콜백 최신 참조 유지
   useEffect(() => { onUpdateRef.current = onUpdate; });
+
+  // 모바일 복사/붙여넣기 팝업 상태
+  const [showCopyMenu, setShowCopyMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTouchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // 모바일 거래처 드롭다운: 네이티브 터치 이벤트 (passive: false)
   useEffect(() => {
@@ -228,6 +246,7 @@ export function TimeSlotRow({
     cash: 'bg-green-50 border-green-400 text-green-700',
     card: 'bg-blue-50 border-blue-400 text-blue-700',
     vat: 'bg-orange-50 border-orange-400 text-orange-700',
+    free: 'bg-purple-50 border-purple-400 text-purple-700',
     '': 'bg-white border-gray-200',
   };
 
@@ -241,8 +260,10 @@ export function TimeSlotRow({
           isDone && 'bg-green-50 border-l-green-500',
           !isPending && !isDone && 'border-l-transparent hover:bg-gray-50',
           isDragging && 'opacity-40 bg-blue-100',
-          isDragOver && 'border-t-2 border-t-primary bg-blue-50'
+          isDragOver && 'border-t-2 border-t-primary bg-blue-50',
+          isSelected && 'ring-2 ring-blue-500 ring-inset'
         )}
+        onClick={() => onSelect?.()}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move';
@@ -325,7 +346,7 @@ export function TimeSlotRow({
             }}
             onFocus={() => {
               setShowClientPicker(true);
-              setClientSearch(titleValue);
+              setClientSearch('');
             }}
             onBlur={(e) => {
               setTimeout(() => setShowClientPicker(false), 150);
@@ -337,41 +358,32 @@ export function TimeSlotRow({
           
           {/* 거래처 드롭다운 */}
           {showClientPicker && (
-            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              <div className="p-2 border-b">
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-sm border rounded"
-                  placeholder="거래처 검색..."
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                />
-              </div>
-              <div>
-                {filteredClients.length === 0 ? (
-                  <div className="p-3 text-sm text-gray-500 text-center">
-                    {clients.length === 0 ? '등록된 거래처가 없습니다' : '검색 결과가 없습니다'}
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}>
+              {filteredClients.length === 0 ? (
+                <div style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
+                  {clients.length === 0 ? '등록된 거래처가 없습니다' : '검색 결과가 없습니다'}
+                </div>
+              ) : (
+                filteredClients.map((client) => (
+                  <div
+                    key={client.id}
+                    style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                    onMouseDown={() => {
+                      setTitleValue(client.name);
+                      onUpdate({ title: client.name });
+                      setShowClientPicker(false);
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F3F4F6'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                  >
+                    <span>🏢</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address} {client.bunji}</div>
+                    </div>
                   </div>
-                ) : (
-                  filteredClients.map((client) => (
-                    <button
-                      key={client.id}
-                      className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center gap-2 text-sm"
-                      onMouseDown={() => {
-                        setTitleValue(client.name);
-                        onUpdate({ title: client.name });
-                        setShowClientPicker(false);
-                      }}
-                    >
-                      <span>🏢</span>
-                      <div>
-                        <div className="font-medium">{client.name}</div>
-                        <div className="text-xs text-gray-500">{client.address} {client.bunji}</div>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -406,7 +418,7 @@ export function TimeSlotRow({
             }}
             onFocus={() => {
               setShowItemPicker(true);
-              setItemSearch(memoValue);
+              setItemSearch('');
             }}
             onBlur={(e) => {
               setTimeout(() => setShowItemPicker(false), 150);
@@ -418,46 +430,37 @@ export function TimeSlotRow({
           
           {/* 품목 드롭다운 */}
           {showItemPicker && (
-            <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              <div className="p-2 border-b">
-                <input
-                  type="text"
-                  className="w-full px-2 py-1 text-sm border rounded"
-                  placeholder="품목 검색..."
-                  value={itemSearch}
-                  onChange={(e) => setItemSearch(e.target.value)}
-                />
-              </div>
-              <div>
-                {filteredItems.length === 0 ? (
-                  <div className="p-3 text-sm text-gray-500 text-center">
-                    {items.length === 0 ? '등록된 품목이 없습니다' : '검색 결과가 없습니다'}
-                  </div>
-                ) : (
-                  filteredItems.map((item) => (
-                    <button
-                      key={item.id}
-                      className="w-full px-3 py-2 text-left hover:bg-green-50 flex items-center gap-2 text-sm"
-                      onMouseDown={() => {
-                        setMemoValue(item.name);
-                        onUpdate({ 
-                          memo: item.name,
-                          amount: item.price || schedule?.amount || 0,
-                        });
-                        setShowItemPicker(false);
-                      }}
-                    >
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}>
+              {filteredItems.length === 0 ? (
+                <div style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
+                  {items.length === 0 ? '등록된 품목이 없습니다' : '검색 결과가 없습니다'}
+                </div>
+              ) : (
+                filteredItems.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
+                    onMouseDown={() => {
+                      setMemoValue(item.name);
+                      onUpdate({ 
+                        memo: item.name,
+                        amount: item.price || schedule?.amount || 0,
+                      });
+                      setShowItemPicker(false);
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F3F4F6'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                       <span>📦</span>
-                      <div>
-                        <div className="font-medium">{item.name}</div>
-                        <div className="text-xs text-green-600">
-                          {item.price ? `${item.price.toLocaleString()}원` : '금액 없음'}
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
+                      <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 8, flexShrink: 0 }}>
+                      {item.price ? `${item.price.toLocaleString()}원` : '금액 없음'}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -544,8 +547,40 @@ export function TimeSlotRow({
           isDone && 'bg-green-50 border-l-green-500',
           !isPending && !isDone && 'border-l-transparent hover:bg-gray-50',
           isMobileDragging && 'opacity-40 bg-blue-100',
-          isMobileDragOver && 'border-t-2 border-t-blue-500 bg-blue-50'
+          isMobileDragOver && 'border-t-2 border-t-blue-500 bg-blue-50',
+          isSelected && 'ring-2 ring-blue-500 ring-inset'
         )}
+        onTouchStart={(e) => {
+          // 인터랙티브 요소에서는 롱프레스 시작 안함
+          const target = e.target as HTMLElement;
+          if (target.closest('input, select, textarea, button, [data-grip]')) return;
+          const touch = e.touches[0];
+          longPressTouchStartRef.current = { x: touch.clientX, y: touch.clientY };
+          longPressTimerRef.current = setTimeout(() => {
+            setMenuPosition({ x: touch.clientX, y: touch.clientY });
+            setShowCopyMenu(true);
+            if (navigator.vibrate) navigator.vibrate(30);
+          }, 500);
+        }}
+        onTouchMove={(e) => {
+          if (!longPressTouchStartRef.current) return;
+          const touch = e.touches[0];
+          const dx = Math.abs(touch.clientX - longPressTouchStartRef.current.x);
+          const dy = Math.abs(touch.clientY - longPressTouchStartRef.current.y);
+          if (dx > 10 || dy > 10) {
+            if (longPressTimerRef.current) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+            }
+          }
+        }}
+        onTouchEnd={() => {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          longPressTouchStartRef.current = null;
+        }}
       >
         {/* 헤더: 시간 + 버튼들 */}
         <div className="flex items-center justify-between mb-2">
@@ -656,7 +691,7 @@ export function TimeSlotRow({
                 }}
                 onFocus={() => {
                   setShowClientPickerMobile(true);
-                  setClientSearch(titleValue);
+                  setClientSearch('');
                 }}
                 onBlur={(e) => {
                   setTimeout(() => setShowClientPickerMobile(false), 200);
@@ -670,16 +705,15 @@ export function TimeSlotRow({
               {showClientPickerMobile && (
                 <div
                   ref={clientMobileDropdownRef}
-                  className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg"
-                  style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                 >
                   <div>
                     {filteredClients.length === 0 ? (
-                      <div className="p-3 text-sm text-gray-500 text-center">
+                      <div style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
                         {clients.length === 0 ? '등록된 거래처가 없습니다' : '검색 결과가 없습니다'}
                       </div>
                     ) : (
-                      filteredClients.slice(0, 10).map((client) => (
+                      filteredClients.map((client) => (
                         <div
                           key={client.id}
                           data-client-name={client.name}
@@ -737,7 +771,7 @@ export function TimeSlotRow({
               }}
               onFocus={() => {
                 setShowItemPickerMobile(true);
-                setItemSearch(memoValue);
+                setItemSearch('');
               }}
               onBlur={(e) => {
                 setTimeout(() => setShowItemPickerMobile(false), 200);
@@ -751,16 +785,15 @@ export function TimeSlotRow({
             {showItemPickerMobile && (
               <div
                 ref={itemMobileDropdownRef}
-                className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border rounded-lg shadow-lg"
-                style={{ maxHeight: '192px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
               >
                 <div>
                   {filteredItems.length === 0 ? (
-                    <div className="p-3 text-sm text-gray-500 text-center">
+                    <div style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
                       {items.length === 0 ? '등록된 품목이 없습니다' : '검색 결과가 없습니다'}
                     </div>
                   ) : (
-                    filteredItems.slice(0, 10).map((item) => (
+                    filteredItems.map((item) => (
                       <div
                         key={item.id}
                         data-item-name={item.name}
@@ -838,6 +871,46 @@ export function TimeSlotRow({
           </div>
         </div>
       </div>
+
+      {/* 모바일 복사/붙여넣기 팝업 메뉴 */}
+      {showCopyMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 99998, background: 'rgba(0,0,0,0.15)' }}
+            onClick={() => setShowCopyMenu(false)}
+            onTouchEnd={(e) => { e.preventDefault(); setShowCopyMenu(false); }}
+          />
+          <div style={{
+            position: 'fixed',
+            left: Math.min(menuPosition.x, window.innerWidth - 180),
+            top: menuPosition.y - 10,
+            transform: 'translateY(-100%)',
+            background: 'white',
+            borderRadius: 12,
+            boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
+            zIndex: 99999,
+            overflow: 'hidden',
+            minWidth: 160,
+          }}>
+            {schedule?.title && (
+              <button
+                style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, border: 'none', background: 'white', cursor: 'pointer', borderBottom: '1px solid #f0f0f0' }}
+                onClick={() => { onCopySchedule?.(); setShowCopyMenu(false); }}
+              >📋 복사하기</button>
+            )}
+            {copiedScheduleExists && (
+              <button
+                style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, border: 'none', background: 'white', cursor: 'pointer', borderBottom: '1px solid #f0f0f0' }}
+                onClick={() => { onPasteSchedule?.(); setShowCopyMenu(false); }}
+              >📌 붙여넣기</button>
+            )}
+            <button
+              style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, border: 'none', background: 'white', cursor: 'pointer' }}
+              onClick={() => setShowCopyMenu(false)}
+            >❌ 취소</button>
+          </div>
+        </>
+      )}
     </>
   );
 }

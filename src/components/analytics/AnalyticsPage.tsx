@@ -21,6 +21,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: '현금',
   card: '카드',
   vat: 'VAT',
+  free: '무상',
 };
 
 export function AnalyticsPage() {

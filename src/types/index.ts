@@ -18,7 +18,7 @@ export interface Schedule {
 }
 
 export type ScheduleType = 'sale' | 'as' | 'agency' | 'group';
-export type PaymentMethod = 'cash' | 'card' | 'vat';
+export type PaymentMethod = 'cash' | 'card' | 'vat' | 'free';
 
 export interface ScheduleInput {
   date: string;
@@ -94,6 +94,7 @@ export interface PaymentStats {
   cash: number;
   card: number;
   vat: number;
+  free: number;
 }
 
 export interface PendingStats {
@@ -128,6 +129,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: '현금',
   card: '카드',
   vat: 'VAT',
+  free: '무상',
 };
 
 export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {

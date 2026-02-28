@@ -37,6 +37,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: '현금',
   card: '카드',
   vat: 'VAT',
+  free: '무상',
 };
 
 // 미결/예약 테이블 렌더 헬퍼
@@ -45,11 +46,13 @@ function PendingTable({
   onMarkDone,
   onRowDoubleClick,
   amountColor,
+  buttonVariant = 'orange',
 }: {
   items: Schedule[];
   onMarkDone: (s: Schedule) => void;
   onRowDoubleClick?: (s: Schedule) => void;
   amountColor?: string;
+  buttonVariant?: 'gray' | 'orange';
 }) {
   const lastTapRef = useRef<{ time: number; id: string }>({ time: 0, id: '' });
 
@@ -131,9 +134,9 @@ function PendingTable({
                     width: 20,
                     height: 20,
                     borderRadius: '50%',
-                    border: '2px solid #16a34a',
-                    backgroundColor: 'transparent',
-                    color: '#16a34a',
+                    border: 'none',
+                    backgroundColor: buttonVariant === 'gray' ? '#9CA3AF' : '#F97316',
+                    color: 'white',
                     fontSize: 12,
                     fontWeight: 700,
                     lineHeight: 1,
@@ -148,9 +151,9 @@ function PendingTable({
                       width: 20,
                       height: 20,
                       borderRadius: '50%',
-                      border: '2px solid #fb923c',
-                      background: 'transparent',
-                      color: '#f97316',
+                      border: buttonVariant === 'gray' ? '1px solid #D1D5DB' : '1px solid #FDBA74',
+                      background: buttonVariant === 'gray' ? 'transparent' : '#FFF7ED',
+                      color: buttonVariant === 'gray' ? '#6B7280' : '#FB923C',
                       cursor: 'pointer',
                       padding: 0,
                       fontSize: 12,
@@ -363,6 +366,7 @@ export function CalendarPage() {
       cash: doneSchedules.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + (s.amount || 0), 0),
       card: doneSchedules.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + (s.amount || 0), 0),
       vat: doneSchedules.filter(s => s.payment_method === 'vat').reduce((sum, s) => sum + (s.amount || 0), 0),
+      free: doneSchedules.filter(s => s.payment_method === 'free').reduce((sum, s) => sum + (s.amount || 0), 0),
     };
     const allPending = schedules.filter((s: Schedule) => s.title && !s.is_done);
     const pendingCount = allPending.length;
@@ -623,7 +627,7 @@ export function CalendarPage() {
           </button>
           {showReserved && (
             <div className="bg-white p-3">
-              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
+              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} buttonVariant="gray" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
             </div>
           )}
         </div>
@@ -677,6 +681,10 @@ export function CalendarPage() {
             <div className="flex justify-between items-center">
               <span className="bg-white/90 text-orange-600 px-2 py-0.5 rounded-full text-xs font-bold">VAT</span>
               <span className="text-orange-200">{monthlySalesStats.byPayment.vat.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-purple-600 px-2 py-0.5 rounded-full text-xs font-bold">무상</span>
+              <span className="text-purple-200">{monthlySalesStats.byPayment.free.toLocaleString()}원</span>
             </div>
 
             {/* 미결 */}

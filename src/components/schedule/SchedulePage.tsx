@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Rotate
 import { Button } from '@/components/ui/button';
 import { TimeSlotRow } from './TimeSlotRow';
 import { useDateStore } from '@/stores/dateStore';
-import { useUIStore } from '@/stores/uiStore';
+import { useUIStore, type CopiedScheduleData } from '@/stores/uiStore';
 import { useSchedulesByDate, useUpsertSchedule, useDeleteSchedule, useSwapSchedules } from '@/hooks/useSchedules';
 import { useClients } from '@/hooks/useClients';
 import { useItems } from '@/hooks/useItems';
@@ -52,6 +52,11 @@ export function SchedulePage() {
   const upsertSchedule = useUpsertSchedule();
   const deleteSchedule = useDeleteSchedule();
   const swapSchedules = useSwapSchedules();
+
+  // 선택/복사 상태
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const { copiedSchedule, setCopiedSchedule } = useUIStore();
 
   // 드래그 상태
   const [dragSourceSlot, setDragSourceSlot] = useState<string | null>(null);
@@ -118,6 +123,13 @@ export function SchedulePage() {
     document.addEventListener('touchmove', prevent, { passive: false });
     return () => document.removeEventListener('touchmove', prevent);
   }, [mobileDragSource]);
+
+  // 복사/붙여넣기를 위한 ref (키보드 이벤트 리스너에서 최신 값 참조)
+  const selectedSlotRef = useRef<string | null>(null);
+  selectedSlotRef.current = selectedSlot;
+  const copiedScheduleRef = useRef<CopiedScheduleData | null>(null);
+  copiedScheduleRef.current = copiedSchedule;
+  const scheduleMapRef = useRef<Record<string, Schedule>>({});
 
   // 시간 추가 상태
   const [showAddTime, setShowAddTime] = useState(false);
@@ -224,6 +236,66 @@ export function SchedulePage() {
     return map;
   }, [schedules]);
 
+  // scheduleMap ref 업데이트
+  scheduleMapRef.current = scheduleMap;
+
+  // handleUpdate ref (키보드 이벤트에서 사용)
+  const handleUpdateRef = useRef<((timeSlot: string, data: Partial<Schedule>) => Promise<void>) | undefined>(undefined);
+
+  // PC 키보드 Ctrl+C/V 핸들러
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+C: 선택된 슬롯의 스케줄 복사
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        const slot = selectedSlotRef.current;
+        if (slot) {
+          const s = scheduleMapRef.current[slot];
+          if (s?.title) {
+            setCopiedSchedule({
+              title: s.title,
+              unit: s.unit,
+              memo: s.memo,
+              schedule_type: s.schedule_type,
+              amount: s.amount,
+              payment_method: s.payment_method,
+            });
+            setCopyFeedback('📋 복사됨');
+            setTimeout(() => setCopyFeedback(null), 1500);
+          }
+        }
+        // 브라우저 기본 복사(텍스트)도 동작하도록 preventDefault 안함
+      }
+
+      // Ctrl+V: 선택된 슬롯에 붙여넣기
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        const slot = selectedSlotRef.current;
+        const copied = copiedScheduleRef.current;
+        if (slot && copied) {
+          e.preventDefault();
+          handleUpdateRef.current?.(slot, {
+            title: copied.title,
+            unit: copied.unit,
+            memo: copied.memo,
+            schedule_type: copied.schedule_type as any,
+            amount: copied.amount,
+            payment_method: copied.payment_method as any,
+          });
+          setCopyFeedback('📌 붙여넣기 완료');
+          setTimeout(() => setCopyFeedback(null), 1500);
+          setSelectedSlot(null);
+        }
+      }
+
+      // Escape: 선택 해제
+      if (e.key === 'Escape') {
+        setSelectedSlot(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setCopiedSchedule]);
+
   // 사용 중인 시간 슬롯 + 기본 시간 슬롯 합치기
   const allTimeSlots = useMemo(() => {
     const scheduleSlots = schedules.map((s: Schedule) => s.time_slot || '09:00');
@@ -321,6 +393,43 @@ export function SchedulePage() {
       });
     }
   };
+
+  // handleUpdate ref 업데이트 (키보드 핸들러에서 참조)
+  handleUpdateRef.current = handleUpdate;
+
+  // 모바일 복사 콜백
+  const handleCopySchedule = useCallback((timeSlot: string) => {
+    const s = scheduleMapRef.current[timeSlot];
+    if (s?.title) {
+      setCopiedSchedule({
+        title: s.title,
+        unit: s.unit,
+        memo: s.memo,
+        schedule_type: s.schedule_type,
+        amount: s.amount,
+        payment_method: s.payment_method,
+      });
+      setCopyFeedback('📋 복사됨');
+      setTimeout(() => setCopyFeedback(null), 1500);
+    }
+  }, [setCopiedSchedule]);
+
+  // 모바일 붙여넣기 콜백
+  const handlePasteSchedule = useCallback((timeSlot: string) => {
+    const copied = copiedScheduleRef.current;
+    if (copied) {
+      handleUpdateRef.current?.(timeSlot, {
+        title: copied.title,
+        unit: copied.unit,
+        memo: copied.memo,
+        schedule_type: copied.schedule_type as any,
+        amount: copied.amount,
+        payment_method: copied.payment_method as any,
+      });
+      setCopyFeedback('📌 붙여넣기 완료');
+      setTimeout(() => setCopyFeedback(null), 1500);
+    }
+  }, []);
 
   // 완료 토글
   const handleToggleDone = async (timeSlot: string) => {
@@ -562,6 +671,12 @@ export function SchedulePage() {
               onDragOver={() => handleDragOver(timeSlot)}
               onDragEnd={handleDragEnd}
               onDrop={() => handleDrop(timeSlot)}
+              // 선택/복사/붙여넣기
+              isSelected={selectedSlot === timeSlot}
+              onSelect={() => setSelectedSlot(timeSlot)}
+              copiedScheduleExists={!!copiedSchedule}
+              onCopySchedule={() => handleCopySchedule(timeSlot)}
+              onPasteSchedule={() => handlePasteSchedule(timeSlot)}
               // 모바일 터치 드래그
               isMobileDragging={mobileDragSource === timeSlot}
               isMobileDragOver={mobileDragOver === timeSlot}
@@ -689,8 +804,30 @@ export function SchedulePage() {
 
       {/* 하단 안내 */}
       <div className="mt-3 px-2 text-xs text-gray-500 hidden lg:block">
-        💡 거래처명과 내용 필드에서 🔍 아이콘을 클릭하면 등록된 데이터를 검색할 수 있습니다. ⠿ 아이콘을 드래그하면 순서를 변경할 수 있습니다.
+        💡 거래처명과 내용 필드에서 🔍 아이콘을 클릭하면 등록된 데이터를 검색할 수 있습니다. ⠿ 아이콘을 드래그하면 순서를 변경할 수 있습니다. 행 클릭 후 Ctrl+C/V로 일정을 복사/붙여넣기 할 수 있습니다.
       </div>
+
+      {/* 복사/붙여넣기 피드백 토스트 */}
+      {copyFeedback && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(26, 35, 126, 0.9)',
+          color: 'white',
+          padding: '8px 20px',
+          borderRadius: 20,
+          fontSize: 14,
+          fontWeight: 600,
+          zIndex: 99999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          pointerEvents: 'none',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          {copyFeedback}
+        </div>
+      )}
     </div>
   );
 }

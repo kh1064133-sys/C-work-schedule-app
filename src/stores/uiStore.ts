@@ -2,12 +2,25 @@ import { create } from 'zustand';
 
 type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate';
 
+export interface CopiedScheduleData {
+  title: string | null;
+  unit: string | null;
+  memo: string | null;
+  schedule_type: string | null;
+  amount: number;
+  payment_method: string | null;
+}
+
 interface UIState {
   activeTab: Tab;
   isSidebarOpen: boolean;
   isAddressModalOpen: boolean;
   isPhotoModalOpen: boolean;
   photoModalSrc: string | null;
+
+  // 복사/붙여넣기 (탭 전환 시에도 유지)
+  copiedSchedule: CopiedScheduleData | null;
+  setCopiedSchedule: (data: CopiedScheduleData | null) => void;
 
   // 토글 섹션 상태 (페이지 이동 후에도 유지)
   showSelectedDate: boolean;
@@ -32,6 +45,9 @@ export const useUIStore = create<UIState>((set) => ({
   isAddressModalOpen: false,
   isPhotoModalOpen: false,
   photoModalSrc: null,
+
+  copiedSchedule: null,
+  setCopiedSchedule: (data) => set({ copiedSchedule: data }),
 
   showSelectedDate: true,
   showPrevPending: true,

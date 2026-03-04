@@ -770,7 +770,7 @@ ${cloned.outerHTML}
         }}>
       <div ref={estimatePaperRef} className="estimate-paper" style={{
         minWidth: "680px", maxWidth: "820px", margin: "0 auto", background: "white",
-        boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "hidden",
+        boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "visible",
       }}>
 
         {/* 헤더 */}

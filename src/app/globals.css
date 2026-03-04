@@ -158,6 +158,60 @@
   background: oklch(0.6 0 0);
 }
 
+/* 인쇄 시 스타일 */
+@media print {
+  /* 인쇄 시 숨길 요소 */
+  .no-print,
+  nav,
+  header,
+  aside {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* 인쇄 시 보일 영역 */
+  .print-area {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    flex: none !important;
+    flex-grow: 0 !important;
+  }
+
+  /* 레이아웃 리셋 - 인쇄 시 전체 높이/flex 제거 */
+  .min-h-screen { min-height: auto !important; height: auto !important; }
+  .flex { display: block !important; }
+  .flex-1 { flex: none !important; flex-grow: 0 !important; }
+  .mb-6 { margin-bottom: 0 !important; }
+  .p-4, .md\:p-6 { padding: 0 !important; }
+  main { padding: 0 !important; margin: 0 !important; }
+
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: unset !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html {
+    height: auto !important;
+    min-height: unset !important;
+  }
+
+  /* 페이지 설정 */
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+}
+
 /* 애니메이션 */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }

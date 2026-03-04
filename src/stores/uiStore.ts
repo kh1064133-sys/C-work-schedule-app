@@ -29,6 +29,11 @@ interface UIState {
   showMonthlySales: boolean;
   showSalesSummary: boolean;
   showYearlySales: boolean;
+
+  // 탭 전환 가드 (스케줄 페이지 변경사항 감지)
+  _tabChangeGuard: ((tab: Tab) => boolean) | null;
+  setTabChangeGuard: (guard: ((tab: Tab) => boolean) | null) => void;
+  _forceSetActiveTab: (tab: Tab) => void;
   
   setActiveTab: (tab: Tab) => void;
   toggleSidebar: () => void;
@@ -39,7 +44,7 @@ interface UIState {
   toggleSection: (key: 'showSelectedDate' | 'showPrevPending' | 'showReserved' | 'showMonthlySales' | 'showSalesSummary' | 'showYearlySales') => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   activeTab: 'calendar',
   isSidebarOpen: true,
   isAddressModalOpen: false,
@@ -55,8 +60,16 @@ export const useUIStore = create<UIState>((set) => ({
   showMonthlySales: true,
   showSalesSummary: true,
   showYearlySales: true,
+
+  _tabChangeGuard: null,
+  setTabChangeGuard: (guard) => set({ _tabChangeGuard: guard }),
+  _forceSetActiveTab: (tab) => set({ activeTab: tab }),
   
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => {
+    const guard = get()._tabChangeGuard;
+    if (guard && !guard(tab)) return;
+    set({ activeTab: tab });
+  },
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   openAddressModal: () => set({ isAddressModalOpen: true }),
   closeAddressModal: () => set({ isAddressModalOpen: false }),

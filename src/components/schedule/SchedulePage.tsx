@@ -58,6 +58,80 @@ export function SchedulePage() {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const { copiedSchedule, setCopiedSchedule } = useUIStore();
 
+  // ── 변경사항 감지 & 저장 확인 팝업 ──
+  // 1) 스냅샷 기반: 페이지 진입 시 스케줄 상태를 캡처하고, 뒤로가기 시 현재 DB 상태와 비교
+  const snapshotRef = useRef<string | null>(null);
+  const snapshotTakenRef = useRef(false);
+
+  // 스케줄 데이터가 처음 로딩되면 스냅샷 캡처
+  useEffect(() => {
+    if (!schedulesLoading && schedules.length >= 0 && !snapshotTakenRef.current) {
+      snapshotTakenRef.current = true;
+      snapshotRef.current = JSON.stringify(
+        schedules.map(s => ({
+          time_slot: s.time_slot,
+          title: s.title || '',
+          memo: s.memo || '',
+          unit: s.unit || '',
+          amount: s.amount || 0,
+          schedule_type: s.schedule_type || '',
+          payment_method: s.payment_method || '',
+          is_done: !!s.is_done,
+          is_reserved: !!s.is_reserved,
+        })).sort((a, b) => a.time_slot.localeCompare(b.time_slot))
+      );
+    }
+  }, [schedulesLoading, schedules]);
+
+  // 날짜가 바뀌면 스냅샷 리셋
+  useEffect(() => {
+    snapshotTakenRef.current = false;
+    snapshotRef.current = null;
+  }, [dateStr]);
+
+  // 2) 로컬 pending 입력 (blur되지 않은 input 필드)
+  const pendingChangesRef = useRef<Map<string, { title: string; memo: string; unit: string }>>(new Map());
+
+  const handlePendingChange = useCallback((timeSlot: string, data: { title: string; memo: string; unit: string } | null) => {
+    if (data) {
+      pendingChangesRef.current.set(timeSlot, data);
+    } else {
+      pendingChangesRef.current.delete(timeSlot);
+    }
+  }, []);
+
+  // 통합 변경 감지: DB 스냅샷 비교 OR 로컬 pending 입력 존재
+  const hasAnyChanges = useCallback(() => {
+    // 로컬 pending 입력이 있으면 변경됨
+    if (pendingChangesRef.current.size > 0) return true;
+    // DB 스냅샷 비교
+    if (snapshotRef.current === null) return false;
+    const currentSnapshot = JSON.stringify(
+      schedules.map(s => ({
+        time_slot: s.time_slot,
+        title: s.title || '',
+        memo: s.memo || '',
+        unit: s.unit || '',
+        amount: s.amount || 0,
+        schedule_type: s.schedule_type || '',
+        payment_method: s.payment_method || '',
+        is_done: !!s.is_done,
+        is_reserved: !!s.is_reserved,
+      })).sort((a, b) => a.time_slot.localeCompare(b.time_slot))
+    );
+    return currentSnapshot !== snapshotRef.current;
+  }, [schedules]);
+
+  // schedules ref for event handlers (최신 값 참조)
+  const schedulesRef = useRef(schedules);
+  schedulesRef.current = schedules;
+  const hasAnyChangesRef = useRef(hasAnyChanges);
+  hasAnyChangesRef.current = hasAnyChanges;
+
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const pendingNavigationRef = useRef<{ type: 'tab'; target: string } | { type: 'back' } | null>(null);
+  const { setTabChangeGuard, _forceSetActiveTab } = useUIStore();
+
   // 드래그 상태
   const [dragSourceSlot, setDragSourceSlot] = useState<string | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
@@ -290,11 +364,123 @@ export function SchedulePage() {
       if (e.key === 'Escape') {
         setSelectedSlot(null);
       }
+
+      // Backspace: input 포커스 아닐 때 뒤로가기
+      if (e.key === 'Backspace') {
+        const el = document.activeElement;
+        const isInput = el && (
+          el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          (el as HTMLElement).isContentEditable
+        );
+        if (!isInput) {
+          e.preventDefault();
+          if (hasAnyChangesRef.current()) {
+            pendingNavigationRef.current = { type: 'back' };
+            setShowSaveDialog(true);
+          } else {
+            useUIStore.getState()._forceSetActiveTab('calendar');
+          }
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setCopiedSchedule]);
+
+  // ── 탭 전환 가드 등록 ──
+  useEffect(() => {
+    const guard = (targetTab: string) => {
+      if (hasAnyChangesRef.current()) {
+        pendingNavigationRef.current = { type: 'tab', target: targetTab };
+        setShowSaveDialog(true);
+        return false; // 탭 전환 차단
+      }
+      return true; // 허용
+    };
+    setTabChangeGuard(guard);
+    return () => setTabChangeGuard(null);
+  }, [setTabChangeGuard]);
+
+  // ── 브라우저 뒤로가기 감지 (popstate) ──
+  useEffect(() => {
+    window.history.pushState({ schedulePage: true }, '');
+
+    const handlePopState = () => {
+      if (hasAnyChangesRef.current()) {
+        window.history.pushState({ schedulePage: true }, '');
+        pendingNavigationRef.current = { type: 'back' };
+        setShowSaveDialog(true);
+      } else {
+        _forceSetActiveTab('calendar');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [_forceSetActiveTab]);
+
+  // ── 저장 확인 팝업 액션 핸들러 ──
+  const handleDialogSave = useCallback(async () => {
+    // 포커스된 입력 필드 blur → onBlur 핸들러가 저장 수행
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    // pending 로컬 데이터 직접 저장 (blur 안 된 필드 대비)
+    const promises: Promise<void>[] = [];
+    for (const [timeSlot, data] of pendingChangesRef.current) {
+      promises.push(handleUpdateRef.current?.(timeSlot, {
+        title: data.title,
+        memo: data.memo,
+        unit: data.unit,
+      }) ?? Promise.resolve());
+    }
+    await Promise.all(promises);
+    // 짧은 대기 후 네비게이션
+    await new Promise(resolve => setTimeout(resolve, 200));
+    setShowSaveDialog(false);
+    pendingChangesRef.current.clear();
+    const nav = pendingNavigationRef.current;
+    if (nav?.type === 'tab') {
+      _forceSetActiveTab(nav.target as any);
+    } else {
+      _forceSetActiveTab('calendar');
+    }
+    pendingNavigationRef.current = null;
+  }, [_forceSetActiveTab]);
+
+  const handleDialogDiscard = useCallback(() => {
+    setShowSaveDialog(false);
+    pendingChangesRef.current.clear();
+    // 스냅샷을 현재 상태로 갱신하여 "변경 없음"으로 만들기
+    snapshotRef.current = JSON.stringify(
+      schedulesRef.current.map(s => ({
+        time_slot: s.time_slot,
+        title: s.title || '',
+        memo: s.memo || '',
+        unit: s.unit || '',
+        amount: s.amount || 0,
+        schedule_type: s.schedule_type || '',
+        payment_method: s.payment_method || '',
+        is_done: !!s.is_done,
+        is_reserved: !!s.is_reserved,
+      })).sort((a, b) => a.time_slot.localeCompare(b.time_slot))
+    );
+    const nav = pendingNavigationRef.current;
+    if (nav?.type === 'tab') {
+      _forceSetActiveTab(nav.target as any);
+    } else {
+      _forceSetActiveTab('calendar');
+    }
+    pendingNavigationRef.current = null;
+  }, [_forceSetActiveTab]);
+
+  const handleDialogCancel = useCallback(() => {
+    setShowSaveDialog(false);
+    pendingNavigationRef.current = null;
+  }, []);
 
   // 사용 중인 시간 슬롯 + 기본 시간 슬롯 합치기
   const allTimeSlots = useMemo(() => {
@@ -647,7 +833,7 @@ export function SchedulePage() {
       <div
         ref={scheduleListRef}
         className="flex-1 overflow-y-auto border border-t-0 bg-white"
-        style={{ touchAction: 'pan-y' }}
+        style={{ touchAction: 'pan-y pinch-zoom' }}
       >
         {schedulesLoading ? (
           <div className="flex items-center justify-center h-40 text-gray-500">
@@ -684,6 +870,8 @@ export function SchedulePage() {
               onMobileDragTouchStart={(y) => handleMobileDragTouchStart(timeSlot, y)}
               onMobileDragTouchMove={handleMobileDragTouchMove}
               onMobileDragTouchEnd={handleMobileDragTouchEnd}
+              // 변경사항 감지
+              onPendingChange={handlePendingChange}
             />
           ))
         )}
@@ -827,6 +1015,130 @@ export function SchedulePage() {
         }}>
           {copyFeedback}
         </div>
+      )}
+
+      {/* ── 변경사항 저장 확인 팝업 ── */}
+      {showSaveDialog && (
+        <>
+          {/* 반투명 오버레이 */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 100000,
+            }}
+            onClick={handleDialogCancel}
+          />
+          {/* 팝업 본체 */}
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              zIndex: 100001,
+              width: 340,
+              maxWidth: 'calc(100vw - 32px)',
+              overflow: 'hidden',
+              animation: 'fadeIn 0.15s ease-out',
+            }}
+          >
+            {/* 제목 */}
+            <div
+              style={{
+                background: '#f3f4f6',
+                padding: '14px 20px',
+                fontSize: 15,
+                fontWeight: 700,
+                color: '#374151',
+                textAlign: 'center',
+                borderBottom: '1px solid #e5e7eb',
+              }}
+            >
+              알림
+            </div>
+            {/* 내용 */}
+            <div
+              style={{
+                padding: '24px 20px',
+                fontSize: 14,
+                color: '#374151',
+                textAlign: 'center',
+                lineHeight: 1.7,
+              }}
+            >
+              변경사항이 있습니다.<br />저장하시겠습니까?
+            </div>
+            {/* 버튼 영역 */}
+            <div
+              style={{
+                display: 'flex',
+                borderTop: '1px solid #e5e7eb',
+              }}
+            >
+              <button
+                onClick={handleDialogCancel}
+                style={{
+                  flex: 1,
+                  padding: '14px 0',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: '#6b7280',
+                  background: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  borderRight: '1px solid #e5e7eb',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDialogDiscard}
+                style={{
+                  flex: 1,
+                  padding: '14px 0',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: '#6b7280',
+                  background: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  borderRight: '1px solid #e5e7eb',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+              >
+                저장안함
+              </button>
+              <button
+                onClick={handleDialogSave}
+                style={{
+                  flex: 1,
+                  padding: '14px 0',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: '#374151',
+                  background: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+              >
+                변경사항저장
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

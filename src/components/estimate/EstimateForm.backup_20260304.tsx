@@ -425,40 +425,13 @@ export default function EstimateForm() {
 
   const estimatePaperRef = useRef<HTMLDivElement>(null);
 
-  // 모바일 자동 축소: 680px 견적서를 화면 폭에 맞추기
-  const paperWrapperRef = useRef<HTMLDivElement>(null);
-  const [paperScale, setPaperScale] = useState(1);
-  const [manualZoom, setManualZoom] = useState(1);
-  const effectiveScale = paperScale * manualZoom;
-
-  const zoomIn = () => setManualZoom(prev => Math.min(Math.round((prev + 0.1) * 10) / 10, 2.0));
-  const zoomOut = () => setManualZoom(prev => Math.max(Math.round((prev - 0.1) * 10) / 10, 0.3));
-  const zoomReset = () => setManualZoom(1);
-
+  // 모바일 감지
+  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    const updateScale = () => {
-      const wrapper = paperWrapperRef.current;
-      if (!wrapper) return;
-      const availableWidth = wrapper.clientWidth;
-      const paperMinWidth = 680;
-      if (availableWidth < paperMinWidth) {
-        setPaperScale(availableWidth / paperMinWidth);
-      } else {
-        setPaperScale(1);
-      }
-    };
-    updateScale();
-    window.addEventListener('resize', updateScale);
-    // ResizeObserver로 컨테이너 크기 변화 감지
-    let ro: ResizeObserver | null = null;
-    if (paperWrapperRef.current && typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(updateScale);
-      ro.observe(paperWrapperRef.current);
-    }
-    return () => {
-      window.removeEventListener('resize', updateScale);
-      ro?.disconnect();
-    };
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
   }, []);
 
   // 인쇄 함수 - 새 창을 열고 견적서만 출력 (Android WebView 호환)
@@ -478,75 +451,60 @@ export default function EstimateForm() {
 <title>견적서</title>
 <style>
   * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0; padding: 0; }
-  @page { size: A4 portrait; margin: 6mm; }
-  html, body { font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; background: white; margin: 0; padding: 0; width: 100%; height: 100%; }
-  body { display: flex; align-items: flex-start; justify-content: center; }
-  .estimate-paper { width: 100%; max-width: 100%; background: white; overflow: visible; border-radius: 0 !important; box-shadow: none !important; }
+  @page { size: A4 portrait; margin: 8mm; }
+  body { font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; background: white; margin: 0; padding: 0; }
+  .estimate-paper { width: 100%; max-width: 100%; min-width: unset !important; background: white; overflow: hidden !important; display: flex !important; flex-direction: column !important; height: 277mm !important; max-height: 277mm !important; }
   .no-print { display: none !important; }
   .no-print-col { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
+  .print-only-stamp { display: block !important; }
   input, textarea { outline: none; border: none; background: transparent; font-family: inherit; }
   table { border-collapse: collapse; width: 100%; }
-
-  /* === 1페이지 맞춤 축소 === */
-  .est-header { padding: 14px 24px !important; }
-  .est-header .est-title { font-size: 24px !important; letter-spacing: 6px !important; }
-  .est-header .est-subtitle { font-size: 9px !important; margin-bottom: 3px !important; }
-  .est-header input { font-size: 12px !important; }
-  .est-body { padding: 12px 22px !important; }
-  .est-parties { gap: 10px !important; margin-bottom: 8px !important; }
-  .est-parties span, .est-parties input { font-size: 10.5px !important; line-height: 1.35 !important; }
-  .est-parties div[style*="padding: 12px 14px"] { padding: 6px 10px !important; }
-  .est-parties div[style*="marginBottom: 5px"],
-  .est-parties div[style*="marginBottom: 4px"] { margin-bottom: 2px !important; }
-  .est-total-banner { padding: 8px 14px !important; margin-bottom: 8px !important; }
-  .est-total-banner .est-total-amount { font-size: 18px !important; }
-  .est-total-banner div[style*="font-size: 14px"] { font-size: 11px !important; }
-  .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
-  .est-table { margin-bottom: 6px !important; font-size: 10.5px !important; }
-  .est-table th { padding: 4px 6px !important; font-size: 10px !important; }
-  .est-table td { padding: 3px 6px !important; font-size: 10.5px !important; }
-  .est-table td input { font-size: 10.5px !important; }
-  .est-table td[style*="height: 34px"] { height: 18px !important; }
-  .est-summary-row { margin-bottom: 6px !important; }
-  .est-summary-row div[style*="padding: 10px 24px"] { padding: 6px 14px !important; min-width: 100px !important; }
-  .est-summary-row span { font-size: 10.5px !important; }
-  .est-photos { gap: 8px !important; margin-bottom: 8px !important; }
-  .est-photos > div { min-height: 80px !important; max-height: 140px !important; }
-  .est-photos img { object-fit: contain !important; }
+  .est-parties { display: grid !important; grid-template-columns: 1fr 1fr !important; }
+  .est-header { padding: 10px 18px !important; flex-shrink: 0 !important; }
+  .est-header .est-title { font-size: 20px !important; letter-spacing: 6px !important; }
+  .est-header .est-subtitle { font-size: 7px !important; margin-bottom: 2px !important; }
+  .est-header input { font-size: 10px !important; }
+  .est-parties span, .est-parties input { font-size: 10px !important; line-height: 1.3 !important; }
+  .est-parties div[style*="padding: 12px 14px"] { padding: 5px 10px !important; }
+  .est-total-banner { padding: 5px 10px !important; margin-bottom: 4px !important; }
+  .est-total-banner .est-total-amount { font-size: 15px !important; }
+  .est-total-banner div[style*="font-size: 14px"] { font-size: 9px !important; }
+  .est-total-banner div[style*="font-size: 11px"] { font-size: 8px !important; }
+  .est-body { flex: 1 !important; display: flex !important; flex-direction: column !important; min-height: 0 !important; padding: 8px 18px !important; overflow: hidden !important; }
+  .est-body-top { flex: 1 !important; }
+  .est-body-bottom { flex-shrink: 0 !important; margin-top: auto !important; }
+  .est-table { margin: 6px 0 !important; font-size: 11px !important; }
+  .est-table th { padding: 5px 6px !important; font-size: 11px !important; }
+  .est-table td { padding: 4px 6px !important; font-size: 11px !important; }
+  .est-table td input { font-size: 11px !important; }
+  .est-table td.est-amount-cell { font-size: 12px !important; font-weight: bold !important; }
+  .est-table td[style*="height: 44px"], .est-table td[style*="height: 34px"] { height: 24px !important; }
+  .est-summary-row { margin-bottom: 2px !important; }
+  .est-summary-row div[style*="padding: 10px 24px"] { padding: 4px 10px !important; min-width: 80px !important; }
+  .est-summary-row span { font-size: 10px !important; }
+  .est-photos { gap: 6px !important; margin-bottom: 4px !important; }
+  .est-photos > div { min-height: unset !important; aspect-ratio: unset !important; height: 250px !important; }
   .est-photos-empty { display: none !important; }
-  .est-note { margin-bottom: 6px !important; }
-  .est-note textarea { font-size: 10px !important; padding: 5px 10px !important; min-height: 24px !important; height: auto !important; }
-  .est-note .est-note-header { padding: 4px 10px !important; font-size: 10.5px !important; }
+  .est-note { margin-bottom: 2px !important; }
+  .est-note textarea { font-size: 9px !important; padding: 3px 8px !important; min-height: 16px !important; height: auto !important; }
+  .est-note .est-note-header { padding: 2px 8px !important; font-size: 9px !important; }
   .est-note-empty { display: none !important; }
-  .est-signature { margin-bottom: 4px !important; gap: 10px !important; margin-top: 6px !important; }
-  .est-stamp { width: 60px !important; height: 60px !important; }
-  .est-signature div[style*="font-size: 13px"] { font-size: 11px !important; }
-  .est-signature div[style*="font-size: 12px"] { font-size: 10px !important; }
-  .est-signature div[style*="font-size: 11px"] { font-size: 9px !important; }
-  .est-footer { margin-top: 6px !important; padding-top: 6px !important; font-size: 9px !important; }
+  .est-signature { margin-bottom: 2px !important; gap: 6px !important; margin-top: 2px !important; }
+  .est-stamp { width: 50px !important; height: 50px !important; }
+  .est-signature div[style*="font-size: 13px"] { font-size: 9px !important; }
+  .est-signature div[style*="font-size: 12px"] { font-size: 8px !important; }
+  .est-signature div[style*="font-size: 11px"] { font-size: 7px !important; }
+  .est-footer { margin-top: 2px !important; padding-top: 2px !important; font-size: 7px !important; }
 </style>
 </head>
 <body>
 ${cloned.outerHTML}
 <script>
   window.onload = function() {
-    // 1페이지 맞춤: 컨텐츠 높이 측정 후 자동 축소
-    setTimeout(function() {
-      var paper = document.querySelector('.estimate-paper');
-      if (paper) {
-        // A4: 297mm - 12mm(상하 margin) = 285mm ≈ 1077px @96dpi
-        var pageH = 1077;
-        var contentH = paper.scrollHeight;
-        if (contentH > pageH) {
-          var scale = pageH / contentH;
-          paper.style.transform = 'scale(' + scale + ')';
-          paper.style.transformOrigin = 'top left';
-          paper.style.width = (100 / scale) + '%';
-        }
-      }
-      setTimeout(function() { window.print(); }, 200);
-    }, 200);
+    setTimeout(function() { window.print(); }, 300);
+    // 인쇄 대화상자 닫힌 후 창 닫기
     window.onafterprint = function() { window.close(); };
+    // fallback: 3초 후 닫기
     setTimeout(function() { window.close(); }, 10000);
   };
 <\/script>
@@ -573,111 +531,59 @@ ${cloned.outerHTML}
     <div className="estimate-wrapper" style={{
       fontFamily: "'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo',sans-serif",
       background: "linear-gradient(135deg, #e8eaf6 0%, #ede7f6 100%)",
-      minHeight: "100vh", padding: "28px 8px",
+      minHeight: "100vh", padding: isMobile ? "16px 4px" : "28px 8px",
       touchAction: "pan-x pan-y pinch-zoom",
+      WebkitOverflowScrolling: "touch" as any,
     }}>
       <style>{`
         @media print {
           .no-print { display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }
           .no-print-col { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
-
-          @page { size: A4 portrait; margin: 6mm; }
-
+          .print-only-stamp { display: block !important; }
+          @page { size: A4 portrait; margin: 8mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box !important; }
-
-          body, html {
-            background: white !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            min-height: unset !important;
-          }
-
-          .estimate-wrapper {
-            background: white !important;
-            min-height: auto !important;
-            height: auto !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-
+          body, html { background: white !important; margin: 0 !important; padding: 0 !important; width: 100% !important; height: auto !important; min-height: unset !important; }
+          .estimate-wrapper { background: white !important; min-height: auto !important; height: auto !important; padding: 0 !important; margin: 0 !important; overflow: visible !important; }
           .print-area { padding: 0 !important; margin: 0 !important; }
-
-          .estimate-paper {
-            box-shadow: none !important;
-            margin: 0 !important;
-            border-radius: 0 !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            height: auto !important;
-          }
-
-          /* === 헤더 === */
-          .est-header { padding: 10px 16px !important; }
-          .est-header .est-title { font-size: 22px !important; letter-spacing: 6px !important; }
-          .est-header .est-subtitle { font-size: 8px !important; margin-bottom: 3px !important; }
-          .est-header input { font-size: 12px !important; }
-
-          /* === 본문 === */
-          .est-body { padding: 10px 16px !important; }
-
-          /* === 수신/공급자 === */
-          .est-parties { gap: 8px !important; margin-bottom: 6px !important; }
-          .est-parties span, .est-parties input { font-size: 10px !important; line-height: 1.4 !important; }
-          .est-parties .est-party-content { padding: 5px 8px !important; }
-          .est-parties div[style*="padding: 12px 14px"] { padding: 5px 8px !important; }
-          .est-parties div[style*="marginBottom: 5px"],
-          .est-parties div[style*="margin-bottom: 5px"],
-          .est-parties div[style*="marginBottom: 4px"],
-          .est-parties div[style*="margin-bottom: 4px"] { margin-bottom: 1px !important; }
-
-          /* === 합계금액 배너 === */
-          .est-total-banner { padding: 6px 12px !important; margin-bottom: 6px !important; }
-          .est-total-banner .est-total-amount { font-size: 16px !important; }
-          .est-total-banner div[style*="font-size: 14px"] { font-size: 10px !important; }
-          .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
-
-          /* === 품목 테이블 === */
-          .est-table { margin-bottom: 4px !important; font-size: 10px !important; page-break-inside: avoid !important; }
-          .est-table th { padding: 3px 5px !important; font-size: 9px !important; }
-          .est-table td { padding: 2px 5px !important; font-size: 10px !important; }
-          .est-table td input { font-size: 10px !important; }
+          .estimate-paper { box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; width: 100% !important; max-width: 100% !important; min-width: unset !important; padding: 0 !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; height: 277mm !important; max-height: 277mm !important; }
+          .est-header { padding: 10px 18px !important; flex-shrink: 0 !important; }
+          .est-header .est-title { font-size: 20px !important; letter-spacing: 6px !important; }
+          .est-header .est-subtitle { font-size: 7px !important; margin-bottom: 2px !important; }
+          .est-header input { font-size: 10px !important; }
+          .est-parties { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; margin-bottom: 4px !important; }
+          .est-parties span, .est-parties input { font-size: 10px !important; line-height: 1.3 !important; }
+          .est-parties div[style*="padding: 12px 14px"] { padding: 5px 10px !important; }
+          .est-total-banner { padding: 5px 10px !important; margin-bottom: 4px !important; }
+          .est-total-banner .est-total-amount { font-size: 15px !important; }
+          .est-total-banner div[style*="font-size: 14px"] { font-size: 9px !important; }
+          .est-total-banner div[style*="font-size: 11px"] { font-size: 8px !important; }
+          .est-body { flex: 1 !important; display: flex !important; flex-direction: column !important; min-height: 0 !important; padding: 8px 18px !important; overflow: hidden !important; }
+          .est-body-top { flex: 1 !important; }
+          .est-body-bottom { flex-shrink: 0 !important; margin-top: auto !important; }
+          .est-table { margin: 6px 0 !important; font-size: 11px !important; page-break-inside: avoid !important; min-width: unset !important; }
+          .est-table th { padding: 5px 6px !important; font-size: 11px !important; }
+          .est-table td { padding: 4px 6px !important; font-size: 11px !important; }
+          .est-table td input { font-size: 11px !important; }
+          .est-table td.est-amount-cell { font-size: 12px !important; font-weight: bold !important; }
           .est-table tr { page-break-inside: avoid !important; }
-          .est-table td[style*="height: 34px"] { height: 16px !important; }
-
-          /* === 합계 가로 === */
-          .est-summary-row { margin-bottom: 4px !important; }
-          .est-summary-row div[style*="padding: 10px 24px"] { padding: 5px 12px !important; min-width: 90px !important; }
+          .est-table td[style*="height: 44px"], .est-table td[style*="height: 34px"] { height: 24px !important; }
+          .est-summary-row { margin-bottom: 2px !important; }
+          .est-summary-row div[style*="padding: 10px 24px"] { padding: 4px 10px !important; min-width: 80px !important; }
           .est-summary-row span { font-size: 10px !important; }
-
-          /* === 제품 사진 === */
-          .est-photos { gap: 6px !important; margin-bottom: 6px !important; }
-          .est-photos > div {
-            aspect-ratio: 1 / 1 !important;
-            min-height: 100px !important;
-            max-height: none !important;
-          }
+          .est-photos { gap: 6px !important; margin-bottom: 4px !important; }
+          .est-photos > div { min-height: unset !important; aspect-ratio: unset !important; height: 250px !important; }
           .est-photos img { object-fit: contain !important; }
           .est-photos-empty { display: none !important; }
-
-          /* === 비고 === */
-          .est-note { margin-bottom: 4px !important; }
-          .est-note textarea { font-size: 9px !important; padding: 4px 8px !important; min-height: 20px !important; height: auto !important; }
-          .est-note .est-note-header { padding: 3px 8px !important; font-size: 10px !important; }
+          .est-note { margin-bottom: 2px !important; }
+          .est-note textarea { font-size: 9px !important; padding: 3px 8px !important; min-height: 16px !important; height: auto !important; }
+          .est-note .est-note-header { padding: 2px 8px !important; font-size: 9px !important; }
           .est-note-empty { display: none !important; }
-
-          /* === 서명+도장 === */
-          .est-signature { margin-bottom: 2px !important; gap: 8px !important; margin-top: 4px !important; }
-          .est-stamp { width: 55px !important; height: 55px !important; }
-          .est-signature div[style*="font-size: 13px"] { font-size: 10px !important; }
-          .est-signature div[style*="font-size: 12px"] { font-size: 9px !important; }
-          .est-signature div[style*="font-size: 11px"] { font-size: 8px !important; }
-
-          /* === 푸터 === */
-          .est-footer { margin-top: 4px !important; padding-top: 4px !important; font-size: 8px !important; }
+          .est-signature { margin-bottom: 2px !important; gap: 6px !important; margin-top: 2px !important; }
+          .est-stamp { width: 50px !important; height: 50px !important; }
+          .est-signature div[style*="font-size: 13px"] { font-size: 9px !important; }
+          .est-signature div[style*="font-size: 12px"] { font-size: 8px !important; }
+          .est-signature div[style*="font-size: 11px"] { font-size: 7px !important; }
+          .est-footer { margin-top: 2px !important; padding-top: 2px !important; font-size: 7px !important; }
         }
         input, textarea { outline: none; border: none; background: transparent; font-family: inherit; }
         input:focus, textarea:focus { background: rgba(255,235,59,0.18); border-radius: 2px; }
@@ -689,7 +595,10 @@ ${cloned.outerHTML}
       `}</style>
 
       {/* 툴바 */}
-      <div className="no-print" style={{ display: "flex", gap: "8px", marginBottom: "16px", justifyContent: "center", flexWrap: "wrap", maxWidth: "820px", margin: "0 auto 16px" }}>
+      <div className="no-print" style={{
+        display: "flex", gap: "8px", marginBottom: "16px", justifyContent: "center",
+        flexWrap: "wrap", maxWidth: "820px", margin: "0 auto 16px", padding: "0 4px",
+      }}>
         {[
           { label: "🖨️  인쇄 / PDF 저장", action: handlePrint, bg: "#1a237e" },
           { label: "+ 품목 추가", action: addItem, bg: "#2e7d32" },
@@ -715,42 +624,13 @@ ${cloned.outerHTML}
         </label>
       </div>
 
-      {/* 줌 컨트롤 */}
-      <div className="no-print" style={{
-        display: "flex", gap: "6px", justifyContent: "center", alignItems: "center",
-        maxWidth: "820px", margin: "0 auto 12px",
+      {/* 견적서 본문 (모바일: 좌우 스크롤 래퍼) */}
+      <div style={{
+        width: "100%", maxWidth: "820px", margin: "0 auto",
+        overflowX: isMobile ? "auto" : "visible",
+        WebkitOverflowScrolling: "touch" as any,
+        touchAction: "pan-x pan-y pinch-zoom",
       }}>
-        <button onClick={zoomOut} style={{
-          width: "32px", height: "32px", borderRadius: "6px",
-          border: "1.5px solid #c5cae9", background: "white", color: "#1a237e",
-          fontSize: "18px", fontWeight: "bold", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        }}>－</button>
-        <span style={{
-          minWidth: "52px", textAlign: "center",
-          fontSize: "13px", fontWeight: "bold", color: "#1a237e",
-        }}>{Math.round(effectiveScale * 100)}%</span>
-        <button onClick={zoomIn} style={{
-          width: "32px", height: "32px", borderRadius: "6px",
-          border: "1.5px solid #c5cae9", background: "white", color: "#1a237e",
-          fontSize: "18px", fontWeight: "bold", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        }}>＋</button>
-        <button onClick={zoomReset} style={{
-          height: "32px", borderRadius: "6px", padding: "0 12px",
-          border: "1.5px solid #c5cae9", background: "white", color: "#7986cb",
-          fontSize: "12px", fontWeight: "bold", cursor: "pointer",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        }}>초기화</button>
-      </div>
-
-      {/* 견적서 본문 (모바일 자동 축소 래퍼) */}
-      <div ref={paperWrapperRef} style={{ width: "100%", maxWidth: "820px", margin: "0 auto", touchAction: "pan-x pan-y pinch-zoom" }}>
-        <div style={{
-          zoom: effectiveScale !== 1 ? effectiveScale : undefined,
-        }}>
       <div ref={estimatePaperRef} className="estimate-paper" style={{
         minWidth: "680px", maxWidth: "820px", margin: "0 auto", background: "white",
         boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "hidden",
@@ -759,7 +639,8 @@ ${cloned.outerHTML}
         {/* 헤더 */}
         <div className="est-header" style={{
           background: "linear-gradient(135deg, #1a237e 0%, #283593 60%, #3949ab 100%)",
-          padding: "24px 36px", display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: isMobile ? "16px 18px" : "24px 36px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
           position: "relative", overflow: "hidden",
         }}>
           <div style={{ position: "absolute", right: "-40px", top: "-40px", width: "200px", height: "200px", borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
@@ -782,10 +663,18 @@ ${cloned.outerHTML}
           </div>
         </div>
 
-        <div className="est-body" style={{ padding: "28px 36px" }}>
+        <div className="est-body" style={{ padding: isMobile ? "16px 14px" : "28px 36px", display: "flex", flexDirection: "column", minHeight: "1050px" }}>
+
+          {/* === 상단 영역 (헤더~테이블~합계) === */}
+          <div className="est-body-top" style={{ flex: 1 }}>
 
           {/* 수신/공급자 */}
-          <div className="est-parties" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px", marginBottom: "22px" }}>
+          <div className="est-parties" style={{
+            display: isMobile ? "flex" : "grid",
+            flexDirection: isMobile ? "column" : undefined,
+            gridTemplateColumns: isMobile ? undefined : "1fr 1fr",
+            gap: isMobile ? "12px" : "18px", marginBottom: "22px",
+          }}>
 
             {/* 수신처 */}
             <div style={{ border: "2px solid #1a237e", borderRadius: "8px", overflow: "hidden" }}>
@@ -965,6 +854,12 @@ ${cloned.outerHTML}
                     onChange={v => updateActiveCompany("stampImg", v)}
                   />
                 </div>
+                {/* 인쇄용 도장 이미지 (화면에서는 숨김) */}
+                {activeCompany.stampImg && (
+                  <div className="print-only-stamp" style={{ flexShrink: 0, paddingTop: "2px", display: "none" }}>
+                    <img src={activeCompany.stampImg} alt="도장" style={{ width: "70px", height: "70px", objectFit: "contain" }} />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -986,15 +881,16 @@ ${cloned.outerHTML}
           </div>
 
           {/* 품목 테이블 */}
-          <table className="est-table" style={{ width: "100%", borderCollapse: "collapse", marginBottom: "18px", fontSize: "12.5px" }}>
+          <div style={{ overflowX: isMobile ? "auto" : "visible", WebkitOverflowScrolling: "touch" as any, margin: "16px 0" }}>
+          <table className="est-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? "clamp(10px, 2.5vw, 13px)" : "14px", minWidth: isMobile ? "600px" : undefined }}>
             <thead>
               <tr style={{ background: "linear-gradient(90deg, #1a237e, #3949ab)", color: "white" }}>
                 {["No", "품목명", "수량", "단가", "금액", "비고", ""].map((h, i) => (
                   <th key={i} className={i === 6 ? "no-print" : ""} style={{
-                    padding: "9px 8px",
+                    padding: "12px 10px",
                     textAlign: i === 0 || i === 2 || i === 6 ? "center" : i >= 3 && i <= 4 ? "right" : "left",
-                    fontWeight: "600", fontSize: "12px", letterSpacing: "0.5px",
-                    width: [30, undefined, 48, 100, 110, 80, 36][i],
+                    fontWeight: "600", fontSize: "14px", letterSpacing: "0.5px",
+                    width: ["5%", "40%", "8%", "15%", "17%", "15%", 36][i] as any,
                   }}>{h}</th>
                 ))}
               </tr>
@@ -1006,8 +902,8 @@ ${cloned.outerHTML}
                   background: idx % 2 === 0 ? "white" : "#f8f9fd",
                   transition: "background 0.15s",
                 }}>
-                  <td style={{ padding: "8px", textAlign: "center", color: "#aaa", fontSize: "11px" }}>{idx + 1}</td>
-                  <td style={{ padding: "8px", position: "relative" }}>
+                  <td style={{ padding: "12px 10px", textAlign: "center", color: "#aaa", fontSize: "13px" }}>{idx + 1}</td>
+                  <td style={{ padding: "12px 10px", position: "relative" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                       <input value={searchingItemId === item.id ? searchQuery : item.name}
                         onChange={e => {
@@ -1021,7 +917,7 @@ ${cloned.outerHTML}
                           setSearchingItemId(item.id);
                           setSearchQuery(item.name);
                         }}
-                        style={{ ...inputStyle, fontSize: "12.5px" }} placeholder="품목명 검색/입력" />
+                        style={{ ...inputStyle, fontSize: "14px" }} placeholder="품목명 검색/입력" />
                       <span
                         className="no-print"
                         onClick={() => {
@@ -1067,22 +963,22 @@ ${cloned.outerHTML}
                       </div>
                     )}
                   </td>
-                  <td style={{ padding: "8px", textAlign: "center" }}>
+                  <td style={{ padding: "12px 10px", textAlign: "center" }}>
                     <input type="number" value={item.qty} onChange={e => updateItem(item.id, "qty", Math.max(1, Number(e.target.value)))}
-                      style={{ ...inputStyle, width: "42px", textAlign: "center", fontSize: "12.5px" }} min="1" />
+                      style={{ ...inputStyle, width: "48px", textAlign: "center", fontSize: "14px" }} min="1" />
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right" }}>
+                  <td style={{ padding: "12px 10px", textAlign: "right" }}>
                     <input type="number" value={item.price} onChange={e => updateItem(item.id, "price", Number(e.target.value))}
-                      style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px" }} />
+                      style={{ ...inputStyle, textAlign: "right", fontSize: "14px" }} />
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "#1a237e" }}>
+                  <td className="est-amount-cell" style={{ padding: "12px 10px", textAlign: "right", fontWeight: "bold", color: "#1a237e", fontSize: "15px" }}>
                     {(item.qty * item.price).toLocaleString()}
                   </td>
-                  <td style={{ padding: "8px" }}>
+                  <td style={{ padding: "12px 10px" }}>
                     <input value={item.note} onChange={e => updateItem(item.id, "note", e.target.value)}
-                      style={{ ...inputStyle, fontSize: "11.5px", color: "#888" }} placeholder="비고" />
+                      style={{ ...inputStyle, fontSize: "13px", color: "#888" }} placeholder="비고" />
                   </td>
-                  <td className="no-print" style={{ padding: "8px", textAlign: "center" }}>
+                  <td className="no-print" style={{ padding: "12px 10px", textAlign: "center" }}>
                     <button onClick={() => removeItem(item.id)} style={{
                       background: "#fff0f0", border: "1px solid #ffcdd2",
                       borderRadius: "4px", padding: "2px 7px", cursor: "pointer",
@@ -1092,37 +988,57 @@ ${cloned.outerHTML}
                 </tr>
               ))}
               {items.length < 5 && Array.from({ length: 5 - items.length }).map((_, i) => (
-                <tr key={"empty-" + i} style={{ borderBottom: "1px solid #eaecf4" }}>
+                <tr key={"empty-" + i} style={{ borderBottom: "1px solid #eaecf4", height: "44px" }}>
                   {Array.from({ length: 7 }).map((_, j) => (
-                    <td key={j} className={j === 6 ? "no-print" : ""} style={{ padding: "8px", height: "34px" }} />
+                    <td key={j} className={j === 6 ? "no-print" : ""} style={{ padding: "12px 10px", height: "44px" }} />
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>{/* end table scroll wrapper */}
 
           {/* 합계 가로 */}
-          <div className="est-summary-row" style={{ display: "flex", justifyContent: "flex-end", marginBottom: "22px" }}>
-            <div style={{ display: "flex", borderRadius: "8px", overflow: "hidden", border: "1.5px solid #e0e4ee" }}>
+          {/* 합계는 상단 영역의 마지막 */}
+          <div className="est-summary-row" style={{
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "flex-end",
+            alignItems: isMobile ? "stretch" : undefined,
+            marginBottom: "22px",
+          }}>
+            <div style={{
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              borderRadius: "8px", overflow: "hidden", border: "1.5px solid #e0e4ee",
+            }}>
               {([
                 ["공급가액", subtotal, false],
                 vatIncluded ? ["부가세 (10%)", vat, false] : null,
                 ["합 계 금 액", total, true],
               ].filter((x): x is [string, number, boolean] => x !== null)).map(([label, val, isTotal], i) => (
                 <div key={label} style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  padding: "10px 24px",
+                  display: "flex", flexDirection: isMobile ? "row" : "column",
+                  alignItems: "center", justifyContent: isMobile ? "space-between" : "center",
+                  padding: isMobile ? "8px 14px" : "10px 24px",
                   background: isTotal ? "linear-gradient(135deg, #1a237e, #3949ab)" : i % 2 === 0 ? "white" : "#f8f9fd",
                   color: isTotal ? "white" : "#333",
-                  borderLeft: i > 0 ? "1.5px solid #e0e4ee" : "none",
-                  minWidth: "160px",
+                  borderLeft: !isMobile && i > 0 ? "1.5px solid #e0e4ee" : "none",
+                  borderTop: isMobile && i > 0 ? "1.5px solid #e0e4ee" : "none",
+                  minWidth: isMobile ? undefined : "160px",
+                  gap: isMobile ? "8px" : undefined,
                 }}>
-                  <span style={{ fontSize: "11px", color: isTotal ? "#90caf9" : "#999", marginBottom: "4px" }}>{label}</span>
+                  <span style={{ fontSize: "11px", color: isTotal ? "#90caf9" : "#999", marginBottom: isMobile ? 0 : "4px" }}>{label}</span>
                   <span style={{ fontSize: isTotal ? "15px" : "14px", fontWeight: isTotal ? "bold" : "500" }}>{won(val)}</span>
                 </div>
               ))}
             </div>
           </div>
+
+          </div>{/* end est-body-top */}
+
+          {/* === 하단 영역 (이미지/비고/서명/푸터) — 맨 아래로 밀기 === */}
+          <div className="est-body-bottom" style={{ marginTop: "auto" }}>
 
           {/* 제품 사진 박스 3개 — 품목 1,2,3의 사진 자동 표시 */}
           <div className={`est-photos ${items.slice(0,3).some(i => i?.photoUrl) ? '' : 'est-photos-empty'}`} style={{ display: "flex", gap: "12px", marginBottom: "22px" }}>
@@ -1243,10 +1159,11 @@ ${cloned.outerHTML}
           <div className="est-footer" style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #e8eaf0", textAlign: "center", fontSize: "11px", color: "#bbb" }}>
             {activeCompany.name} &nbsp;|&nbsp; 대표: {activeCompany.ceo} &nbsp;|&nbsp; 사업자번호: {activeCompany.bizNo} &nbsp;|&nbsp; {activeCompany.tel} &nbsp;|&nbsp; {activeCompany.email}
           </div>
+
+          </div>{/* end est-body-bottom */}
         </div>
       </div>
-        </div>
-      </div>
+      </div>{/* end scroll wrapper */}
     </div>
   );
 }

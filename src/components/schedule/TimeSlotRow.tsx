@@ -35,6 +35,8 @@ interface TimeSlotRowProps {
   onMobileDragTouchStart?: (y: number) => void;
   onMobileDragTouchMove?: (y: number) => void;
   onMobileDragTouchEnd?: () => void;
+  // 변경사항 감지 콜백
+  onPendingChange?: (timeSlot: string, data: { title: string; memo: string; unit: string } | null) => void;
 }
 
 const SCHEDULE_TYPES = [
@@ -78,6 +80,7 @@ export function TimeSlotRow({
   onMobileDragTouchStart,
   onMobileDragTouchMove,
   onMobileDragTouchEnd,
+  onPendingChange,
 }: TimeSlotRowProps) {
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showClientPickerMobile, setShowClientPickerMobile] = useState(false);
@@ -127,6 +130,29 @@ export function TimeSlotRow({
 
   // onUpdate 콜백 최신 참조 유지
   useEffect(() => { onUpdateRef.current = onUpdate; });
+
+  // 변경사항 감지: 로컬 상태가 DB 상태와 다르면 상위에 보고
+  const onPendingChangeRef = useRef(onPendingChange);
+  onPendingChangeRef.current = onPendingChange;
+
+  useEffect(() => {
+    const titlePending = titleValue !== (schedule?.title || '');
+    const memoPending = memoValue !== (schedule?.memo || '');
+    const unitPending = unitValue !== (schedule?.unit || '');
+
+    if (titlePending || memoPending || unitPending) {
+      onPendingChangeRef.current?.(timeSlot, { title: titleValue, memo: memoValue, unit: unitValue });
+    } else {
+      onPendingChangeRef.current?.(timeSlot, null);
+    }
+  }, [titleValue, memoValue, unitValue, schedule?.title, schedule?.memo, schedule?.unit, timeSlot]);
+
+  // 컴포넌트 언마운트 시 pending 상태 클리어
+  useEffect(() => {
+    return () => {
+      onPendingChangeRef.current?.(timeSlot, null);
+    };
+  }, [timeSlot]);
 
   // 모바일 복사/붙여넣기 팝업 상태
   const [showCopyMenu, setShowCopyMenu] = useState(false);
@@ -705,7 +731,7 @@ export function TimeSlotRow({
               {showClientPickerMobile && (
                 <div
                   ref={clientMobileDropdownRef}
-                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                  style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y pinch-zoom' }}
                 >
                   <div>
                     {filteredClients.length === 0 ? (
@@ -722,7 +748,7 @@ export function TimeSlotRow({
                             display: 'flex', alignItems: 'center', gap: '8px',
                             fontSize: '14px', borderBottom: '1px solid #f0f0f0',
                             cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none',
-                            background: 'white', touchAction: 'pan-y',
+                            background: 'white', touchAction: 'pan-y pinch-zoom',
                           }}
                           onMouseDown={() => {
                             setTitleValue(client.name);
@@ -785,7 +811,7 @@ export function TimeSlotRow({
             {showItemPickerMobile && (
               <div
                 ref={itemMobileDropdownRef}
-                style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y pinch-zoom' }}
               >
                 <div>
                   {filteredItems.length === 0 ? (
@@ -803,7 +829,7 @@ export function TimeSlotRow({
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           fontSize: '14px', borderBottom: '1px solid #f0f0f0',
                           cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none',
-                          background: 'white', touchAction: 'pan-y',
+                          background: 'white', touchAction: 'pan-y pinch-zoom',
                         }}
                         onMouseDown={() => {
                           setMemoValue(item.name);

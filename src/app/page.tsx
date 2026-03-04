@@ -64,7 +64,7 @@ function SearchContent() {
 
 function EstimateContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm">
+    <div style={{ width: "100%" }}>
       <EstimateForm />
     </div>
   );
@@ -83,15 +83,18 @@ export default function Home() {
     let listener: { remove: () => void } | null = null;
     
     App.addListener('backButton', ({ canGoBack }) => {
+      // 최신 상태를 직접 참조 (클로저 문제 방지)
+      const store = useUIStore.getState();
+      
       // 사이드바가 열려있으면 닫기
-      if (isSidebarOpen) {
-        toggleSidebar();
+      if (store.isSidebarOpen) {
+        store.toggleSidebar();
         return;
       }
       
-      // 현재 탭이 calendar가 아니면 calendar로 이동
-      if (activeTab !== 'calendar') {
-        setActiveTab('calendar');
+      // 현재 탭이 calendar가 아니면 calendar로 이동 (guard 거침)
+      if (store.activeTab !== 'calendar') {
+        store.setActiveTab('calendar');
         return;
       }
       
@@ -106,7 +109,7 @@ export default function Home() {
     return () => {
       listener?.remove();
     };
-  }, [activeTab, isSidebarOpen, setActiveTab, toggleSidebar]);
+  }, []);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -130,15 +133,19 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
+    <div className="min-h-screen bg-white">
+      <div className="no-print">
+        <Header />
+      </div>
       
       <div className="flex">
-        <Sidebar />
+        <div className="no-print">
+          <Sidebar />
+        </div>
         
-        <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full print-area">
           {/* 탭 콘텐츠 */}
-          <div className="mb-6 animate-fade-in">
+          <div className="mb-6 animate-fade-in print-area">
             {renderContent()}
           </div>
         </main>

@@ -487,6 +487,11 @@ export default function EstimateForm() {
   input, textarea { outline: none; border: none; background: transparent; font-family: inherit; }
   table { border-collapse: collapse; width: 100%; }
 
+  /* === 하단 요소 페이지 바닥 고정 === */
+  .est-body { display: flex; flex-direction: column; }
+  .est-spacer { flex: 1 1 auto; }
+  .est-bottom { flex-shrink: 0; }
+
   /* === 1페이지 맞춤 축소 === */
   .est-header { padding: 14px 24px !important; }
   .est-header .est-title { font-size: 24px !important; letter-spacing: 6px !important; }
@@ -503,15 +508,15 @@ export default function EstimateForm() {
   .est-total-banner div[style*="font-size: 14px"] { font-size: 11px !important; }
   .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
   .est-table { margin-bottom: 6px !important; font-size: 10.5px !important; }
-  .est-table th { padding: 4px 6px !important; font-size: 10px !important; }
-  .est-table td { padding: 3px 6px !important; font-size: 10.5px !important; }
+  .est-table th { padding: 5px 6px !important; font-size: 10px !important; height: 25px !important; }
+  .est-table td { padding: 4px 6px !important; font-size: 10.5px !important; height: 25px !important; }
   .est-table td input { font-size: 10.5px !important; }
-  .est-table td[style*="height: 34px"] { height: 18px !important; }
+  .est-table td[style*="height: 34px"] { height: 25px !important; }
   .est-summary-row { margin-bottom: 6px !important; }
   .est-summary-row div[style*="padding: 10px 24px"] { padding: 6px 14px !important; min-width: 100px !important; }
   .est-summary-row span { font-size: 10.5px !important; }
   .est-photos { gap: 8px !important; margin-bottom: 8px !important; }
-  .est-photos > div { min-height: 80px !important; max-height: 140px !important; }
+  .est-photos > div { min-height: 250px !important; max-height: 250px !important; }
   .est-photos img { object-fit: contain !important; }
   .est-photos-empty { display: none !important; }
   .est-note { margin-bottom: 6px !important; }
@@ -530,18 +535,30 @@ export default function EstimateForm() {
 ${cloned.outerHTML}
 <script>
   window.onload = function() {
-    // 1페이지 맞춤: 컨텐츠 높이 측정 후 자동 축소
     setTimeout(function() {
       var paper = document.querySelector('.estimate-paper');
-      if (paper) {
-        // A4: 297mm - 12mm(상하 margin) = 285mm ≈ 1077px @96dpi
+      var body = document.querySelector('.est-body');
+      var bottom = document.querySelector('.est-bottom');
+      if (paper && body && bottom) {
+        // A4: 297mm - 12mm margin = 285mm ≈ 1077px @96dpi
         var pageH = 1077;
         var contentH = paper.scrollHeight;
+
+        // 1) 컨텐츠가 페이지보다 크면 축소
         if (contentH > pageH) {
           var scale = pageH / contentH;
           paper.style.transform = 'scale(' + scale + ')';
           paper.style.transformOrigin = 'top left';
           paper.style.width = (100 / scale) + '%';
+        } else {
+          // 2) 페이지보다 작으면 — est-body를 페이지 높이에 맞추고 spacer로 하단 고정
+          var headerH = paper.querySelector('.est-header') ? paper.querySelector('.est-header').offsetHeight : 0;
+          var bodyTargetH = pageH - headerH;
+          body.style.minHeight = bodyTargetH + 'px';
+          // est-bottom 앞에 spacer 삽입
+          var spacer = document.createElement('div');
+          spacer.className = 'est-spacer';
+          body.insertBefore(spacer, bottom);
         }
       }
       setTimeout(function() { window.print(); }, 200);
@@ -1124,6 +1141,9 @@ ${cloned.outerHTML}
             </div>
           </div>
 
+          {/* 하단 영역: 사진/비고/서명/푸터 — PDF에서 페이지 하단 고정 */}
+          <div className="est-bottom">
+
           {/* 제품 사진 박스 3개 — 품목 1,2,3의 사진 자동 표시 */}
           <div className={`est-photos ${items.slice(0,3).some(i => i?.photoUrl) ? '' : 'est-photos-empty'}`} style={{ display: "flex", gap: "12px", marginBottom: "22px" }}>
             {[0, 1, 2].map(i => {
@@ -1243,6 +1263,8 @@ ${cloned.outerHTML}
           <div className="est-footer" style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #e8eaf0", textAlign: "center", fontSize: "11px", color: "#bbb" }}>
             {activeCompany.name} &nbsp;|&nbsp; 대표: {activeCompany.ceo} &nbsp;|&nbsp; 사업자번호: {activeCompany.bizNo} &nbsp;|&nbsp; {activeCompany.tel} &nbsp;|&nbsp; {activeCompany.email}
           </div>
+
+          </div>{/* end est-bottom */}
         </div>
       </div>
         </div>

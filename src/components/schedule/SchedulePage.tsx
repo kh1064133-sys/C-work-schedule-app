@@ -129,7 +129,8 @@ export function SchedulePage() {
   hasAnyChangesRef.current = hasAnyChanges;
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const pendingNavigationRef = useRef<{ type: 'tab'; target: string } | { type: 'back' } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const pendingNavigationRef = useRef<{ type: 'tab'; target: string } | { type: 'back' } | { type: 'date'; direction: number } | { type: 'today' } | null>(null);
   const { setTabChangeGuard, _forceSetActiveTab } = useUIStore();
 
   // 드래그 상태
@@ -255,10 +256,10 @@ export function SchedulePage() {
     if (Math.abs(diffX) > threshold && Math.abs(diffX) > Math.abs(diffY) * 2) {
       if (diffX > 0) {
         // 왼쪽으로 밀기 -> 다음 일
-        moveDay(1);
+        handleMoveDay(1);
       } else {
         // 오른쪽으로 밀기 -> 이전 일
-        moveDay(-1);
+        handleMoveDay(-1);
       }
     }
     touchStartX.current = 0;
@@ -422,34 +423,74 @@ export function SchedulePage() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [_forceSetActiveTab]);
 
+  // ── beforeunload (브라우저 탭 닫기/새로고침) ──
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasAnyChangesRef.current()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // ── 날짜 변경 가드 ──
+  const handleMoveDay = useCallback((direction: number) => {
+    if (hasAnyChangesRef.current()) {
+      pendingNavigationRef.current = { type: 'date', direction };
+      setShowSaveDialog(true);
+    } else {
+      moveDay(direction);
+    }
+  }, [moveDay]);
+
+  const handleGoToToday = useCallback(() => {
+    if (hasAnyChangesRef.current()) {
+      pendingNavigationRef.current = { type: 'today' };
+      setShowSaveDialog(true);
+    } else {
+      goToToday();
+    }
+  }, [goToToday]);
+
   // ── 저장 확인 팝업 액션 핸들러 ──
   const handleDialogSave = useCallback(async () => {
-    // 포커스된 입력 필드 blur → onBlur 핸들러가 저장 수행
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
+    setIsSaving(true);
+    try {
+      // 포커스된 입력 필드 blur → onBlur 핸들러가 저장 수행
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      // pending 로컬 데이터 직접 저장 (blur 안 된 필드 대비)
+      const promises: Promise<void>[] = [];
+      for (const [timeSlot, data] of pendingChangesRef.current) {
+        promises.push(handleUpdateRef.current?.(timeSlot, {
+          title: data.title,
+          memo: data.memo,
+          unit: data.unit,
+        }) ?? Promise.resolve());
+      }
+      await Promise.all(promises);
+      // 짧은 대기 후 네비게이션
+      await new Promise(resolve => setTimeout(resolve, 200));
+      setShowSaveDialog(false);
+      pendingChangesRef.current.clear();
+      const nav = pendingNavigationRef.current;
+      if (nav?.type === 'tab') {
+        _forceSetActiveTab(nav.target as any);
+      } else if (nav?.type === 'date') {
+        moveDay(nav.direction);
+      } else if (nav?.type === 'today') {
+        goToToday();
+      } else {
+        _forceSetActiveTab('calendar');
+      }
+      pendingNavigationRef.current = null;
+    } finally {
+      setIsSaving(false);
     }
-    // pending 로컬 데이터 직접 저장 (blur 안 된 필드 대비)
-    const promises: Promise<void>[] = [];
-    for (const [timeSlot, data] of pendingChangesRef.current) {
-      promises.push(handleUpdateRef.current?.(timeSlot, {
-        title: data.title,
-        memo: data.memo,
-        unit: data.unit,
-      }) ?? Promise.resolve());
-    }
-    await Promise.all(promises);
-    // 짧은 대기 후 네비게이션
-    await new Promise(resolve => setTimeout(resolve, 200));
-    setShowSaveDialog(false);
-    pendingChangesRef.current.clear();
-    const nav = pendingNavigationRef.current;
-    if (nav?.type === 'tab') {
-      _forceSetActiveTab(nav.target as any);
-    } else {
-      _forceSetActiveTab('calendar');
-    }
-    pendingNavigationRef.current = null;
-  }, [_forceSetActiveTab]);
+  }, [_forceSetActiveTab, moveDay, goToToday]);
 
   const handleDialogDiscard = useCallback(() => {
     setShowSaveDialog(false);
@@ -471,11 +512,15 @@ export function SchedulePage() {
     const nav = pendingNavigationRef.current;
     if (nav?.type === 'tab') {
       _forceSetActiveTab(nav.target as any);
+    } else if (nav?.type === 'date') {
+      moveDay(nav.direction);
+    } else if (nav?.type === 'today') {
+      goToToday();
     } else {
       _forceSetActiveTab('calendar');
     }
     pendingNavigationRef.current = null;
-  }, [_forceSetActiveTab]);
+  }, [_forceSetActiveTab, moveDay, goToToday]);
 
   const handleDialogCancel = useCallback(() => {
     setShowSaveDialog(false);
@@ -760,7 +805,7 @@ export function SchedulePage() {
       {/* 헤더: 날짜 네비게이션 */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 px-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" onClick={() => moveDay(-1)} onTouchStart={(e) => e.stopPropagation()}>
+          <Button variant="outline" size="icon" onClick={() => handleMoveDay(-1)} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           
@@ -780,11 +825,11 @@ export function SchedulePage() {
             )}
           </div>
 
-          <Button variant="outline" size="icon" onClick={() => moveDay(1)} onTouchStart={(e) => e.stopPropagation()}>
+          <Button variant="outline" size="icon" onClick={() => handleMoveDay(1)} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronRight className="h-4 w-4" />
           </Button>
 
-          <Button variant="outline" size="sm" onClick={goToToday} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
+          <Button variant="outline" size="sm" onClick={handleGoToToday} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
             <RotateCcw className="h-3 w-3 mr-1" />
             오늘
           </Button>
@@ -1037,6 +1082,7 @@ export function SchedulePage() {
               top: '50%',
               left: '50%',
               transform: 'translate(-50%, -50%)',
+              WebkitTransform: 'translate(-50%, -50%)',
               background: '#fff',
               borderRadius: 12,
               boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
@@ -1077,64 +1123,71 @@ export function SchedulePage() {
             <div
               style={{
                 display: 'flex',
+                WebkitBoxPack: 'center',
                 borderTop: '1px solid #e5e7eb',
               }}
             >
               <button
                 onClick={handleDialogCancel}
+                disabled={isSaving}
                 style={{
                   flex: 1,
                   padding: '14px 0',
                   fontSize: 14,
                   fontWeight: 500,
-                  color: '#6b7280',
+                  color: isSaving ? '#d1d5db' : '#6b7280',
                   background: '#fff',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
                   borderRight: '1px solid #e5e7eb',
                   transition: 'background 0.15s',
+                  WebkitTransition: 'background 0.15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = '#f9fafb'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
               >
                 취소
               </button>
               <button
                 onClick={handleDialogDiscard}
+                disabled={isSaving}
                 style={{
                   flex: 1,
                   padding: '14px 0',
                   fontSize: 14,
                   fontWeight: 500,
-                  color: '#6b7280',
+                  color: isSaving ? '#d1d5db' : '#6b7280',
                   background: '#fff',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
                   borderRight: '1px solid #e5e7eb',
                   transition: 'background 0.15s',
+                  WebkitTransition: 'background 0.15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = '#f9fafb'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
               >
                 저장안함
               </button>
               <button
                 onClick={handleDialogSave}
+                disabled={isSaving}
                 style={{
                   flex: 1,
                   padding: '14px 0',
                   fontSize: 14,
                   fontWeight: 700,
-                  color: '#374151',
-                  background: '#fff',
+                  color: isSaving ? '#9ca3af' : '#374151',
+                  background: isSaving ? '#f3f4f6' : '#fff',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
                   transition: 'background 0.15s',
+                  WebkitTransition: 'background 0.15s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
+                onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = isSaving ? '#f3f4f6' : '#fff'; }}
               >
-                변경사항저장
+                {isSaving ? '저장 중...' : '변경사항저장'}
               </button>
             </div>
           </div>

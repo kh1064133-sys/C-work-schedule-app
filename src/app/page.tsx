@@ -16,7 +16,7 @@ import { useUIStore } from '@/stores/uiStore';
 // 탭별 콘텐츠 컴포넌트
 function ScheduleContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-4">
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-4">
       <SchedulePage />
     </div>
   );
@@ -24,7 +24,7 @@ function ScheduleContent() {
 
 function ClientsContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <ClientsPage />
     </div>
   );
@@ -32,7 +32,7 @@ function ClientsContent() {
 
 function ItemsContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <ItemsPage />
     </div>
   );
@@ -40,7 +40,7 @@ function ItemsContent() {
 
 function CalendarContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <CalendarPage />
     </div>
   );
@@ -48,7 +48,7 @@ function CalendarContent() {
 
 function AnalyticsContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <AnalyticsPage />
     </div>
   );
@@ -56,7 +56,7 @@ function AnalyticsContent() {
 
 function SearchContent() {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <SearchPage />
     </div>
   );
@@ -76,6 +76,10 @@ export default function Home() {
   // 앱 시작 시 오늘 날짜의 월별 달력으로 초기화
   useEffect(() => {
     setActiveTab('calendar');
+    // PC(768px 이상)에서는 사이드바 열린 상태로 시작
+    if (window.innerWidth >= 768 && !isSidebarOpen) {
+      toggleSidebar();
+    }
   }, []);
 
   // Android 백버튼 핸들러
@@ -143,7 +147,7 @@ export default function Home() {
           <Sidebar />
         </div>
         
-        <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full print-area">
+        <main className="flex-1 p-1 md:p-6 max-w-7xl mx-auto w-full print-area">
           {/* 탭 콘텐츠 */}
           <div className="mb-6 animate-fade-in print-area">
             {renderContent()}

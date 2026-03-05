@@ -244,7 +244,7 @@ export function ClientsPage() {
       </div>
 
       {/* 테이블 */}
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '8px', margin: '0 0 16px 0' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '4px', margin: '0 0 16px 0' }}>
         {isLoading ? (
           <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>로딩 중...</div>
         ) : paginatedClients.length === 0 ? (
@@ -252,7 +252,7 @@ export function ClientsPage() {
             {searchTerm || filterType ? '검색 결과가 없습니다.' : '등록된 거래처가 없습니다.'}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {paginatedClients.map((client: Client) => (
               <div key={client.id} style={{
                 display: 'flex',
@@ -264,7 +264,7 @@ export function ClientsPage() {
                 background: '#f9fafb',
                 borderRadius: '8px',
                 boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                padding: '16px',
+                padding: '8px 10px',
                 overflow: 'hidden',
                 border: '1px solid #e5e7eb',
               }}>

@@ -199,8 +199,8 @@ export function AnalyticsPage() {
       </div>
 
       {/* 요약 카드 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border p-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+        <div className="bg-white rounded-xl border p-2 md:p-4">
           <div className="flex items-center gap-2 text-gray-600 mb-1">
             <span className="text-base font-bold">₩</span>
             <span className="text-sm">월 매출</span>
@@ -209,7 +209,7 @@ export function AnalyticsPage() {
             {monthlyTotal.toLocaleString()}원
           </div>
         </div>
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-white rounded-xl border p-2 md:p-4">
           <div className="flex items-center gap-2 text-gray-600 mb-1">
             <Calendar className="h-4 w-4" />
             <span className="text-sm">완료 건수</span>
@@ -218,13 +218,13 @@ export function AnalyticsPage() {
             {completedSchedules.length}건
           </div>
         </div>
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-white rounded-xl border p-2 md:p-4">
           <div className="text-sm text-gray-600 mb-1">전체 일정</div>
           <div className="text-xl sm:text-2xl font-bold text-gray-700 whitespace-nowrap">
             {monthSchedules.length}건
           </div>
         </div>
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-white rounded-xl border p-2 md:p-4">
           <div className="text-sm text-gray-600 mb-1">건당 평균</div>
           <div className="text-xl sm:text-2xl font-bold text-purple-600 whitespace-nowrap">
             {completedSchedules.length > 0
@@ -235,7 +235,7 @@ export function AnalyticsPage() {
       </div>
 
       {/* 월별 매출 차트 */}
-      <div className="bg-white rounded-xl border p-4">
+      <div className="bg-white rounded-xl border p-2 md:p-4">
         <h3 className="font-semibold text-gray-800 mb-4">{chartYear}년 월별 매출</h3>
         <div className="overflow-x-auto">
           <div className="flex min-w-[400px]" style={{ height: 180 }}>
@@ -318,8 +318,8 @@ export function AnalyticsPage() {
       </div>
 
       {/* 결제방법별 통계 */}
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border p-4">
+      <div className="grid md:grid-cols-2 gap-2 md:gap-4">
+        <div className="bg-white rounded-xl border p-2 md:p-4">
           <h3 className="font-semibold text-gray-800 mb-4">결제방법별 현황</h3>
           <div className="space-y-3">
             {Object.entries(paymentStats).map(([key, data]) => (
@@ -345,7 +345,7 @@ export function AnalyticsPage() {
         </div>
 
         {/* 유형별 통계 */}
-        <div className="bg-white rounded-xl border p-4">
+        <div className="bg-white rounded-xl border p-2 md:p-4">
           <h3 className="font-semibold text-gray-800 mb-4">유형별 현황</h3>
           <div className="space-y-3">
             {Object.entries(typeStats).map(([key, data]) => {
@@ -383,41 +383,41 @@ export function AnalyticsPage() {
 
       {/* 상세 내역 테이블 */}
       <div className="bg-white rounded-xl border overflow-hidden">
-        <div className="p-4 border-b">
+        <div className="p-2 md:p-4 border-b">
           <h3 className="font-semibold text-gray-800">{monthName} 매출 상세 내역</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px]">
             <thead className="bg-gray-50 border-b">
               <tr className="text-sm font-semibold text-gray-700">
-                <th className="px-4 py-3 text-left">날짜</th>
-                <th className="px-4 py-3 text-left">거래처/내용</th>
-                <th className="px-4 py-3 text-center">유형</th>
-                <th className="px-4 py-3 text-center">결제</th>
-                <th className="px-4 py-3 text-right">금액</th>
+                <th className="px-2 md:px-4 py-2 md:py-3 text-left">날짜</th>
+                <th className="px-2 md:px-4 py-2 md:py-3 text-left">거래처/내용</th>
+                <th className="px-2 md:px-4 py-2 md:py-3 text-center">유형</th>
+                <th className="px-2 md:px-4 py-2 md:py-3 text-center">결제</th>
+                <th className="px-2 md:px-4 py-2 md:py-3 text-right">금액</th>
               </tr>
             </thead>
             <tbody>
               {completedSchedules.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={5} className="px-2 md:px-4 py-8 text-center text-gray-500">
                     완료된 일정이 없습니다.
                   </td>
                 </tr>
               ) : (
                 completedSchedules.map((schedule: Schedule) => (
                   <tr key={schedule.id} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-2 md:px-4 py-2 md:py-3 text-sm">
                       {format(new Date(schedule.date), 'M/d')}
                       <span className="text-gray-400 ml-1">{schedule.time_slot}</span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 md:px-4 py-2 md:py-3">
                       <div className="font-medium">{schedule.title || '-'}</div>
                       {schedule.memo && (
                         <div className="text-xs text-gray-500">{schedule.memo}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-2 md:px-4 py-2 md:py-3 text-center">
                       {schedule.schedule_type && (
                         <span className={cn(
                           'px-2 py-0.5 text-xs font-medium rounded-full',
@@ -430,7 +430,7 @@ export function AnalyticsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-2 md:px-4 py-2 md:py-3 text-center">
                       {schedule.payment_method && (
                         <span className={cn(
                           'px-2 py-0.5 text-xs font-medium rounded-full',
@@ -442,7 +442,7 @@ export function AnalyticsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right font-medium text-emerald-600">
+                    <td className="px-2 md:px-4 py-2 md:py-3 text-right font-medium text-emerald-600">
                       {(schedule.amount || 0).toLocaleString()}원
                     </td>
                   </tr>
@@ -452,8 +452,8 @@ export function AnalyticsPage() {
             {completedSchedules.length > 0 && (
               <tfoot className="bg-gray-50">
                 <tr className="font-bold">
-                  <td colSpan={4} className="px-4 py-3 text-right">합계</td>
-                  <td className="px-4 py-3 text-right text-emerald-600">
+                  <td colSpan={4} className="px-2 md:px-4 py-2 md:py-3 text-right">합계</td>
+                  <td className="px-2 md:px-4 py-2 md:py-3 text-right text-emerald-600">
                     {monthlyTotal.toLocaleString()}원
                   </td>
                 </tr>
@@ -474,7 +474,7 @@ export function AnalyticsPage() {
         </button>
         
         {showYearlySales && (
-        <div className="bg-white/15 rounded-xl mx-4 mb-4 p-4 backdrop-blur-sm">
+        <div className="bg-white/15 rounded-xl mx-1 md:mx-4 mb-4 p-2 md:p-4 backdrop-blur-sm">
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
             <div className="flex justify-between items-center">

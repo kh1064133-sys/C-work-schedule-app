@@ -562,7 +562,7 @@ export function CalendarPage() {
             <p style={{ fontSize: 'clamp(9px, 2vw, 13px)', color: '#9ca3af' }}>등록된 일정이 없습니다.</p>
           </div>
         ) : (
-          <div className="p-3" style={{ width: '100%', overflowX: 'hidden' }}>
+          <div className="p-1 md:p-3" style={{ width: '100%', overflowX: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
@@ -608,7 +608,7 @@ export function CalendarPage() {
             {showPrevPending ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showPrevPending && (
-            <div className="bg-white p-3">
+            <div className="bg-white p-1 md:p-3">
               <PendingTable items={prevPending} onMarkDone={handleMarkDone} amountColor="#DC2626" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
             </div>
           )}
@@ -626,7 +626,7 @@ export function CalendarPage() {
             {showReserved ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           {showReserved && (
-            <div className="bg-white p-3">
+            <div className="bg-white p-1 md:p-3">
               <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} buttonVariant="gray" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
             </div>
           )}
@@ -644,7 +644,7 @@ export function CalendarPage() {
         </button>
 
         {showMonthlySales && (
-        <div className="bg-white/15 rounded-xl mx-4 mb-4 p-4 backdrop-blur-sm">
+        <div className="bg-white/15 rounded-xl mx-1 md:mx-4 mb-4 p-2 md:p-4 backdrop-blur-sm">
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
             <div className="flex justify-between items-center">

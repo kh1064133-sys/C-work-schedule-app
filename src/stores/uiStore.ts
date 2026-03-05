@@ -46,7 +46,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set, get) => ({
   activeTab: 'calendar',
-  isSidebarOpen: true,
+  isSidebarOpen: false,
   isAddressModalOpen: false,
   isPhotoModalOpen: false,
   photoModalSrc: null,

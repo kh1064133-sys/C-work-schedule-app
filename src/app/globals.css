@@ -221,3 +221,53 @@
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out;
 }
+
+/* ── 모바일 최적화: 테이블/카드/컨테이너 가로폭 최대 활용 ── */
+@media (max-width: 768px) {
+  /* 모든 테이블 width 100% */
+  table {
+    width: 100% !important;
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+  }
+
+  /* 테이블 셀 좌우 패딩 최소화 */
+  table th,
+  table td {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+  }
+
+  /* 카드/섹션 컨테이너 좌우 여백 최소화 */
+  .rounded-xl,
+  .rounded-lg {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    -webkit-border-radius: 8px;
+    border-radius: 8px;
+  }
+
+  /* space-y 래퍼 좌우 패딩 제거 */
+  .space-y-4,
+  .space-y-6 {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* 매출현황 등 내부 카드 여백 축소 */
+  .bg-white\/15 {
+    margin-left: 4px !important;
+    margin-right: 4px !important;
+    padding: 8px !important;
+  }
+
+  /* overflow-x-auto 래퍼 좌우 여백 제거 */
+  .overflow-x-auto {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+}

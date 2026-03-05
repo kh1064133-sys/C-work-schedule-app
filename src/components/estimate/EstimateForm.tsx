@@ -256,28 +256,26 @@ function ImageUploadBox({ label, value, onChange }: { label: string; value: stri
           <>
             <img src={value} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             <div
+              className="no-print"
               style={{
-                position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)",
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                background: "rgba(0,0,0,0.55)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                opacity: 0, transition: "opacity 0.2s", fontSize: "11px", color: "white",
-                gap: "6px", flexDirection: "column",
+                fontSize: "10px", color: "white",
+                gap: "4px", padding: "3px 2px",
+                borderRadius: "0 0 8px 8px",
               }}
-              onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
-              onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '0'}
             >
-              <span>변경</span>
+              <span style={{ opacity: 0.9 }}>변경</span>
+              <span style={{ color: "rgba(255,255,255,0.4)", margin: "0 1px" }}>|</span>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
                   if (value) downloadPng(value, `${label}_투명배경.png`);
                 }}
-                style={{
-                  background: "rgba(255,255,255,0.25)", borderRadius: "4px",
-                  padding: "2px 8px", fontSize: "10px", cursor: "pointer",
-                  border: "1px solid rgba(255,255,255,0.4)",
-                }}
+                style={{ cursor: "pointer", opacity: 0.9 }}
                 title="투명 배경 PNG 다운로드"
-              >💾 PNG 저장</span>
+              >💾 저장</span>
             </div>
           </>
         ) : (
@@ -1239,8 +1237,6 @@ ${cloned.outerHTML}
                       opacity: 0.7, transition: "opacity 0.2s",
                       whiteSpace: "nowrap",
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
                     title="투명 배경 PNG 파일로 저장"
                   >💾 PNG</div>
                 </>

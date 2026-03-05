@@ -177,6 +177,34 @@ export function Header() {
           {saveStatus && (
             <span className="text-xs text-white/90 font-medium">{saveStatus}</span>
           )}
+          {/* 모바일: 아이콘 뱃지 */}
+          <button
+            className="sm:hidden flex items-center justify-center rounded-full bg-white/20 active:bg-white/30"
+            style={{ width: 34, height: 34 }}
+            onClick={handleExport}
+            disabled={isExporting}
+            title="데이터 저장"
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 text-white animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 text-white" />
+            )}
+          </button>
+          <button
+            className="sm:hidden flex items-center justify-center rounded-full bg-white/25 active:bg-white/35"
+            style={{ width: 34, height: 34 }}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            title="데이터 불러오기"
+          >
+            {isImporting ? (
+              <Loader2 className="h-4 w-4 text-white animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 text-white" />
+            )}
+          </button>
+          {/* 데스크탑: 텍스트 버튼 */}
           <Button
             variant="ghost"
             size="sm"

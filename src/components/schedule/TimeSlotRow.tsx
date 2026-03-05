@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type MutableRefObject } from 'react';
 import { GripVertical, Check, Calendar, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -37,6 +37,8 @@ interface TimeSlotRowProps {
   onMobileDragTouchEnd?: () => void;
   // 변경사항 감지 콜백
   onPendingChange?: (timeSlot: string, data: { title: string; memo: string; unit: string } | null) => void;
+  // 네비게이션 중 onBlur DB 저장 차단용 ref
+  blockSaveRef?: MutableRefObject<boolean>;
 }
 
 const SCHEDULE_TYPES = [
@@ -81,6 +83,7 @@ export function TimeSlotRow({
   onMobileDragTouchMove,
   onMobileDragTouchEnd,
   onPendingChange,
+  blockSaveRef,
 }: TimeSlotRowProps) {
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showClientPickerMobile, setShowClientPickerMobile] = useState(false);
@@ -376,7 +379,7 @@ export function TimeSlotRow({
             }}
             onBlur={(e) => {
               setTimeout(() => setShowClientPicker(false), 150);
-              if (e.target.value !== schedule?.title) {
+              if (!blockSaveRef?.current && e.target.value !== schedule?.title) {
                 onUpdate({ title: e.target.value });
               }
             }}
@@ -421,7 +424,7 @@ export function TimeSlotRow({
           placeholder="동호수"
           value={unitValue}
           onChange={(e) => setUnitValue(e.target.value)}
-          onBlur={(e) => onUpdate({ unit: e.target.value })}
+          onBlur={(e) => { if (!blockSaveRef?.current) onUpdate({ unit: e.target.value }); }}
         />
 
         {/* 내용 (품목 선택) */}
@@ -448,7 +451,7 @@ export function TimeSlotRow({
             }}
             onBlur={(e) => {
               setTimeout(() => setShowItemPicker(false), 150);
-              if (e.target.value !== schedule?.memo) {
+              if (!blockSaveRef?.current && e.target.value !== schedule?.memo) {
                 onUpdate({ memo: e.target.value });
               }
             }}
@@ -721,7 +724,7 @@ export function TimeSlotRow({
                 }}
                 onBlur={(e) => {
                   setTimeout(() => setShowClientPickerMobile(false), 200);
-                  if (e.target.value !== schedule?.title) {
+                  if (!blockSaveRef?.current && e.target.value !== schedule?.title) {
                     onUpdate({ title: e.target.value });
                   }
                 }}
@@ -774,7 +777,7 @@ export function TimeSlotRow({
               placeholder="동호수"
               value={unitValue}
               onChange={(e) => setUnitValue(e.target.value)}
-              onBlur={(e) => onUpdate({ unit: e.target.value })}
+              onBlur={(e) => { if (!blockSaveRef?.current) onUpdate({ unit: e.target.value }); }}
             />
           </div>
 
@@ -801,7 +804,7 @@ export function TimeSlotRow({
               }}
               onBlur={(e) => {
                 setTimeout(() => setShowItemPickerMobile(false), 200);
-                if (e.target.value !== schedule?.memo) {
+                if (!blockSaveRef?.current && e.target.value !== schedule?.memo) {
                   onUpdate({ memo: e.target.value });
                 }
               }}

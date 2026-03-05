@@ -59,6 +59,10 @@ export function SchedulePage() {
   const { copiedSchedule, setCopiedSchedule } = useUIStore();
 
   // ── 변경사항 감지 & 저장 확인 팝업 ──
+  // 다이얼로그 표시 중 onBlur → onUpdate DB 저장 차단용 플래그
+  const blockSavesRef = useRef(false);
+  // 스케줄 폴 영역 ref (document pointerdown capture에서 사용)
+  const scheduleContainerRef = useRef<HTMLDivElement>(null);
   // 1) 스냅샷 기반: 페이지 진입 시 스케줄 상태를 캡처하고, 뒤로가기 시 현재 DB 상태와 비교
   const snapshotRef = useRef<string | null>(null);
   const snapshotTakenRef = useRef(false);
@@ -297,6 +301,20 @@ export function SchedulePage() {
     };
   }, []);
 
+  // ── document-level pointerdown capture: 스케줄 영역 밖 클릭 시 blockSaves 설정 (사이드바 등) ──
+  useEffect(() => {
+    const handlePointerDownCapture = (e: PointerEvent) => {
+      // 스케줄 컨테이너 내부 클릭은 무시
+      if (scheduleContainerRef.current?.contains(e.target as Node)) return;
+      // 변경사항이 있을 때만 차단
+      if (hasAnyChangesRef.current()) {
+        blockSavesRef.current = true;
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDownCapture, true);
+    return () => document.removeEventListener('pointerdown', handlePointerDownCapture, true);
+  }, []);
+
   // 날짜 정보
   const dayInfo = getDayInfo(selectedDate);
 
@@ -395,6 +413,7 @@ export function SchedulePage() {
   useEffect(() => {
     const guard = (targetTab: string) => {
       if (hasAnyChangesRef.current()) {
+        blockSavesRef.current = true;
         pendingNavigationRef.current = { type: 'tab', target: targetTab };
         setShowSaveDialog(true);
         return false; // 탭 전환 차단
@@ -411,6 +430,7 @@ export function SchedulePage() {
 
     const handlePopState = () => {
       if (hasAnyChangesRef.current()) {
+        blockSavesRef.current = true;
         window.history.pushState({ schedulePage: true }, '');
         pendingNavigationRef.current = { type: 'back' };
         setShowSaveDialog(true);
@@ -438,6 +458,7 @@ export function SchedulePage() {
   // ── 날짜 변경 가드 ──
   const handleMoveDay = useCallback((direction: number) => {
     if (hasAnyChangesRef.current()) {
+      blockSavesRef.current = true;
       pendingNavigationRef.current = { type: 'date', direction };
       setShowSaveDialog(true);
     } else {
@@ -447,6 +468,7 @@ export function SchedulePage() {
 
   const handleGoToToday = useCallback(() => {
     if (hasAnyChangesRef.current()) {
+      blockSavesRef.current = true;
       pendingNavigationRef.current = { type: 'today' };
       setShowSaveDialog(true);
     } else {
@@ -458,11 +480,9 @@ export function SchedulePage() {
   const handleDialogSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      // 포커스된 입력 필드 blur → onBlur 핸들러가 저장 수행
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-      // pending 로컬 데이터 직접 저장 (blur 안 된 필드 대비)
+      // 저장 차단 해제 후 pending 데이터 저장
+      blockSavesRef.current = false;
+      // pending 로컬 데이터 직접 저장
       const promises: Promise<void>[] = [];
       for (const [timeSlot, data] of pendingChangesRef.current) {
         promises.push(handleUpdateRef.current?.(timeSlot, {
@@ -493,22 +513,9 @@ export function SchedulePage() {
   }, [_forceSetActiveTab, moveDay, goToToday]);
 
   const handleDialogDiscard = useCallback(() => {
-    setShowSaveDialog(false);
+    blockSavesRef.current = false;
     pendingChangesRef.current.clear();
-    // 스냅샷을 현재 상태로 갱신하여 "변경 없음"으로 만들기
-    snapshotRef.current = JSON.stringify(
-      schedulesRef.current.map(s => ({
-        time_slot: s.time_slot,
-        title: s.title || '',
-        memo: s.memo || '',
-        unit: s.unit || '',
-        amount: s.amount || 0,
-        schedule_type: s.schedule_type || '',
-        payment_method: s.payment_method || '',
-        is_done: !!s.is_done,
-        is_reserved: !!s.is_reserved,
-      })).sort((a, b) => a.time_slot.localeCompare(b.time_slot))
-    );
+    setShowSaveDialog(false);
     const nav = pendingNavigationRef.current;
     if (nav?.type === 'tab') {
       _forceSetActiveTab(nav.target as any);
@@ -523,6 +530,7 @@ export function SchedulePage() {
   }, [_forceSetActiveTab, moveDay, goToToday]);
 
   const handleDialogCancel = useCallback(() => {
+    blockSavesRef.current = false;
     setShowSaveDialog(false);
     pendingNavigationRef.current = null;
   }, []);
@@ -575,6 +583,8 @@ export function SchedulePage() {
 
   // 일정 생성/업데이트
   const handleUpdate = async (timeSlot: string, data: Partial<Schedule>) => {
+    // 다이얼로그 표시 중이면 DB 저장 차단 (onBlur에 의한 자동 저장 방지)
+    if (blockSavesRef.current) return;
     const existing = scheduleMap[timeSlot];
     
     // 빈 문자열을 null로 변환 (DB 체크 제약 조건 위반 방지)
@@ -795,8 +805,16 @@ export function SchedulePage() {
     return schedules.filter((s: Schedule) => s.is_reserved).length;
   }, [schedules]);
 
+  // 네비게이션 버튼용 pointerDown 핸들러 (blur보다 먼저 실행되어 blockSaves 설정)
+  const handleNavPointerDown = useCallback(() => {
+    if (hasAnyChangesRef.current()) {
+      blockSavesRef.current = true;
+    }
+  }, []);
+
   return (
     <div 
+      ref={scheduleContainerRef}
       className="flex flex-col h-full"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -805,7 +823,7 @@ export function SchedulePage() {
       {/* 헤더: 날짜 네비게이션 */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 px-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" onClick={() => handleMoveDay(-1)} onTouchStart={(e) => e.stopPropagation()}>
+          <Button variant="outline" size="icon" onClick={() => handleMoveDay(-1)} onPointerDown={handleNavPointerDown} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           
@@ -829,7 +847,7 @@ export function SchedulePage() {
             <ChevronRight className="h-4 w-4" />
           </Button>
 
-          <Button variant="outline" size="sm" onClick={handleGoToToday} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
+          <Button variant="outline" size="sm" onClick={handleGoToToday} onPointerDown={handleNavPointerDown} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
             <RotateCcw className="h-3 w-3 mr-1" />
             오늘
           </Button>
@@ -917,6 +935,7 @@ export function SchedulePage() {
               onMobileDragTouchEnd={handleMobileDragTouchEnd}
               // 변경사항 감지
               onPendingChange={handlePendingChange}
+              blockSaveRef={blockSavesRef}
             />
           ))
         )}

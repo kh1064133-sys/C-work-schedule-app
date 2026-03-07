@@ -1229,7 +1229,7 @@ ${cloned.outerHTML}
                     className="no-print"
                     onClick={() => downloadPng(activeCompany.stampImg!, `${activeCompany.name || '도장'}_투명배경.png`)}
                     style={{
-                      position: "absolute", bottom: "-2px", right: "-2px",
+                      position: "absolute", bottom: "0px", right: "0px",
                       background: "#1a237e", color: "white",
                       borderRadius: "4px", padding: "2px 6px",
                       fontSize: "9px", cursor: "pointer",

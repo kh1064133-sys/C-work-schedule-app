@@ -137,20 +137,20 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white shadow-lg">
-      <div className="flex h-16 items-center px-4 gap-4">
+      <div className="flex h-16 items-center px-2 gap-2 sm:px-4 sm:gap-4">
         <Button
           variant="ghost"
           size="icon"
           onClick={toggleSidebar}
-          className="text-white hover:bg-white/20 md:hidden"
+          className="text-white hover:bg-white/20 md:hidden shrink-0"
         >
           <Menu className="h-5 w-5" />
         </Button>
         
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">📅</span>
-          <div>
-            <h1 className="text-lg font-bold">일정 및 매출 관리</h1>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <span className="text-xl sm:text-2xl shrink-0">📅</span>
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-bold truncate">일정 및 매출 관리</h1>
             <p className="text-xs text-white/80 hidden sm:block">스케줄 관리 · 매출 추적 · 거래처 관리</p>
           </div>
         </div>
@@ -179,8 +179,8 @@ export function Header() {
           )}
           {/* 모바일: 아이콘 뱃지 */}
           <button
-            className="sm:hidden flex items-center justify-center rounded-full bg-white/20 active:bg-white/30"
-            style={{ width: 34, height: 34 }}
+            className="sm:hidden flex items-center justify-center rounded-full bg-white/20 active:bg-white/30 shrink-0"
+            style={{ width: 32, height: 32 }}
             onClick={handleExport}
             disabled={isExporting}
             title="데이터 저장"
@@ -192,8 +192,8 @@ export function Header() {
             )}
           </button>
           <button
-            className="sm:hidden flex items-center justify-center rounded-full bg-white/25 active:bg-white/35"
-            style={{ width: 34, height: 34 }}
+            className="sm:hidden flex items-center justify-center rounded-full bg-white/25 active:bg-white/35 shrink-0"
+            style={{ width: 32, height: 32 }}
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
             title="데이터 불러오기"

@@ -252,19 +252,18 @@ export function ClientsPage() {
             {searchTerm || filterType ? '검색 결과가 없습니다.' : '등록된 거래처가 없습니다.'}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {paginatedClients.map((client: Client) => (
               <div key={client.id} style={{
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                width: '320px',
-                minWidth: '0',
+                width: '100%',
                 minHeight: '90px',
                 background: '#f9fafb',
                 borderRadius: '8px',
                 boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                padding: '8px 10px',
+                padding: '8px 12px',
                 overflow: 'hidden',
                 border: '1px solid #e5e7eb',
               }}>

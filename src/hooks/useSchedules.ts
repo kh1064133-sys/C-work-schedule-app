@@ -115,7 +115,7 @@ export function useUpsertSchedule() {
         .upsert({
           ...cleanedInput,
           user_id: TEMP_USER_ID,
-        })
+        }, { onConflict: 'user_id,date,time_slot' })
         .select()
         .single();
 

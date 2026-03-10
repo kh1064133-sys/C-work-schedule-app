@@ -58,84 +58,7 @@ export function SchedulePage() {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const { copiedSchedule, setCopiedSchedule } = useUIStore();
 
-  // ── 변경사항 감지 & 저장 확인 팝업 ──
-  // 다이얼로그 표시 중 onBlur → onUpdate DB 저장 차단용 플래그
-  const blockSavesRef = useRef(false);
-  // 스케줄 폴 영역 ref (document pointerdown capture에서 사용)
-  const scheduleContainerRef = useRef<HTMLDivElement>(null);
-  // 1) 스냅샷 기반: 페이지 진입 시 스케줄 상태를 캡처하고, 뒤로가기 시 현재 DB 상태와 비교
-  const snapshotRef = useRef<string | null>(null);
-  const snapshotTakenRef = useRef(false);
-
-  // 스케줄 데이터가 처음 로딩되면 스냅샷 캡처
-  useEffect(() => {
-    if (!schedulesLoading && schedules.length >= 0 && !snapshotTakenRef.current) {
-      snapshotTakenRef.current = true;
-      snapshotRef.current = JSON.stringify(
-        schedules.map(s => ({
-          time_slot: s.time_slot,
-          title: s.title || '',
-          memo: s.memo || '',
-          unit: s.unit || '',
-          amount: s.amount || 0,
-          schedule_type: s.schedule_type || '',
-          payment_method: s.payment_method || '',
-          is_done: !!s.is_done,
-          is_reserved: !!s.is_reserved,
-        })).sort((a, b) => a.time_slot.localeCompare(b.time_slot))
-      );
-    }
-  }, [schedulesLoading, schedules]);
-
-  // 날짜가 바뀌면 스냅샷 리셋
-  useEffect(() => {
-    snapshotTakenRef.current = false;
-    snapshotRef.current = null;
-  }, [dateStr]);
-
-  // 2) 로컬 pending 입력 (blur되지 않은 input 필드)
-  const pendingChangesRef = useRef<Map<string, { title: string; memo: string; unit: string }>>(new Map());
-
-  const handlePendingChange = useCallback((timeSlot: string, data: { title: string; memo: string; unit: string } | null) => {
-    if (data) {
-      pendingChangesRef.current.set(timeSlot, data);
-    } else {
-      pendingChangesRef.current.delete(timeSlot);
-    }
-  }, []);
-
-  // 통합 변경 감지: DB 스냅샷 비교 OR 로컬 pending 입력 존재
-  const hasAnyChanges = useCallback(() => {
-    // 로컬 pending 입력이 있으면 변경됨
-    if (pendingChangesRef.current.size > 0) return true;
-    // DB 스냅샷 비교
-    if (snapshotRef.current === null) return false;
-    const currentSnapshot = JSON.stringify(
-      schedules.map(s => ({
-        time_slot: s.time_slot,
-        title: s.title || '',
-        memo: s.memo || '',
-        unit: s.unit || '',
-        amount: s.amount || 0,
-        schedule_type: s.schedule_type || '',
-        payment_method: s.payment_method || '',
-        is_done: !!s.is_done,
-        is_reserved: !!s.is_reserved,
-      })).sort((a, b) => a.time_slot.localeCompare(b.time_slot))
-    );
-    return currentSnapshot !== snapshotRef.current;
-  }, [schedules]);
-
-  // schedules ref for event handlers (최신 값 참조)
-  const schedulesRef = useRef(schedules);
-  schedulesRef.current = schedules;
-  const hasAnyChangesRef = useRef(hasAnyChanges);
-  hasAnyChangesRef.current = hasAnyChanges;
-
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const pendingNavigationRef = useRef<{ type: 'tab'; target: string } | { type: 'back' } | { type: 'date'; direction: number } | { type: 'today' } | null>(null);
-  const { setTabChangeGuard, _forceSetActiveTab } = useUIStore();
+  const { _forceSetActiveTab } = useUIStore();
 
   // 드래그 상태
   const [dragSourceSlot, setDragSourceSlot] = useState<string | null>(null);
@@ -260,10 +183,10 @@ export function SchedulePage() {
     if (Math.abs(diffX) > threshold && Math.abs(diffX) > Math.abs(diffY) * 2) {
       if (diffX > 0) {
         // 왼쪽으로 밀기 -> 다음 일
-        handleMoveDay(1);
+        moveDay(1);
       } else {
         // 오른쪽으로 밀기 -> 이전 일
-        handleMoveDay(-1);
+        moveDay(-1);
       }
     }
     touchStartX.current = 0;
@@ -299,20 +222,6 @@ export function SchedulePage() {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
     };
-  }, []);
-
-  // ── document-level pointerdown capture: 스케줄 영역 밖 클릭 시 blockSaves 설정 (사이드바 등) ──
-  useEffect(() => {
-    const handlePointerDownCapture = (e: PointerEvent) => {
-      // 스케줄 컨테이너 내부 클릭은 무시
-      if (scheduleContainerRef.current?.contains(e.target as Node)) return;
-      // 변경사항이 있을 때만 차단
-      if (hasAnyChangesRef.current()) {
-        blockSavesRef.current = true;
-      }
-    };
-    document.addEventListener('pointerdown', handlePointerDownCapture, true);
-    return () => document.removeEventListener('pointerdown', handlePointerDownCapture, true);
   }, []);
 
   // 날짜 정보
@@ -395,12 +304,7 @@ export function SchedulePage() {
         );
         if (!isInput) {
           e.preventDefault();
-          if (hasAnyChangesRef.current()) {
-            pendingNavigationRef.current = { type: 'back' };
-            setShowSaveDialog(true);
-          } else {
-            useUIStore.getState()._forceSetActiveTab('calendar');
-          }
+          useUIStore.getState()._forceSetActiveTab('calendar');
         }
       }
     };
@@ -409,131 +313,21 @@ export function SchedulePage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setCopiedSchedule]);
 
-  // ── 탭 전환 가드 등록 ──
-  useEffect(() => {
-    const guard = (targetTab: string) => {
-      if (hasAnyChangesRef.current()) {
-        blockSavesRef.current = true;
-        pendingNavigationRef.current = { type: 'tab', target: targetTab };
-        setShowSaveDialog(true);
-        return false; // 탭 전환 차단
-      }
-      return true; // 허용
-    };
-    setTabChangeGuard(guard);
-    return () => setTabChangeGuard(null);
-  }, [setTabChangeGuard]);
-
   // ── 브라우저 뒤로가기 감지 (popstate) ──
   useEffect(() => {
     window.history.pushState({ schedulePage: true }, '');
 
     const handlePopState = () => {
-      if (hasAnyChangesRef.current()) {
-        blockSavesRef.current = true;
-        window.history.pushState({ schedulePage: true }, '');
-        pendingNavigationRef.current = { type: 'back' };
-        setShowSaveDialog(true);
-      } else {
-        _forceSetActiveTab('calendar');
-      }
+      _forceSetActiveTab('calendar');
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [_forceSetActiveTab]);
 
-  // ── beforeunload (브라우저 탭 닫기/새로고침) ──
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasAnyChangesRef.current()) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
-
-  // ── 날짜 변경 가드 ──
-  const handleMoveDay = useCallback((direction: number) => {
-    if (hasAnyChangesRef.current()) {
-      blockSavesRef.current = true;
-      pendingNavigationRef.current = { type: 'date', direction };
-      setShowSaveDialog(true);
-    } else {
-      moveDay(direction);
-    }
-  }, [moveDay]);
-
   const handleGoToToday = useCallback(() => {
-    if (hasAnyChangesRef.current()) {
-      blockSavesRef.current = true;
-      pendingNavigationRef.current = { type: 'today' };
-      setShowSaveDialog(true);
-    } else {
-      goToToday();
-    }
+    goToToday();
   }, [goToToday]);
-
-  // ── 저장 확인 팝업 액션 핸들러 ──
-  const handleDialogSave = useCallback(async () => {
-    setIsSaving(true);
-    try {
-      // 저장 차단 해제 후 pending 데이터 저장
-      blockSavesRef.current = false;
-      // pending 로컬 데이터 직접 저장
-      const promises: Promise<void>[] = [];
-      for (const [timeSlot, data] of pendingChangesRef.current) {
-        promises.push(handleUpdateRef.current?.(timeSlot, {
-          title: data.title,
-          memo: data.memo,
-          unit: data.unit,
-        }) ?? Promise.resolve());
-      }
-      await Promise.all(promises);
-      // 짧은 대기 후 네비게이션
-      await new Promise(resolve => setTimeout(resolve, 200));
-      setShowSaveDialog(false);
-      pendingChangesRef.current.clear();
-      const nav = pendingNavigationRef.current;
-      if (nav?.type === 'tab') {
-        _forceSetActiveTab(nav.target as any);
-      } else if (nav?.type === 'date') {
-        moveDay(nav.direction);
-      } else if (nav?.type === 'today') {
-        goToToday();
-      } else {
-        _forceSetActiveTab('calendar');
-      }
-      pendingNavigationRef.current = null;
-    } finally {
-      setIsSaving(false);
-    }
-  }, [_forceSetActiveTab, moveDay, goToToday]);
-
-  const handleDialogDiscard = useCallback(() => {
-    blockSavesRef.current = false;
-    pendingChangesRef.current.clear();
-    setShowSaveDialog(false);
-    const nav = pendingNavigationRef.current;
-    if (nav?.type === 'tab') {
-      _forceSetActiveTab(nav.target as any);
-    } else if (nav?.type === 'date') {
-      moveDay(nav.direction);
-    } else if (nav?.type === 'today') {
-      goToToday();
-    } else {
-      _forceSetActiveTab('calendar');
-    }
-    pendingNavigationRef.current = null;
-  }, [_forceSetActiveTab, moveDay, goToToday]);
-
-  const handleDialogCancel = useCallback(() => {
-    blockSavesRef.current = false;
-    setShowSaveDialog(false);
-    pendingNavigationRef.current = null;
-  }, []);
 
   // 사용 중인 시간 슬롯 + 기본 시간 슬롯 합치기
   const allTimeSlots = useMemo(() => {
@@ -583,8 +377,6 @@ export function SchedulePage() {
 
   // 일정 생성/업데이트
   const handleUpdate = async (timeSlot: string, data: Partial<Schedule>) => {
-    // 다이얼로그 표시 중이면 DB 저장 차단 (onBlur에 의한 자동 저장 방지)
-    if (blockSavesRef.current) return;
     const existing = scheduleMap[timeSlot];
     
     // 빈 문자열을 null로 변환 (DB 체크 제약 조건 위반 방지)
@@ -805,16 +597,8 @@ export function SchedulePage() {
     return schedules.filter((s: Schedule) => s.is_reserved).length;
   }, [schedules]);
 
-  // 네비게이션 버튼용 pointerDown 핸들러 (blur보다 먼저 실행되어 blockSaves 설정)
-  const handleNavPointerDown = useCallback(() => {
-    if (hasAnyChangesRef.current()) {
-      blockSavesRef.current = true;
-    }
-  }, []);
-
   return (
     <div 
-      ref={scheduleContainerRef}
       className="flex flex-col h-full"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -823,7 +607,7 @@ export function SchedulePage() {
       {/* 헤더: 날짜 네비게이션 */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 px-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="icon" onClick={() => handleMoveDay(-1)} onPointerDown={handleNavPointerDown} onTouchStart={(e) => e.stopPropagation()}>
+          <Button variant="outline" size="icon" onClick={() => moveDay(-1)} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           
@@ -843,11 +627,11 @@ export function SchedulePage() {
             )}
           </div>
 
-          <Button variant="outline" size="icon" onClick={() => handleMoveDay(1)} onTouchStart={(e) => e.stopPropagation()}>
+          <Button variant="outline" size="icon" onClick={() => moveDay(1)} onTouchStart={(e) => e.stopPropagation()}>
             <ChevronRight className="h-4 w-4" />
           </Button>
 
-          <Button variant="outline" size="sm" onClick={handleGoToToday} onPointerDown={handleNavPointerDown} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
+          <Button variant="outline" size="sm" onClick={handleGoToToday} onTouchStart={(e) => e.stopPropagation()} className="ml-2">
             <RotateCcw className="h-3 w-3 mr-1" />
             오늘
           </Button>
@@ -933,9 +717,6 @@ export function SchedulePage() {
               onMobileDragTouchStart={(y) => handleMobileDragTouchStart(timeSlot, y)}
               onMobileDragTouchMove={handleMobileDragTouchMove}
               onMobileDragTouchEnd={handleMobileDragTouchEnd}
-              // 변경사항 감지
-              onPendingChange={handlePendingChange}
-              blockSaveRef={blockSavesRef}
             />
           ))
         )}
@@ -1079,138 +860,6 @@ export function SchedulePage() {
         }}>
           {copyFeedback}
         </div>
-      )}
-
-      {/* ── 변경사항 저장 확인 팝업 ── */}
-      {showSaveDialog && (
-        <>
-          {/* 반투명 오버레이 */}
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0, 0, 0, 0.5)',
-              zIndex: 100000,
-            }}
-            onClick={handleDialogCancel}
-          />
-          {/* 팝업 본체 */}
-          <div
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              WebkitTransform: 'translate(-50%, -50%)',
-              background: '#fff',
-              borderRadius: 12,
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-              zIndex: 100001,
-              width: 340,
-              maxWidth: 'calc(100vw - 32px)',
-              overflow: 'hidden',
-              animation: 'fadeIn 0.15s ease-out',
-            }}
-          >
-            {/* 제목 */}
-            <div
-              style={{
-                background: '#f3f4f6',
-                padding: '14px 20px',
-                fontSize: 15,
-                fontWeight: 700,
-                color: '#374151',
-                textAlign: 'center',
-                borderBottom: '1px solid #e5e7eb',
-              }}
-            >
-              알림
-            </div>
-            {/* 내용 */}
-            <div
-              style={{
-                padding: '24px 20px',
-                fontSize: 14,
-                color: '#374151',
-                textAlign: 'center',
-                lineHeight: 1.7,
-              }}
-            >
-              변경사항이 있습니다.<br />저장하시겠습니까?
-            </div>
-            {/* 버튼 영역 */}
-            <div
-              style={{
-                display: 'flex',
-                WebkitBoxPack: 'center',
-                borderTop: '1px solid #e5e7eb',
-              }}
-            >
-              <button
-                onClick={handleDialogCancel}
-                disabled={isSaving}
-                style={{
-                  flex: 1,
-                  padding: '14px 0',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: isSaving ? '#d1d5db' : '#6b7280',
-                  background: '#fff',
-                  border: 'none',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  borderRight: '1px solid #e5e7eb',
-                  transition: 'background 0.15s',
-                  WebkitTransition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = '#f9fafb'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
-              >
-                취소
-              </button>
-              <button
-                onClick={handleDialogDiscard}
-                disabled={isSaving}
-                style={{
-                  flex: 1,
-                  padding: '14px 0',
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: isSaving ? '#d1d5db' : '#6b7280',
-                  background: '#fff',
-                  border: 'none',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  borderRight: '1px solid #e5e7eb',
-                  transition: 'background 0.15s',
-                  WebkitTransition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = '#f9fafb'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
-              >
-                저장안함
-              </button>
-              <button
-                onClick={handleDialogSave}
-                disabled={isSaving}
-                style={{
-                  flex: 1,
-                  padding: '14px 0',
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: isSaving ? '#9ca3af' : '#374151',
-                  background: isSaving ? '#f3f4f6' : '#fff',
-                  border: 'none',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  transition: 'background 0.15s',
-                  WebkitTransition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { if (!isSaving) e.currentTarget.style.background = '#f9fafb'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = isSaving ? '#f3f4f6' : '#fff'; }}
-              >
-                {isSaving ? '저장 중...' : '변경사항저장'}
-              </button>
-            </div>
-          </div>
-        </>
       )}
     </div>
   );

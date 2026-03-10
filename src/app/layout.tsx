@@ -17,6 +17,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "일정 및 매출 관리 시스템",
   description: "스케줄 관리, 매출 추적, 거래처 관리를 위한 통합 시스템",
+  icons: {
+    icon: [
+      { url: '/app-icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/app-icon-64.png', sizes: '64x64', type: 'image/png' },
+      { url: '/app-icon-128.png', sizes: '128x128', type: 'image/png' },
+      { url: '/app-icon-256.png', sizes: '256x256', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/app-icon-256.png', sizes: '256x256', type: 'image/png' },
+    ],
+  },
 };
 
 export const viewport: Viewport = {

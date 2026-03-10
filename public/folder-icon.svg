@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- 폴더 본체 그라디언트 -->
+    <linearGradient id="folderBody" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c6dd8"/>
+      <stop offset="100%" style="stop-color:#5a4fb0"/>
+    </linearGradient>
+    <!-- 폴더 탭 그라디언트 -->
+    <linearGradient id="folderTab" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#9b8ce8"/>
+      <stop offset="100%" style="stop-color:#7c6dd8"/>
+    </linearGradient>
+    <!-- 폴더 앞면 그라디언트 -->
+    <linearGradient id="folderFront" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b7de0"/>
+      <stop offset="50%" style="stop-color:#7568c8"/>
+      <stop offset="100%" style="stop-color:#6355b8"/>
+    </linearGradient>
+    <!-- 달력 아이콘 그라디언트 -->
+    <linearGradient id="calBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f0eeff"/>
+    </linearGradient>
+    <!-- 그림자 -->
+    <filter id="shadow" x="-10%" y="-5%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#2d2066" flood-opacity="0.3"/>
+    </filter>
+    <filter id="innerShadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- 폴더 뒷면 -->
+  <rect x="12" y="30" width="104" height="76" rx="6" ry="6" fill="url(#folderBody)" filter="url(#shadow)"/>
+
+  <!-- 폴더 탭 (상단) -->
+  <path d="M12,36 L12,28 Q12,22 18,22 L48,22 Q52,22 54,26 L58,34 L18,34 Q12,34 12,36 Z" fill="url(#folderTab)"/>
+
+  <!-- 폴더 앞면 -->
+  <rect x="12" y="38" width="104" height="68" rx="6" ry="6" fill="url(#folderFront)"/>
+
+  <!-- 폴더 앞면 하이라이트 -->
+  <rect x="12" y="38" width="104" height="4" rx="2" ry="2" fill="rgba(255,255,255,0.25)"/>
+
+  <!-- 달력 미니 아이콘 (폴더 위에) -->
+  <g transform="translate(40, 48)">
+    <!-- 달력 배경 -->
+    <rect x="0" y="0" width="48" height="44" rx="6" ry="6" fill="url(#calBg)" filter="url(#innerShadow)"/>
+
+    <!-- 달력 상단 바 -->
+    <rect x="0" y="0" width="48" height="14" rx="6" ry="6" fill="#5a67d8"/>
+    <rect x="0" y="8" width="48" height="6" fill="#5a67d8"/>
+
+    <!-- 달력 고리 -->
+    <rect x="12" y="-4" width="4" height="10" rx="2" ry="2" fill="#4c51bf"/>
+    <rect x="32" y="-4" width="4" height="10" rx="2" ry="2" fill="#4c51bf"/>
+
+    <!-- 날짜 점들 (그리드) -->
+    <!-- 1행 -->
+    <circle cx="12" cy="22" r="2.5" fill="#6b7280"/>
+    <circle cx="24" cy="22" r="2.5" fill="#6b7280"/>
+    <circle cx="36" cy="22" r="2.5" fill="#5a67d8"/>
+
+    <!-- 2행 -->
+    <circle cx="12" cy="32" r="2.5" fill="#6b7280"/>
+    <circle cx="24" cy="32" r="2.5" fill="#ef4444"/>
+    <circle cx="36" cy="32" r="2.5" fill="#6b7280"/>
+
+    <!-- 오늘 날짜 강조 -->
+    <circle cx="24" cy="32" r="4" fill="none" stroke="#ef4444" stroke-width="1"/>
+  </g>
+</svg>

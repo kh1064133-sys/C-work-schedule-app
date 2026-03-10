@@ -55,11 +55,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   setCopiedSchedule: (data) => set({ copiedSchedule: data }),
 
   showSelectedDate: true,
-  showPrevPending: true,
-  showReserved: true,
-  showMonthlySales: true,
-  showSalesSummary: true,
-  showYearlySales: true,
+  showPrevPending: false,
+  showReserved: false,
+  showMonthlySales: false,
+  showSalesSummary: false,
+  showYearlySales: false,
 
   _tabChangeGuard: null,
   setTabChangeGuard: (guard) => set({ _tabChangeGuard: guard }),

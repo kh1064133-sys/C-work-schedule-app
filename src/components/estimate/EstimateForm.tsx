@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useItems } from "@/hooks/useItems";
 import { useClients } from "@/hooks/useClients";
+import { useSupplierCompanies, useUpsertSupplier, useDeleteSupplier } from "@/hooks/useSuppliers";
 import type { Item as DbItem, Client as DbClient } from "@/types";
 
 interface Item {
@@ -304,6 +305,51 @@ export default function EstimateForm() {
   const [vatIncluded, setVatIncluded] = useState(() => loadFromStorage(`${STORAGE_KEY}_vat`, true));
   const [note, setNote] = useState(() => loadFromStorage(`${STORAGE_KEY}_note`, "• 본 견적서는 발행일로부터 30일간 유효합니다.\n• 설치비 별도 문의 바랍니다."));
 
+  // Supabase 공급자 데이터
+  const { data: dbSuppliers } = useSupplierCompanies();
+  const upsertSupplier = useUpsertSupplier();
+  const deleteSupplier = useDeleteSupplier();
+  const supabaseLoadedRef = useRef(false);
+
+  // Supabase에서 공급자 데이터 로드 (최초 1회)
+  useEffect(() => {
+    if (dbSuppliers === undefined) return; // 아직 로딩 중
+    if (!supabaseLoadedRef.current) {
+      supabaseLoadedRef.current = true;
+      if (dbSuppliers.length > 0) {
+        // Supabase에 데이터가 있으면 로드
+        const loaded: Company[] = dbSuppliers.map(s => ({
+          id: s.company_index,
+          name: s.name,
+          ceo: s.ceo,
+          bizNo: s.biz_no,
+          address: s.address,
+          tel: s.tel,
+          email: s.email,
+          stampImg: null,
+        }));
+        setCompanies(loaded);
+        const active = dbSuppliers.find(s => s.is_active);
+        if (active) setActiveCompanyId(active.company_index);
+      } else {
+        // Supabase에 데이터가 없으면 localStorage 데이터를 업로드
+        companies.forEach(c => {
+          upsertSupplier.mutate({
+            company_index: c.id,
+            name: c.name,
+            ceo: c.ceo,
+            biz_no: c.bizNo,
+            address: c.address,
+            tel: c.tel,
+            email: c.email,
+            is_active: c.id === activeCompanyId,
+          });
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbSuppliers]);
+
   // IndexedDB에서 도장 이미지 복원
   const [stampsLoaded, setStampsLoaded] = useState(false);
   useEffect(() => {
@@ -329,8 +375,42 @@ export default function EstimateForm() {
         saveStampToDB(c.id, c.stampImg);
       });
     }
+    // Supabase에 공급자 정보 자동 저장
+    if (supabaseLoadedRef.current) {
+      companies.forEach(c => {
+        upsertSupplier.mutate({
+          company_index: c.id,
+          name: c.name,
+          ceo: c.ceo,
+          biz_no: c.bizNo,
+          address: c.address,
+          tel: c.tel,
+          email: c.email,
+          is_active: c.id === activeCompanyId,
+        });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, stampsLoaded]);
-  useEffect(() => { saveToStorage(`${STORAGE_KEY}_activeId`, activeCompanyId); }, [activeCompanyId]);
+  useEffect(() => {
+    saveToStorage(`${STORAGE_KEY}_activeId`, activeCompanyId);
+    // Supabase에 is_active 상태 동기화
+    if (supabaseLoadedRef.current) {
+      companies.forEach(c => {
+        upsertSupplier.mutate({
+          company_index: c.id,
+          name: c.name,
+          ceo: c.ceo,
+          biz_no: c.bizNo,
+          address: c.address,
+          tel: c.tel,
+          email: c.email,
+          is_active: c.id === activeCompanyId,
+        });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCompanyId]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_client`, client); }, [client]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_items`, items); }, [items]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_estimateNo`, estimateNo); }, [estimateNo]);
@@ -353,6 +433,7 @@ export default function EstimateForm() {
     const remaining = companies.filter(c => c.id !== id);
     setCompanies(remaining);
     setActiveCompanyId(remaining[0].id);
+    deleteSupplier.mutate(id);
   };
 
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);

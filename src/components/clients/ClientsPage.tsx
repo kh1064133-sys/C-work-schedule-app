@@ -48,7 +48,7 @@ const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   etc: '기타',
 };
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 50;
 
 export function ClientsPage() {
   const { data: clients = [], isLoading } = useClients();

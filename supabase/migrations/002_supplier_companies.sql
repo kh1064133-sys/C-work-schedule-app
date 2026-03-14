@@ -12,6 +12,7 @@ create table if not exists supplier_companies (
   address text default '',
   tel text default '',
   email text default '',
+  stamp_img text,
   is_active boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),

@@ -16,6 +16,7 @@ export interface SupplierCompany {
   tel: string;
   email: string;
   is_active: boolean;
+  stamp_img?: string | null;
 }
 
 // 공급자 목록 조회

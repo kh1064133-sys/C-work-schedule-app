@@ -7,7 +7,7 @@ import { useItems, useCreateItem, useUpdateItem, useDeleteItem } from '@/hooks/u
 import { cn } from '@/lib/utils';
 import type { Item, ItemInput } from '@/types';
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 50;
 
 export function ItemsPage() {
   const { data: items = [], isLoading } = useItems();

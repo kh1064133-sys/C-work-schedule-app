@@ -326,7 +326,7 @@ export default function EstimateForm() {
           address: s.address,
           tel: s.tel,
           email: s.email,
-          stampImg: null,
+          stampImg: s.stamp_img || null,
         }));
         setCompanies(loaded);
         const active = dbSuppliers.find(s => s.is_active);
@@ -343,6 +343,7 @@ export default function EstimateForm() {
             tel: c.tel,
             email: c.email,
             is_active: c.id === activeCompanyId,
+            stamp_img: c.stampImg,
           });
         });
       }
@@ -350,14 +351,14 @@ export default function EstimateForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbSuppliers]);
 
-  // IndexedDB에서 도장 이미지 복원
+  // IndexedDB에서 도장 이미지 복원 (Supabase에 없을 때 폴백)
   const [stampsLoaded, setStampsLoaded] = useState(false);
   useEffect(() => {
     const ids = companies.map(c => c.id);
     loadAllStampsFromDB(ids).then(stamps => {
       setCompanies(prev => prev.map(c => ({
         ...c,
-        stampImg: stamps[c.id] ?? c.stampImg,
+        stampImg: c.stampImg || stamps[c.id] || null,
       })));
       setStampsLoaded(true);
     });
@@ -375,7 +376,7 @@ export default function EstimateForm() {
         saveStampToDB(c.id, c.stampImg);
       });
     }
-    // Supabase에 공급자 정보 자동 저장
+    // Supabase에 공급자 정보 자동 저장 (도장 포함)
     if (supabaseLoadedRef.current) {
       companies.forEach(c => {
         upsertSupplier.mutate({
@@ -387,6 +388,7 @@ export default function EstimateForm() {
           tel: c.tel,
           email: c.email,
           is_active: c.id === activeCompanyId,
+          stamp_img: c.stampImg,
         });
       });
     }
@@ -406,6 +408,7 @@ export default function EstimateForm() {
           tel: c.tel,
           email: c.email,
           is_active: c.id === activeCompanyId,
+          stamp_img: c.stampImg,
         });
       });
     }
@@ -443,6 +446,10 @@ export default function EstimateForm() {
   const addItem = () => setItems([...items, { id: Date.now(), name: "", qty: 1, price: 0, note: "", photoUrl: null }]);
   const removeItem = (id: number) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: number, field: keyof Item, value: string | number | null) => setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
+
+  // 단가/금액 인라인 편집
+  const [editingCell, setEditingCell] = useState<{ itemId: number; field: "price" | "amount" } | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   // 품목 검색 관련
   const { data: dbItems } = useItems();
@@ -1164,15 +1171,62 @@ ${cloned.outerHTML}
                     )}
                   </td>
                   <td style={{ padding: "8px", textAlign: "center" }}>
-                    <input type="number" value={item.qty} onChange={e => updateItem(item.id, "qty", Math.max(1, Number(e.target.value)))}
-                      style={{ ...inputStyle, width: "42px", textAlign: "center", fontSize: "12.5px" }} min="1" />
+                    <input type="number" value={item.qty} onChange={e => updateItem(item.id, "qty", Number(e.target.value))}
+                      style={{ ...inputStyle, width: "42px", textAlign: "center", fontSize: "12.5px" }} />
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right" }}>
-                    <input type="number" value={item.price} onChange={e => updateItem(item.id, "price", Number(e.target.value))}
-                      style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px" }} />
+                  <td style={{ padding: "8px", textAlign: "right", cursor: "pointer" }}
+                    onClick={() => {
+                      if (!editingCell || editingCell.itemId !== item.id || editingCell.field !== "price") {
+                        setEditingCell({ itemId: item.id, field: "price" });
+                        setEditingValue(String(item.price));
+                      }
+                    }}>
+                    {editingCell?.itemId === item.id && editingCell.field === "price" ? (
+                      <input
+                        autoFocus
+                        value={editingValue}
+                        onChange={e => {
+                          const v = e.target.value.replace(/[^0-9-]/g, "");
+                          setEditingValue(v);
+                        }}
+                        onBlur={() => {
+                          updateItem(item.id, "price", Number(editingValue) || 0);
+                          setEditingCell(null);
+                        }}
+                        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px", width: "90px" }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: "12.5px" }}>{item.price.toLocaleString()}</span>
+                    )}
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "#1a237e" }}>
-                    {(item.qty * item.price).toLocaleString()}
+                  <td style={{ padding: "8px", textAlign: "right", cursor: "pointer" }}
+                    onClick={() => {
+                      if (!editingCell || editingCell.itemId !== item.id || editingCell.field !== "amount") {
+                        setEditingCell({ itemId: item.id, field: "amount" });
+                        setEditingValue(String(item.qty * item.price));
+                      }
+                    }}>
+                    {editingCell?.itemId === item.id && editingCell.field === "amount" ? (
+                      <input
+                        autoFocus
+                        value={editingValue}
+                        onChange={e => {
+                          const v = e.target.value.replace(/[^0-9-]/g, "");
+                          setEditingValue(v);
+                        }}
+                        onBlur={() => {
+                          const amount = Number(editingValue) || 0;
+                          const newPrice = item.qty !== 0 ? Math.round(amount / item.qty) : 0;
+                          updateItem(item.id, "price", newPrice);
+                          setEditingCell(null);
+                        }}
+                        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px", fontWeight: "bold", color: "#1a237e", width: "100px" }}
+                      />
+                    ) : (
+                      <span style={{ fontWeight: "bold", color: "#1a237e", fontSize: "12.5px" }}>{(item.qty * item.price).toLocaleString()}</span>
+                    )}
                   </td>
                   <td style={{ padding: "8px" }}>
                     <input value={item.note} onChange={e => updateItem(item.id, "note", e.target.value)}

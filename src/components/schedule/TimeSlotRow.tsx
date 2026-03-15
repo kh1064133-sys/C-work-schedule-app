@@ -514,10 +514,12 @@ export function TimeSlotRow({
             type="text"
             className="w-full px-3 py-2 pr-8 border rounded-md text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             placeholder="0"
-            value={schedule?.amount ? schedule.amount.toLocaleString() : ''}
+            value={schedule?.amount ? ((paymentMethodValue === 'vat' || paymentMethodValue === 'card') ? Math.round(schedule.amount * 1.1).toLocaleString() : schedule.amount.toLocaleString()) : ''}
             onChange={(e) => {
               const value = e.target.value.replace(/[^0-9]/g, '');
-              onUpdate({ amount: value ? parseInt(value, 10) : 0 });
+              const parsed = value ? parseInt(value, 10) : 0;
+              const stored = (paymentMethodValue === 'vat' || paymentMethodValue === 'card') ? Math.round(parsed / 1.1) : parsed;
+              onUpdate({ amount: stored });
             }}
           />
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">원</span>
@@ -889,10 +891,12 @@ export function TimeSlotRow({
                 type="text"
                 className="w-full px-2 py-2 pr-6 border rounded-md text-sm text-right"
                 placeholder="0"
-                value={schedule?.amount ? schedule.amount.toLocaleString() : ''}
+                value={schedule?.amount ? ((paymentMethodValue === 'vat' || paymentMethodValue === 'card') ? Math.round(schedule.amount * 1.1).toLocaleString() : schedule.amount.toLocaleString()) : ''}
                 onChange={(e) => {
                   const value = e.target.value.replace(/[^0-9]/g, '');
-                  onUpdate({ amount: value ? parseInt(value, 10) : 0 });
+                  const parsed = value ? parseInt(value, 10) : 0;
+                  const stored = (paymentMethodValue === 'vat' || paymentMethodValue === 'card') ? Math.round(parsed / 1.1) : parsed;
+                  onUpdate({ amount: stored });
                 }}
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">원</span>

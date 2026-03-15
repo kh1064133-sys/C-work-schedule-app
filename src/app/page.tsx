@@ -11,6 +11,7 @@ import { CalendarPage } from '@/components/calendar';
 import { AnalyticsPage } from '@/components/analytics';
 import { SearchPage } from '@/components/search';
 import { EstimateForm } from '@/components/estimate';
+import { GroupBuyPage } from '@/components/groupbuy';
 import { useUIStore } from '@/stores/uiStore';
 
 // 탭별 콘텐츠 컴포넌트
@@ -66,6 +67,14 @@ function EstimateContent() {
   return (
     <div style={{ width: "100%" }}>
       <EstimateForm />
+    </div>
+  );
+}
+
+function GroupBuyContent() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
+      <GroupBuyPage />
     </div>
   );
 }
@@ -131,6 +140,8 @@ export default function Home() {
         return <SearchContent />;
       case 'estimate':
         return <EstimateContent />;
+      case 'groupbuy':
+        return <GroupBuyContent />;
       default:
         return <ScheduleContent />;
     }

@@ -17,6 +17,9 @@ export interface SupplierCompany {
   email: string;
   is_active: boolean;
   stamp_img?: string | null;
+  bank_name?: string;
+  account_no?: string;
+  account_holder?: string;
 }
 
 // 공급자 목록 조회

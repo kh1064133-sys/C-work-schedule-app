@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems } from '@/hooks/useItems';
+import { useGroupBuyCustomers, useBatchUpsertGroupBuy, useDeleteGroupBuyCustomer, GroupBuyCustomerDB } from '@/hooks/useGroupBuy';
 import * as XLSX from 'xlsx';
 
 interface GroupBuyCustomer {
@@ -47,7 +48,14 @@ function formatShortDate(dateStr: string): string {
 
 const PAYMENT_METHODS = ['현금', '카드', '계좌이체', '기타'];
 
-function DailyScheduleTable({ customers }: { customers: GroupBuyCustomer[] }) {
+function getRowBg(c: GroupBuyCustomer): string {
+  if (c.deposited) return '#F0FDF4';
+  if (c.completed) return '#FFF7ED';
+  if (c.reserved) return '#EFF6FF';
+  return 'white';
+}
+
+function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: GroupBuyCustomer[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
 
@@ -102,10 +110,11 @@ function DailyScheduleTable({ customers }: { customers: GroupBuyCustomer[] }) {
               prevDate = c.installDate;
 
               return (
-                <tr key={c.id} style={{
-                  background: bgColor,
+                <tr key={c.id} onClick={() => onSelect(c.id)} style={{
+                  background: c.id === selectedId ? '#FEF9C3' : getRowBg(c),
                   height: 36,
                   borderTop: showBorderTop ? '2px solid #CBD5E1' : '1px solid #E5E7EB',
+                  cursor: 'pointer',
                 }}>
                   <td style={{ textAlign: 'center', borderRight: '1px solid #E5E7EB', padding: '4px' }}>{seq}</td>
                   <td style={{ textAlign: 'center', borderRight: '1px solid #E5E7EB', padding: '4px', fontWeight: isNewDate ? 600 : 400 }}>
@@ -169,7 +178,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] }) {
+function TimeSlotScheduleTable({ customers, selectedId, onSelect }: { customers: GroupBuyCustomer[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const isMobile = useIsMobile();
   const withDate = customers.filter(c => c.installDate);
   const dateSet = new Set(withDate.map(c => c.installDate));
@@ -177,13 +186,14 @@ function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] })
 
   if (dates.length === 0) return null;
 
-  // 날짜+시간 매핑
-  const scheduleMap = new Map<string, string[]>();
+  // 날짜+시간 매핑 (ID 포함)
+  const scheduleMap = new Map<string, { label: string; id: string; status: string }[]>();
   withDate.forEach(c => {
     const time = TIME_SLOTS.includes(c.time) ? c.time : '미정';
     const key = `${c.installDate}__${time}`;
     const arr = scheduleMap.get(key) || [];
-    arr.push(c.dong && c.ho ? `${c.dong}동${c.ho}호` : c.ho ? `${c.ho}호` : '');
+    const status = c.deposited ? 'deposited' : c.completed ? 'completed' : c.reserved ? 'reserved' : 'none';
+    arr.push({ label: c.dong && c.ho ? `${c.dong}동${c.ho}호` : c.ho ? `${c.ho}호` : '', id: c.id, status });
     scheduleMap.set(key, arr);
   });
 
@@ -248,21 +258,44 @@ function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] })
                 {dates.map(dt => {
                   const items = scheduleMap.get(`${dt}__${time}`) || [];
                   const hasData = items.length > 0;
+                  const hasSelected = items.some(item => item.id === selectedId);
                   return (
                     <td key={dt} style={{
                       textAlign: 'center',
                       padding: isMobile ? '3px 2px' : '4px 6px',
                       borderRight: '1px solid #E5E7EB',
-                      background: hasData ? '#EFF6FF' : '#fff',
+                      background: hasSelected ? '#FEF9C3' : hasData ? '#EFF6FF' : '#fff',
                       color: hasData ? '#1D4ED8' : '#999',
                       fontWeight: hasData ? 600 : 400,
                       fontSize: isMobile ? 10 : 12,
                       minWidth: DATE_COL_W,
                       lineHeight: isMobile ? '1.3' : '1.5',
                     }}>
-                      {isMobile ? items.map((item, i) => (
-                        <div key={i}>{item}</div>
-                      )) : items.join(', ')}
+                      {items.map((item, i) => {
+                        const itemBg = item.id === selectedId ? '#FDE047'
+                          : item.status === 'deposited' ? '#22C55E'
+                          : item.status === 'completed' ? '#FB923C'
+                          : item.status === 'reserved' ? '#3B82F6'
+                          : 'transparent';
+                        const hasStatus = item.status !== 'none';
+                        const isHighlight = item.id === selectedId || hasStatus;
+                        return (
+                          <div key={i}
+                            onClick={() => onSelect(item.id)}
+                            style={{
+                              cursor: 'pointer',
+                              borderRadius: 4,
+                              padding: '2px 4px',
+                              background: itemBg,
+                              color: isHighlight ? '#fff' : undefined,
+                              fontWeight: isHighlight ? 700 : undefined,
+                              display: 'block',
+                              margin: '2px 0',
+                              textAlign: 'center',
+                            }}
+                          >{item.label}</div>
+                        );
+                      })}
                     </td>
                   );
                 })}
@@ -273,6 +306,45 @@ function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] })
       </div>
     </div>
   );
+}
+
+function toDBRow(c: GroupBuyCustomer, sortOrder: number): Omit<GroupBuyCustomerDB, 'user_id'> {
+  return {
+    id: c.id,
+    install_date: c.installDate,
+    day_of_week: c.dayOfWeek,
+    time: c.time,
+    dong: c.dong,
+    ho: c.ho,
+    contact: c.contact,
+    content: c.content,
+    amount: c.amount,
+    payment_method: c.paymentMethod,
+    note: c.note,
+    reserved: c.reserved,
+    completed: c.completed,
+    deposited: c.deposited,
+    sort_order: sortOrder,
+  };
+}
+
+function fromDBRow(row: GroupBuyCustomerDB): GroupBuyCustomer {
+  return {
+    id: row.id,
+    installDate: row.install_date,
+    dayOfWeek: row.day_of_week,
+    time: row.time,
+    dong: row.dong,
+    ho: row.ho,
+    contact: row.contact,
+    content: row.content,
+    amount: row.amount,
+    paymentMethod: row.payment_method,
+    note: row.note,
+    reserved: row.reserved,
+    completed: row.completed,
+    deposited: row.deposited,
+  };
 }
 
 const STORAGE_KEY = 'groupbuy-customers';
@@ -380,15 +452,53 @@ function exportToExcel(customers: GroupBuyCustomer[]) {
 export function GroupBuyPage() {
   const [customers, setCustomers] = useState<GroupBuyCustomer[]>(loadCustomers);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const { data: items = [] } = useItems();
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedCustomerId(prev => prev === id ? null : id);
+  }, []);
+
+  // Supabase hooks
+  const { data: dbCustomers } = useGroupBuyCustomers();
+  const batchUpsert = useBatchUpsertGroupBuy();
+  const deleteCustomerMutation = useDeleteGroupBuyCustomer();
+  const supabaseLoadedRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const batchUpsertRef = useRef(batchUpsert);
+  batchUpsertRef.current = batchUpsert;
 
   const ITEMS_PER_PAGE = 10;
   const totalPages = Math.max(1, Math.ceil(customers.length / ITEMS_PER_PAGE));
   const pagedCustomers = customers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // 변경 시 자동 저장
+  // Supabase에서 초기 데이터 로드
+  useEffect(() => {
+    if (dbCustomers && !supabaseLoadedRef.current) {
+      supabaseLoadedRef.current = true;
+      if (dbCustomers.length > 0) {
+        const loaded = dbCustomers.map(fromDBRow);
+        setCustomers(loaded);
+        saveCustomers(loaded);
+      }
+    }
+  }, [dbCustomers]);
+
+  // 변경 시 자동 저장 (localStorage 즉시 + Supabase 디바운스)
   useEffect(() => {
     saveCustomers(customers);
+
+    if (!supabaseLoadedRef.current) return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const dbRows = customers.map((c, i) => toDBRow(c, i));
+      batchUpsertRef.current.mutate(dbRows);
+    }, 2000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, [customers]);
 
   const addEmptyRow = () => {
@@ -417,11 +527,22 @@ export function GroupBuyPage() {
   const handleDelete = (id: string) => {
     if (!confirm('삭제하시겠습니까?')) return;
     setCustomers(prev => prev.filter(c => c.id !== id));
+    deleteCustomerMutation.mutate(id);
   };
 
   const toggleField = (id: string, field: 'reserved' | 'completed' | 'deposited') => {
     setCustomers(prev =>
-      prev.map(c => (c.id === id ? { ...c, [field]: !c[field] } : c)),
+      prev.map(c => {
+        if (c.id !== id) return c;
+        const newVal = !c[field];
+        if (field === 'completed' && newVal) {
+          return { ...c, completed: true, reserved: false };
+        }
+        if (field === 'deposited' && newVal) {
+          return { ...c, deposited: true, completed: false };
+        }
+        return { ...c, [field]: newVal };
+      }),
     );
   };
 
@@ -449,7 +570,7 @@ export function GroupBuyPage() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => exportToExcel(customers)} className="gap-1">
             <Download className="h-4 w-4" />
-            엑셀 다운로드
+            엑셀
           </Button>
           <Button variant="outline" size="sm" onClick={addEmptyRow} className="gap-1">
             <Plus className="h-4 w-4" />
@@ -489,7 +610,14 @@ export function GroupBuyPage() {
               </tr>
             ) : (
               pagedCustomers.map((c, idx) => (
-                <tr key={c.id} className="border-t hover:bg-gray-50">
+                <tr key={c.id}
+                  onClick={() => toggleSelect(c.id)}
+                  className="border-t"
+                  style={{
+                    background: c.id === selectedCustomerId ? '#FEF9C3' : getRowBg(c),
+                    cursor: 'pointer',
+                  }}
+                >
                   <td className="px-2 py-1.5 text-center border-r">{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
                   <td className="px-1 py-1 border-r">
                     <input
@@ -579,28 +707,43 @@ export function GroupBuyPage() {
                       className="w-full px-1 py-0.5 text-center text-xs"
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-center border-r">
-                    <input
-                      type="checkbox"
-                      checked={c.reserved}
-                      onChange={() => toggleField(c.id, 'reserved')}
-                    />
+                  <td className="px-1 py-1 text-center border-r" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => toggleField(c.id, 'reserved')}
+                      style={{
+                        width: 28, height: 28, borderRadius: 6, border: 'none',
+                        background: c.reserved ? '#3B82F6' : '#F3F4F6',
+                        color: c.reserved ? '#fff' : '#9CA3AF',
+                        fontSize: 13, fontWeight: 'bold', cursor: 'pointer',
+                        lineHeight: 1,
+                      }}
+                    >{c.reserved ? '✓' : '·'}</button>
                   </td>
-                  <td className="px-2 py-1.5 text-center border-r">
-                    <input
-                      type="checkbox"
-                      checked={c.completed}
-                      onChange={() => toggleField(c.id, 'completed')}
-                    />
+                  <td className="px-1 py-1 text-center border-r" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => toggleField(c.id, 'completed')}
+                      style={{
+                        width: 28, height: 28, borderRadius: 6, border: 'none',
+                        background: c.completed ? '#FB923C' : '#F3F4F6',
+                        color: c.completed ? '#fff' : '#9CA3AF',
+                        fontSize: 13, fontWeight: 'bold', cursor: 'pointer',
+                        lineHeight: 1,
+                      }}
+                    >{c.completed ? '✓' : '·'}</button>
                   </td>
-                  <td className="px-2 py-1.5 text-center border-r">
-                    <input
-                      type="checkbox"
-                      checked={c.deposited}
-                      onChange={() => toggleField(c.id, 'deposited')}
-                    />
+                  <td className="px-1 py-1 text-center border-r" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => toggleField(c.id, 'deposited')}
+                      style={{
+                        width: 28, height: 28, borderRadius: 6, border: 'none',
+                        background: c.deposited ? '#22C55E' : '#F3F4F6',
+                        color: c.deposited ? '#fff' : '#9CA3AF',
+                        fontSize: 13, fontWeight: 'bold', cursor: 'pointer',
+                        lineHeight: 1,
+                      }}
+                    >{c.deposited ? '✓' : '·'}</button>
                   </td>
-                  <td className="px-2 py-1.5 text-center">
+                  <td className="px-2 py-1.5 text-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => handleDelete(c.id)} className="text-red-500 hover:text-red-700">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -636,10 +779,10 @@ export function GroupBuyPage() {
       )}
 
       {/* 일별 설치일정 */}
-      <DailyScheduleTable customers={customers} />
+      <DailyScheduleTable customers={customers} selectedId={selectedCustomerId} onSelect={toggleSelect} />
 
       {/* 시간대별 설치일정 */}
-      <TimeSlotScheduleTable customers={customers} />
+      <TimeSlotScheduleTable customers={customers} selectedId={selectedCustomerId} onSelect={toggleSelect} />
 
     </div>
   );

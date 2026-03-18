@@ -24,6 +24,9 @@ interface Company {
   tel: string;
   email: string;
   stampImg: string | null;
+  bankName: string;
+  accountNo: string;
+  accountHolder: string;
 }
 
 interface Client {
@@ -41,6 +44,7 @@ const initialItems: Item[] = [
 
 const newCompany = (id: number): Company => ({
   id, name: "", ceo: "", bizNo: "", address: "", tel: "", email: "", stampImg: null,
+  bankName: "", accountNo: "", accountHolder: "",
 });
 
 const STORAGE_KEY = "estimate_form_data";
@@ -224,6 +228,11 @@ function downloadPng(dataUrl: string, filename: string) {
   document.body.removeChild(link);
 }
 
+function isValidStampImg(v: string | null | undefined): v is string {
+  if (!v) return false;
+  return v.startsWith('data:') || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('blob:');
+}
+
 function ImageUploadBox({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,7 +264,13 @@ function ImageUploadBox({ label, value, onChange }: { label: string; value: stri
       >
         {value ? (
           <>
-            <img src={value} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            {isValidStampImg(value) ? (
+              <img src={value} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            ) : (
+              <span style={{ fontSize: "10px", color: "#aab0c0", lineHeight: 1.6, textAlign: "center" }}>
+                📎<br />{label}<br />로딩중...
+              </span>
+            )}
             <div
               className="no-print"
               style={{
@@ -291,7 +306,7 @@ function ImageUploadBox({ label, value, onChange }: { label: string; value: stri
 }
 
 const defaultCompanies: Company[] = [
-  { id: 1, name: "(주)서통시큐리티", ceo: "홍길동", bizNo: "123-45-67890", address: "서울시 강남구 도곡동 467", tel: "02-1234-5678", email: "info@seotong.co.kr", stampImg: null },
+  { id: 1, name: "(주)서통시큐리티", ceo: "홍길동", bizNo: "123-45-67890", address: "서울시 강남구 도곡동 467", tel: "02-1234-5678", email: "info@seotong.co.kr", stampImg: null, bankName: "", accountNo: "", accountHolder: "" },
 ];
 const defaultClient: Client = { name: "(서통)타워1차_ABCD", address: "서울시 강남구 도곡동 467", contact: "김담당", tel: "010-1234-5678" };
 
@@ -327,6 +342,9 @@ export default function EstimateForm() {
           tel: s.tel,
           email: s.email,
           stampImg: (s.stamp_img && s.stamp_img !== '__STAMP_IN_IDB__') ? s.stamp_img : null,
+          bankName: s.bank_name || '',
+          accountNo: s.account_no || '',
+          accountHolder: s.account_holder || '',
         }));
         // IndexedDB에서 도장 복원 후 병합 (Supabase에 도장이 없을 때 폴백)
         const ids = loaded.map(c => c.id);
@@ -361,6 +379,9 @@ export default function EstimateForm() {
               email: c.email,
               is_active: c.id === activeCompanyId,
               stamp_img: c.stampImg,
+              bank_name: c.bankName,
+              account_no: c.accountNo,
+              account_holder: c.accountHolder,
             });
           });
         });
@@ -401,6 +422,9 @@ export default function EstimateForm() {
           email: c.email,
           is_active: c.id === activeCompanyId,
           stamp_img: stampToSave,
+          bank_name: c.bankName,
+          account_no: c.accountNo,
+          account_holder: c.accountHolder,
         });
       });
     }
@@ -421,6 +445,9 @@ export default function EstimateForm() {
           email: c.email,
           is_active: c.id === activeCompanyId,
           stamp_img: c.stampImg,
+          bank_name: c.bankName,
+          account_no: c.accountNo,
+          account_holder: c.accountHolder,
         });
       });
     }
@@ -746,10 +773,13 @@ ${cloned.outerHTML}
           .est-parties div[style*="margin-bottom: 4px"] { margin-bottom: 1px !important; }
 
           /* === 합계금액 배너 === */
-          .est-total-banner { padding: 6px 12px !important; margin-bottom: 6px !important; }
+          .est-total-banner { padding: 6px 12px !important; margin-bottom: 6px !important; gap: 8px !important; }
           .est-total-banner .est-total-amount { font-size: 16px !important; }
           .est-total-banner div[style*="font-size: 14px"] { font-size: 10px !important; }
           .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
+          .est-bank-row { padding: 5px 10px !important; margin-bottom: 6px !important; gap: 6px !important; }
+          .est-bank-row input { font-size: 10px !important; }
+          .est-bank-row span { font-size: 9px !important; }
 
           /* === 품목 테이블 === */
           .est-table { margin-bottom: 4px !important; font-size: 10px !important; page-break-inside: avoid !important; }
@@ -1289,6 +1319,37 @@ ${cloned.outerHTML}
               rows={3} style={{ width: "100%", padding: "10px 14px", fontSize: "12.5px", color: "#555", boxSizing: "border-box", lineHeight: 1.7 }} />
           </div>
 
+          {/* 입금계좌 */}
+          <div className="est-bank-row" style={{
+            display: "flex", alignItems: "center", gap: "12px",
+            background: "linear-gradient(135deg, #fff8e1, #fff3e0)",
+            border: "1.5px solid #ff8f00",
+            borderRadius: "8px",
+            padding: "10px 16px",
+            marginBottom: "22px",
+          }}>
+            <span style={{ fontSize: "12px", fontWeight: "bold", color: "#e65100", letterSpacing: "1px", flexShrink: 0 }}>💰 입금계좌</span>
+            <input
+              value={activeCompany.bankName}
+              onChange={e => updateActiveCompany("bankName", e.target.value)}
+              placeholder="은행명"
+              style={{ ...inputStyle, fontSize: "12.5px", color: "#bf360c", fontWeight: "bold", width: "70px", flexShrink: 0 }}
+            />
+            <input
+              value={activeCompany.accountNo}
+              onChange={e => updateActiveCompany("accountNo", e.target.value)}
+              placeholder="계좌번호"
+              style={{ ...inputStyle, fontSize: "13px", color: "#333", fontWeight: "600", flex: 1 }}
+            />
+            <span style={{ fontSize: "11px", color: "#999", flexShrink: 0 }}>예금주</span>
+            <input
+              value={activeCompany.accountHolder}
+              onChange={e => updateActiveCompany("accountHolder", e.target.value)}
+              placeholder="예금주명"
+              style={{ ...inputStyle, fontSize: "12.5px", color: "#333", fontWeight: "600", width: "80px", flexShrink: 0 }}
+            />
+          </div>
+
           {/* 서명 + 도장 영역 */}
           <div className="est-signature" style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-end", gap: "16px", marginBottom: "8px" }}>
             <div style={{ textAlign: "right" }}>
@@ -1309,7 +1370,7 @@ ${cloned.outerHTML}
               display: "flex", alignItems: "center", justifyContent: "center",
               position: "relative",
             }}>
-              {activeCompany.stampImg ? (
+              {isValidStampImg(activeCompany.stampImg) ? (
                 <>
                   <img
                     src={activeCompany.stampImg}

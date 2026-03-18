@@ -109,6 +109,11 @@ export function useUpsertSchedule() {
       const cleanedInput = Object.fromEntries(
         Object.entries(input).filter(([, value]) => value !== undefined)
       );
+
+      // id가 없으면 새 일정 → id 필드 제거하여 DB가 자동 생성하도록 함
+      if (!input.id) {
+        delete cleanedInput.id;
+      }
       
       const { data, error } = await supabase
         .from('schedules')
@@ -127,6 +132,30 @@ export function useUpsertSchedule() {
       queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
       queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
       queryClient.invalidateQueries({ queryKey: ['schedules', 'allPending'] });
+    },
+  });
+}
+
+// 스케줄 시간대 이동 (id 기준 update — upsert 대신 사용하여 PK 충돌 방지)
+export function useMoveSchedule() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, time_slot, date }: { id: string; time_slot: string; date: string }) => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .update({ time_slot })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { ...(data as Schedule), date };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
     },
   });
 }

@@ -22,9 +22,15 @@ import {
   startOfDay,
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
+import type { Schedule, ScheduleType, PaymentMethod, EventIcon } from '@/types';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
+const EVENT_ICON_EMOJI: Record<EventIcon, string> = {
+  golf: '⛳',
+  birthday: '🎂',
+  meeting: '🤝',
+};
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   sale: '판매',
@@ -288,6 +294,17 @@ export function CalendarPage() {
     };
   }, [schedulesByDate, today]);
 
+  // 날짜별 이벤트 아이콘 목록
+  const getEventIconsForDate = useCallback((date: Date): EventIcon[] => {
+    const dateKey = format(date, 'yyyy-MM-dd');
+    const daySchedules = schedulesByDate[dateKey] || [];
+    const icons = new Set<EventIcon>();
+    daySchedules.forEach((s: Schedule) => {
+      if (s.event_icon) icons.add(s.event_icon);
+    });
+    return Array.from(icons);
+  }, [schedulesByDate]);
+
   // 더블탭 감지를 위한 ref
   const lastTapRef = useRef<{ time: number; dateKey: string }>({ time: 0, dateKey: '' });
 
@@ -473,6 +490,17 @@ export function CalendarPage() {
                 {scheduleCount > 0 && (
                   <span style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2, flexShrink: 0 }}>{scheduleCount}건</span>
                 )}
+                {/* 이벤트 아이콘 */}
+                {(() => {
+                  const eventIcons = getEventIconsForDate(date);
+                  return eventIcons.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 1, flexShrink: 0, lineHeight: 1 }}>
+                      {eventIcons.map(icon => (
+                        <span key={icon} style={{ fontSize: 11 }}>{EVENT_ICON_EMOJI[icon]}</span>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
                 {/* 뱃지 영역 - 남은 공간 꽉 채움 */}
                 {(pending.overdue.count > 0 || pending.reserved.count > 0) && (
                   <div style={{

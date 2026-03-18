@@ -326,24 +326,42 @@ export default function EstimateForm() {
           address: s.address,
           tel: s.tel,
           email: s.email,
-          stampImg: s.stamp_img || null,
+          stampImg: (s.stamp_img && s.stamp_img !== '__STAMP_IN_IDB__') ? s.stamp_img : null,
         }));
-        setCompanies(loaded);
+        // IndexedDB에서 도장 복원 후 병합 (Supabase에 도장이 없을 때 폴백)
+        const ids = loaded.map(c => c.id);
+        loadAllStampsFromDB(ids).then(stamps => {
+          setCompanies(loaded.map(c => ({
+            ...c,
+            stampImg: c.stampImg || stamps[c.id] || null,
+          })));
+          setStampsLoaded(true);
+        });
         const active = dbSuppliers.find(s => s.is_active);
         if (active) setActiveCompanyId(active.company_index);
       } else {
-        // Supabase에 데이터가 없으면 localStorage 데이터를 업로드
-        companies.forEach(c => {
-          upsertSupplier.mutate({
-            company_index: c.id,
-            name: c.name,
-            ceo: c.ceo,
-            biz_no: c.bizNo,
-            address: c.address,
-            tel: c.tel,
-            email: c.email,
-            is_active: c.id === activeCompanyId,
-            stamp_img: c.stampImg,
+        // Supabase에 데이터가 없으면 현재 companies에서 플레이스홀더 정리 후 업로드
+        const ids = companies.map(c => c.id);
+        loadAllStampsFromDB(ids).then(stamps => {
+          const restored = companies.map(c => ({
+            ...c,
+            stampImg: (c.stampImg && c.stampImg !== '__STAMP_IN_IDB__') ? c.stampImg : stamps[c.id] || null,
+          }));
+          setCompanies(restored);
+          setStampsLoaded(true);
+          // Supabase에 업로드
+          restored.forEach(c => {
+            upsertSupplier.mutate({
+              company_index: c.id,
+              name: c.name,
+              ceo: c.ceo,
+              biz_no: c.bizNo,
+              address: c.address,
+              tel: c.tel,
+              email: c.email,
+              is_active: c.id === activeCompanyId,
+              stamp_img: c.stampImg,
+            });
           });
         });
       }
@@ -351,34 +369,28 @@ export default function EstimateForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbSuppliers]);
 
-  // IndexedDB에서 도장 이미지 복원 (Supabase에 없을 때 폴백)
+  // IndexedDB 로드는 Supabase 로드 useEffect에서 함께 처리함 (별도 useEffect 제거)
   const [stampsLoaded, setStampsLoaded] = useState(false);
-  useEffect(() => {
-    const ids = companies.map(c => c.id);
-    loadAllStampsFromDB(ids).then(stamps => {
-      setCompanies(prev => prev.map(c => ({
-        ...c,
-        stampImg: c.stampImg || stamps[c.id] || null,
-      })));
-      setStampsLoaded(true);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // localStorage에 자동 저장 (stampImg는 IndexedDB에 별도 저장)
   useEffect(() => {
     // localStorage에는 stampImg 제외한 데이터 저장 (용량 절약)
     const companiesForStorage = companies.map(c => ({ ...c, stampImg: c.stampImg ? "__STAMP_IN_IDB__" : null }));
     saveToStorage(`${STORAGE_KEY}_companies`, companiesForStorage);
-    // IndexedDB에 도장 이미지 개별 저장
+    // IndexedDB에 도장 이미지 개별 저장 (플레이스홀더는 저장 안 함)
     if (stampsLoaded) {
       companies.forEach(c => {
-        saveStampToDB(c.id, c.stampImg);
+        if (c.stampImg && c.stampImg !== '__STAMP_IN_IDB__') {
+          saveStampToDB(c.id, c.stampImg);
+        } else if (!c.stampImg) {
+          saveStampToDB(c.id, null);
+        }
       });
     }
-    // Supabase에 공급자 정보 자동 저장 (도장 포함)
-    if (supabaseLoadedRef.current) {
+    // Supabase에 공급자 정보 자동 저장 (도장 포함, 플레이스홀더 제외)
+    if (supabaseLoadedRef.current && stampsLoaded) {
       companies.forEach(c => {
+        const stampToSave = (c.stampImg && c.stampImg !== '__STAMP_IN_IDB__') ? c.stampImg : null;
         upsertSupplier.mutate({
           company_index: c.id,
           name: c.name,
@@ -388,7 +400,7 @@ export default function EstimateForm() {
           tel: c.tel,
           email: c.email,
           is_active: c.id === activeCompanyId,
-          stamp_img: c.stampImg,
+          stamp_img: stampToSave,
         });
       });
     }

@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems } from '@/hooks/useItems';
+import * as XLSX from 'xlsx';
 
 interface GroupBuyCustomer {
   id: string;
@@ -157,7 +158,19 @@ function DailyScheduleTable({ customers }: { customers: GroupBuyCustomer[] }) {
 const TIME_SLOTS = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','미정'];
 const SHORT_DAY: Record<number, string> = { 0:'일',1:'월',2:'화',3:'수',4:'목',5:'금',6:'토' };
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return isMobile;
+}
+
 function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] }) {
+  const isMobile = useIsMobile();
   const withDate = customers.filter(c => c.installDate);
   const dateSet = new Set(withDate.map(c => c.installDate));
   const dates = [...dateSet].sort();
@@ -176,9 +189,16 @@ function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] })
 
   const getHeaderStyle = (dateStr: string): React.CSSProperties => {
     const dow = new Date(dateStr).getDay();
-    if (dow === 0) return { background: '#DC2626', color: '#fff', padding: '8px 4px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.3)', fontSize: 12 };
-    if (dow === 6) return { background: '#2563EB', color: '#fff', padding: '8px 4px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.3)', fontSize: 12 };
-    return { background: '#1E3A8A', color: '#fff', padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998', fontSize: 12 };
+    const base: React.CSSProperties = {
+      color: '#fff',
+      padding: isMobile ? '6px 2px' : '8px 6px',
+      textAlign: 'center',
+      fontSize: isMobile ? 11 : 13,
+      whiteSpace: 'nowrap',
+    };
+    if (dow === 0) return { ...base, background: '#DC2626', borderRight: '1px solid rgba(255,255,255,0.3)' };
+    if (dow === 6) return { ...base, background: '#2563EB', borderRight: '1px solid rgba(255,255,255,0.3)' };
+    return { ...base, background: '#1E3A8A', borderRight: '1px solid #3B5998' };
   };
 
   const formatHeader = (dateStr: string) => {
@@ -186,38 +206,63 @@ function TimeSlotScheduleTable({ customers }: { customers: GroupBuyCustomer[] })
     return `${d.getMonth()+1}/${d.getDate()}(${SHORT_DAY[d.getDay()]})`;
   };
 
+  const TIME_COL_W = isMobile ? 50 : 70;
+  const DATE_COL_W = isMobile ? 64 : 90;
+
   return (
     <div style={{ marginTop: 24 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>시간대별 설치일정</h2>
-      <div style={{ overflowX: 'auto', border: '1px solid #ddd', borderRadius: 8, WebkitOverflowScrolling: 'touch' }}>
-        <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: 70 + dates.length * 80 }}>
+      <h2 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 'bold', marginBottom: 12 }}>시간대별 설치일정</h2>
+      <div style={{
+        overflowX: 'auto',
+        border: '1px solid #ddd',
+        borderRadius: 8,
+        WebkitOverflowScrolling: 'touch',
+        scrollBehavior: 'smooth',
+      }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: isMobile ? 11 : 13, minWidth: TIME_COL_W + dates.length * DATE_COL_W }}>
           <thead>
             <tr>
-              <th style={{ width: 70, minWidth: 70, position: 'sticky', left: 0, zIndex: 1, background: '#1E3A8A', color: '#fff', padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>시간</th>
+              <th style={{
+                width: TIME_COL_W, minWidth: TIME_COL_W,
+                position: 'sticky', left: 0, zIndex: 1,
+                background: '#1E3A8A', color: '#fff',
+                padding: isMobile ? '6px 2px' : '8px 4px',
+                textAlign: 'center', borderRight: '1px solid #3B5998',
+                fontSize: isMobile ? 11 : 13,
+              }}>시간</th>
               {dates.map(dt => (
-                <th key={dt} style={getHeaderStyle(dt)}>{formatHeader(dt)}</th>
+                <th key={dt} style={{ ...getHeaderStyle(dt), minWidth: DATE_COL_W }}>{formatHeader(dt)}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {TIME_SLOTS.map(time => (
               <tr key={time} style={{ borderTop: '1px solid #E5E7EB' }}>
-                <td style={{ background: '#F8FAFC', fontWeight: 'bold', textAlign: 'center', padding: '6px 4px', borderRight: '1px solid #E5E7EB', position: 'sticky', left: 0, zIndex: 1, minWidth: 70 }}>{time}</td>
+                <td style={{
+                  background: '#F8FAFC', fontWeight: 'bold', textAlign: 'center',
+                  padding: isMobile ? '4px 2px' : '6px 4px',
+                  borderRight: '1px solid #E5E7EB',
+                  position: 'sticky', left: 0, zIndex: 1,
+                  minWidth: TIME_COL_W, fontSize: isMobile ? 11 : 13,
+                }}>{time}</td>
                 {dates.map(dt => {
                   const items = scheduleMap.get(`${dt}__${time}`) || [];
                   const hasData = items.length > 0;
                   return (
                     <td key={dt} style={{
                       textAlign: 'center',
-                      padding: '4px',
+                      padding: isMobile ? '3px 2px' : '4px 6px',
                       borderRight: '1px solid #E5E7EB',
                       background: hasData ? '#EFF6FF' : '#fff',
                       color: hasData ? '#1D4ED8' : '#999',
                       fontWeight: hasData ? 600 : 400,
-                      fontSize: 12,
-                      minWidth: 80,
+                      fontSize: isMobile ? 10 : 12,
+                      minWidth: DATE_COL_W,
+                      lineHeight: isMobile ? '1.3' : '1.5',
                     }}>
-                      {items.join(', ')}
+                      {isMobile ? items.map((item, i) => (
+                        <div key={i}>{item}</div>
+                      )) : items.join(', ')}
                     </td>
                   );
                 })}
@@ -244,6 +289,92 @@ function loadCustomers(): GroupBuyCustomer[] {
 
 function saveCustomers(customers: GroupBuyCustomer[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(customers));
+}
+
+function exportToExcel(customers: GroupBuyCustomer[]) {
+  const wb = XLSX.utils.book_new();
+
+  // 시트 1: 공동구매 고객 목록
+  const sheet1Data = customers.map((c, idx) => ({
+    '순번': idx + 1,
+    '설치일': formatDate(c.installDate),
+    '요일': c.dayOfWeek,
+    '시간': c.time,
+    '동': c.dong,
+    '호수': c.ho,
+    '연락처': c.contact,
+    '내용': c.content,
+    '금액': c.amount || '',
+    '결재방법': c.paymentMethod,
+    '비고': c.note,
+    '예약': c.reserved ? 'O' : '',
+    '완료': c.completed ? 'O' : '',
+    '입금': c.deposited ? 'O' : '',
+  }));
+  const ws1 = XLSX.utils.json_to_sheet(sheet1Data);
+  ws1['!cols'] = [
+    { wch: 6 }, { wch: 12 }, { wch: 6 }, { wch: 8 }, { wch: 6 },
+    { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 12 },
+    { wch: 10 }, { wch: 10 }, { wch: 6 }, { wch: 6 }, { wch: 6 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, '공동구매 고객 목록');
+
+  // 시트 2: 일별 설치일정
+  const sorted = [...customers]
+    .filter(c => c.installDate)
+    .sort((a, b) => {
+      const dateCompare = a.installDate.localeCompare(b.installDate);
+      if (dateCompare !== 0) return dateCompare;
+      return (a.time || '').localeCompare(b.time || '');
+    });
+  const sheet2Data = sorted.map((c, idx) => ({
+    '순번': idx + 1,
+    '날짜': formatShortDate(c.installDate),
+    '요일': c.dayOfWeek,
+    '시간': c.time,
+    '호수': c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho || c.dong,
+    '연락처': c.contact,
+  }));
+  const ws2 = XLSX.utils.json_to_sheet(sheet2Data);
+  ws2['!cols'] = [
+    { wch: 6 }, { wch: 10 }, { wch: 6 }, { wch: 8 }, { wch: 12 }, { wch: 14 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws2, '일별 설치일정');
+
+  // 시트 3: 시간대별 설치일정
+  const withDate = customers.filter(c => c.installDate);
+  const dateSet = new Set(withDate.map(c => c.installDate));
+  const dates = [...dateSet].sort();
+
+  const scheduleMap = new Map<string, string[]>();
+  withDate.forEach(c => {
+    const time = TIME_SLOTS.includes(c.time) ? c.time : '미정';
+    const key = `${c.installDate}__${time}`;
+    const arr = scheduleMap.get(key) || [];
+    arr.push(c.dong && c.ho ? `${c.dong}동${c.ho}호` : c.ho ? `${c.ho}호` : '');
+    scheduleMap.set(key, arr);
+  });
+
+  const dateHeaders = dates.map(dt => {
+    const d = new Date(dt);
+    return `${d.getMonth() + 1}/${d.getDate()}(${SHORT_DAY[d.getDay()]})`;
+  });
+
+  const sheet3Header = ['시간', ...dateHeaders];
+  const sheet3Rows = TIME_SLOTS.map(time => {
+    const row: string[] = [time];
+    dates.forEach(dt => {
+      const items = scheduleMap.get(`${dt}__${time}`) || [];
+      row.push(items.join(', '));
+    });
+    return row;
+  });
+
+  const ws3 = XLSX.utils.aoa_to_sheet([sheet3Header, ...sheet3Rows]);
+  ws3['!cols'] = [{ wch: 8 }, ...dates.map(() => ({ wch: 14 }))];
+  XLSX.utils.book_append_sheet(wb, ws3, '시간대별 설치일정');
+
+  XLSX.writeFile(wb, `공동구매_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 export function GroupBuyPage() {
@@ -315,10 +446,16 @@ export function GroupBuyPage() {
       {/* 상단 헤더 */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">공동구매 고객 목록</h2>
-        <Button variant="outline" size="sm" onClick={addEmptyRow} className="gap-1">
-          <Plus className="h-4 w-4" />
-          리스트추가
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportToExcel(customers)} className="gap-1">
+            <Download className="h-4 w-4" />
+            엑셀 다운로드
+          </Button>
+          <Button variant="outline" size="sm" onClick={addEmptyRow} className="gap-1">
+            <Plus className="h-4 w-4" />
+            리스트추가
+          </Button>
+        </div>
       </div>
 
       {/* 테이블 */}
@@ -426,7 +563,7 @@ export function GroupBuyPage() {
                     <select
                       value={c.paymentMethod}
                       onChange={e => updateInline(c.id, 'paymentMethod', e.target.value)}
-                      className="px-1 py-0.5 text-xs"
+                      className="w-full px-0 py-0.5 text-xs"
                     >
                       <option value="">선택</option>
                       {PAYMENT_METHODS.map(m => (

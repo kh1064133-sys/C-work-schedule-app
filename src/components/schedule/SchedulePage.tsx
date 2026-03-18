@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { TimeSlotRow } from './TimeSlotRow';
 import { useDateStore } from '@/stores/dateStore';
 import { useUIStore, type CopiedScheduleData } from '@/stores/uiStore';
-import { useSchedulesByDate, useUpsertSchedule, useDeleteSchedule, useSwapSchedules } from '@/hooks/useSchedules';
+import { useSchedulesByDate, useUpsertSchedule, useDeleteSchedule, useSwapSchedules, useMoveSchedule } from '@/hooks/useSchedules';
 import { useClients } from '@/hooks/useClients';
 import { useItems } from '@/hooks/useItems';
 import { formatDateKorean, formatDate, getHolidayName, isSunday, isSaturday } from '@/lib/utils/date';
@@ -52,6 +52,7 @@ export function SchedulePage() {
   const upsertSchedule = useUpsertSchedule();
   const deleteSchedule = useDeleteSchedule();
   const swapSchedules = useSwapSchedules();
+  const moveSchedule = useMoveSchedule();
 
   // 선택/복사 상태
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -71,32 +72,60 @@ export function SchedulePage() {
   const [mobileDragLabel, setMobileDragLabel] = useState<string>('');
   const mobileDragActive = useRef(false);
   const mobileLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mobileRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const mobileTouchStartY = useRef(0);
+  const dragScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scheduleListRef = useRef<HTMLDivElement>(null);
+  // stale closure 방지용 ref
+  const mobileDragSourceRef = useRef<string | null>(null);
+  const mobileDragOverRef = useRef<string | null>(null);
 
-  // 모바일 드래그 row ref 등록
-  const registerRowRef = useCallback((timeSlot: string, el: HTMLDivElement | null) => {
-    if (el) {
-      mobileRowRefs.current.set(timeSlot, el);
-    } else {
-      mobileRowRefs.current.delete(timeSlot);
+  // 드래그 hit-test: data-timeslot 속성으로 DOM에서 보이는 요소 검색
+  const findSlotAtY = useCallback((y: number): string | null => {
+    const container = scheduleListRef.current;
+    if (!container) return null;
+    const rows = container.querySelectorAll<HTMLElement>('[data-timeslot]');
+    for (const el of rows) {
+      const rect = el.getBoundingClientRect();
+      if (rect.height > 0 && y >= rect.top && y <= rect.bottom) {
+        return el.getAttribute('data-timeslot');
+      }
     }
+    return null;
+  }, []);
+
+  // state 변경 시 ref 동기화
+  const setMobileDragSourceTracked = useCallback((v: string | null) => {
+    mobileDragSourceRef.current = v;
+    setMobileDragSource(v);
+  }, []);
+  const setMobileDragOverTracked = useCallback((v: string | null) => {
+    mobileDragOverRef.current = v;
+    setMobileDragOver(v);
   }, []);
 
   // 모바일 드래그: 길게 누르기 시작
-  const handleMobileDragTouchStart = useCallback((timeSlot: string, y: number) => {
+  const handleMobileDragTouchStart = useCallback((timeSlot: string, y: number, immediate?: boolean) => {
     mobileTouchStartY.current = y;
+    if (immediate) {
+      // 그립 핸들 터치: 즉시 드래그 활성화
+      mobileDragActive.current = true;
+      setMobileDragSourceTracked(timeSlot);
+      setMobileDragY(y);
+      setMobileDragLabel(timeSlot);
+      if (navigator.vibrate) navigator.vibrate(30);
+      return;
+    }
     mobileLongPressTimer.current = setTimeout(() => {
       mobileDragActive.current = true;
-      setMobileDragSource(timeSlot);
+      setMobileDragSourceTracked(timeSlot);
       setMobileDragY(y);
       setMobileDragLabel(timeSlot);
       // 햅틱 피드백 (지원 시)
       if (navigator.vibrate) navigator.vibrate(30);
     }, 250);
-  }, []);
+  }, [setMobileDragSourceTracked]);
 
-  // 모바일 드래그: 움직이기
+  // 터치 드래그: 움직이기
   const handleMobileDragTouchMove = useCallback((y: number) => {
     // 길게 누르기 전에 10px 이상 움직이면 타이머 취소 (일반 스크롤)
     if (!mobileDragActive.current) {
@@ -107,23 +136,37 @@ export function SchedulePage() {
       return;
     }
     setMobileDragY(y);
-    // 현재 터치 위치에 해당하는 row 찾기
-    let foundSlot: string | null = null;
-    mobileRowRefs.current.forEach((el, slot) => {
-      const rect = el.getBoundingClientRect();
-      if (y >= rect.top && y <= rect.bottom) {
-        foundSlot = slot;
-      }
-    });
-    setMobileDragOver(foundSlot);
-  }, []);
+    // DOM 기반 hit-test (보이는 요소만 자동 검색)
+    const foundSlot = findSlotAtY(y);
+    setMobileDragOverTracked(foundSlot);
 
-  // 모바일 드래그 중일 때 body 스크롤 방지
+    // 자동 스크롤: 컨테이너 상하 40px 영역에서 스크롤
+    const container = scheduleListRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const EDGE = 40;
+      const SPEED = 8;
+      if (dragScrollRef.current) { clearInterval(dragScrollRef.current); dragScrollRef.current = null; }
+      if (y < rect.top + EDGE && container.scrollTop > 0) {
+        dragScrollRef.current = setInterval(() => { container.scrollTop -= SPEED; }, 16);
+      } else if (y > rect.bottom - EDGE && container.scrollTop < container.scrollHeight - container.clientHeight) {
+        dragScrollRef.current = setInterval(() => { container.scrollTop += SPEED; }, 16);
+      }
+    }
+  }, [findSlotAtY, setMobileDragOverTracked]);
+
+  // 드래그 중일 때 body 스크롤 방지 + 자동스크롤 정리
   useEffect(() => {
-    if (!mobileDragSource) return;
+    if (!mobileDragSource) {
+      if (dragScrollRef.current) { clearInterval(dragScrollRef.current); dragScrollRef.current = null; }
+      return;
+    }
     const prevent = (e: globalThis.TouchEvent) => { e.preventDefault(); };
     document.addEventListener('touchmove', prevent, { passive: false });
-    return () => document.removeEventListener('touchmove', prevent);
+    return () => {
+      document.removeEventListener('touchmove', prevent);
+      if (dragScrollRef.current) { clearInterval(dragScrollRef.current); dragScrollRef.current = null; }
+    };
   }, [mobileDragSource]);
 
   // 복사/붙여넣기를 위한 ref (키보드 이벤트 리스너에서 최신 값 참조)
@@ -196,8 +239,7 @@ export function SchedulePage() {
     isVerticalScrolling.current = false;
   };
 
-  // 스케줄 목록 컨테이너 ref (세로 스크롤 시 스와이프 차단)
-  const scheduleListRef = useRef<HTMLDivElement>(null);
+  // 스케줄 목록 컨테이너 (세로 스크롤 시 스와이프 차단)
   const listTouchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -207,6 +249,8 @@ export function SchedulePage() {
       listTouchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     };
     const onTouchMove = (e: globalThis.TouchEvent) => {
+      // 드래그 중이면 전파 차단 안함 (React onTouchMove가 root까지 버블링되어야 동작)
+      if (mobileDragActive.current) return;
       if (!listTouchStartRef.current) return;
       const dx = Math.abs(e.touches[0].clientX - listTouchStartRef.current.x);
       const dy = Math.abs(e.touches[0].clientY - listTouchStartRef.current.y);
@@ -342,22 +386,23 @@ export function SchedulePage() {
       clearTimeout(mobileLongPressTimer.current);
       mobileLongPressTimer.current = null;
     }
-    if (!mobileDragActive.current || !mobileDragSource) {
+    if (!mobileDragActive.current || !mobileDragSourceRef.current) {
       mobileDragActive.current = false;
-      setMobileDragSource(null);
-      setMobileDragOver(null);
+      setMobileDragSourceTracked(null);
+      setMobileDragOverTracked(null);
       return;
     }
     mobileDragActive.current = false;
 
-    const targetSlot = mobileDragOver;
-    setMobileDragSource(null);
-    setMobileDragOver(null);
+    const sourceSlot = mobileDragSourceRef.current;
+    const targetSlot = mobileDragOverRef.current;
+    setMobileDragSourceTracked(null);
+    setMobileDragOverTracked(null);
     setMobileDragLabel('');
 
-    if (!targetSlot || targetSlot === mobileDragSource) return;
+    if (!targetSlot || targetSlot === sourceSlot) return;
 
-    const sourceSchedule = scheduleMap[mobileDragSource];
+    const sourceSchedule = scheduleMap[sourceSlot];
     const targetSchedule = scheduleMap[targetSlot];
 
     if (sourceSchedule && targetSchedule) {
@@ -367,13 +412,13 @@ export function SchedulePage() {
         date: dateStr,
       });
     } else if (sourceSchedule && !targetSchedule) {
-      await upsertSchedule.mutateAsync({
+      await moveSchedule.mutateAsync({
         id: sourceSchedule.id,
-        date: dateStr,
         time_slot: targetSlot,
+        date: dateStr,
       });
     }
-  }, [mobileDragSource, mobileDragOver, scheduleMap, dateStr, swapSchedules, upsertSchedule]);
+  }, [scheduleMap, dateStr, swapSchedules, moveSchedule, setMobileDragSourceTracked, setMobileDragOverTracked]);
 
   // 일정 생성/업데이트
   const handleUpdate = async (timeSlot: string, data: Partial<Schedule>) => {
@@ -387,30 +432,26 @@ export function SchedulePage() {
                           (data.payment_method as string) === '' ? null : data.payment_method;
     
     if (existing) {
-      // 기존 스케줄 업데이트
+      // 기존 스케줄 업데이트 — 변경된 필드만 전송
       const updateData: Record<string, unknown> = {
         id: existing.id,
         date: dateStr,
         time_slot: timeSlot,
-        title: data.title ?? undefined,
-        memo: data.memo ?? undefined,
-        unit: data.unit ?? undefined,
-        amount: data.amount,
-        is_done: data.is_done,
-        is_reserved: data.is_reserved,
       };
       
-      // schedule_type과 payment_method는 null도 명시적으로 전송
-      if ('schedule_type' in data) {
-        updateData.schedule_type = scheduleType;
-      }
-      if ('payment_method' in data) {
-        updateData.payment_method = paymentMethod;
-      }
+      if ('title' in data) updateData.title = data.title;
+      if ('memo' in data) updateData.memo = data.memo;
+      if ('unit' in data) updateData.unit = data.unit;
+      if ('amount' in data) updateData.amount = data.amount;
+      if ('is_done' in data) updateData.is_done = data.is_done;
+      if ('is_reserved' in data) updateData.is_reserved = data.is_reserved;
+      if ('schedule_type' in data) updateData.schedule_type = scheduleType;
+      if ('payment_method' in data) updateData.payment_method = paymentMethod;
+      if ('event_icon' in data) updateData.event_icon = data.event_icon;
       
       await upsertSchedule.mutateAsync(updateData as unknown as ScheduleInput & { id?: string });
-    } else if (data.title || data.memo || data.amount) {
-      // 새 스케줄 생성 (내용이 있을 때만)
+    } else if (data.title || data.memo || data.amount || data.event_icon) {
+      // 새 스케줄 생성 (내용 또는 이벤트가 있을 때)
       await upsertSchedule.mutateAsync({
         date: dateStr,
         time_slot: timeSlot,
@@ -420,6 +461,7 @@ export function SchedulePage() {
         amount: data.amount || 0,
         schedule_type: 'schedule_type' in data ? (scheduleType as ScheduleType | undefined) : undefined,
         payment_method: 'payment_method' in data ? (paymentMethod as PaymentMethod | undefined) : undefined,
+        event_icon: 'event_icon' in data ? data.event_icon : undefined,
         is_done: data.is_done || false,
         is_reserved: data.is_reserved || false,
         sort_order: allTimeSlots.indexOf(timeSlot),
@@ -524,16 +566,16 @@ export function SchedulePage() {
         date: dateStr,
       });
     } else if (sourceSchedule && !targetSchedule) {
-      // 소스만 있으면 타겟 시간대로 이동
-      await upsertSchedule.mutateAsync({
+      // 소스만 있으면 타겟 시간대로 이동 (update 사용, upsert 대신 PK 충돌 방지)
+      await moveSchedule.mutateAsync({
         id: sourceSchedule.id,
-        date: dateStr,
         time_slot: targetSlot,
+        date: dateStr,
       });
     }
 
     handleDragEnd();
-  }, [dragSourceSlot, scheduleMap, dateStr, swapSchedules, upsertSchedule, handleDragEnd]);
+  }, [dragSourceSlot, scheduleMap, dateStr, swapSchedules, moveSchedule, handleDragEnd]);
 
   // 시간 추가
   const handleAddTime = useCallback(() => {
@@ -657,7 +699,7 @@ export function SchedulePage() {
 
       {/* 테이블 헤더 - 데스크탑만 */}
       <div className="hidden lg:block bg-gray-100 border rounded-t-lg">
-        <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_60px_70px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700">
+        <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700">
           <div></div>
           <div>시간</div>
           <div>거래처명</div>
@@ -666,6 +708,7 @@ export function SchedulePage() {
           <div>유형</div>
           <div className="text-right">금액</div>
           <div>결제방법</div>
+          <div className="text-center">🏷️</div>
           <div className="text-center">예약</div>
           <div className="text-center">완료</div>
         </div>
@@ -713,8 +756,7 @@ export function SchedulePage() {
               // 모바일 터치 드래그
               isMobileDragging={mobileDragSource === timeSlot}
               isMobileDragOver={mobileDragOver === timeSlot}
-              registerRowRef={registerRowRef}
-              onMobileDragTouchStart={(y) => handleMobileDragTouchStart(timeSlot, y)}
+              onMobileDragTouchStart={(y, immediate) => handleMobileDragTouchStart(timeSlot, y, immediate)}
               onMobileDragTouchMove={handleMobileDragTouchMove}
               onMobileDragTouchEnd={handleMobileDragTouchEnd}
             />

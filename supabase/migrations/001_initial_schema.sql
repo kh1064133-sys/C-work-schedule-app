@@ -51,6 +51,7 @@ create table if not exists schedules (
   payment_method text check (payment_method in ('cash', 'card', 'vat')),
   is_done boolean default false,
   is_reserved boolean default false,
+  event_icon text check (event_icon in ('golf', 'birthday', 'meeting')),
   sort_order integer default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),

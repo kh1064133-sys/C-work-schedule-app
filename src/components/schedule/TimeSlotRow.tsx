@@ -5,7 +5,7 @@ import { GripVertical, Check, Calendar, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatCurrencyInput } from '@/lib/utils/format';
-import type { Schedule, ScheduleType, PaymentMethod, Client, Item } from '@/types';
+import type { Schedule, ScheduleType, PaymentMethod, EventIcon, Client, Item } from '@/types';
 
 interface TimeSlotRowProps {
   timeSlot: string;
@@ -31,8 +31,7 @@ interface TimeSlotRowProps {
   // 모바일 터치 드래그
   isMobileDragging?: boolean;
   isMobileDragOver?: boolean;
-  registerRowRef?: (timeSlot: string, el: HTMLDivElement | null) => void;
-  onMobileDragTouchStart?: (y: number) => void;
+  onMobileDragTouchStart?: (y: number, immediate?: boolean) => void;
   onMobileDragTouchMove?: (y: number) => void;
   onMobileDragTouchEnd?: () => void;
   // 변경사항 감지 콜백
@@ -57,6 +56,12 @@ const PAYMENT_METHODS = [
   { value: 'free', label: '무상' },
 ];
 
+const EVENT_ICONS: { value: EventIcon; label: string; emoji: string }[] = [
+  { value: 'golf', label: '골프', emoji: '⛳' },
+  { value: 'birthday', label: '생일', emoji: '🎂' },
+  { value: 'meeting', label: '미팅', emoji: '🤝' },
+];
+
 export function TimeSlotRow({
   timeSlot,
   schedule,
@@ -78,7 +83,6 @@ export function TimeSlotRow({
   onPasteSchedule,
   isMobileDragging = false,
   isMobileDragOver = false,
-  registerRowRef,
   onMobileDragTouchStart,
   onMobileDragTouchMove,
   onMobileDragTouchEnd,
@@ -109,6 +113,18 @@ export function TimeSlotRow({
   const clientMobileDropdownRef = useRef<HTMLDivElement>(null);
   const itemMobileDropdownRef = useRef<HTMLDivElement>(null);
   const onUpdateRef = useRef(onUpdate);
+
+  // 그립 핸들 ref (passive: false 터치 이벤트 등록용)
+  const pcGripRef = useRef<HTMLDivElement>(null);
+  const mobileGripRef = useRef<HTMLDivElement>(null);
+  const mobileDragTouchStartRef = useRef(onMobileDragTouchStart);
+  const mobileDragTouchMoveRef = useRef(onMobileDragTouchMove);
+  const mobileDragTouchEndRef = useRef(onMobileDragTouchEnd);
+  useEffect(() => {
+    mobileDragTouchStartRef.current = onMobileDragTouchStart;
+    mobileDragTouchMoveRef.current = onMobileDragTouchMove;
+    mobileDragTouchEndRef.current = onMobileDragTouchEnd;
+  });
 
   // schedule 값이 변경되면 로컬 상태 동기화
   useEffect(() => {
@@ -162,6 +178,38 @@ export function TimeSlotRow({
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // 그립 핸들: 네이티브 터치 이벤트 등록 (passive: false → preventDefault 가능)
+  useEffect(() => {
+    const grips = [pcGripRef.current, mobileGripRef.current].filter(Boolean) as HTMLElement[];
+    const onStart = (e: TouchEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      mobileDragTouchStartRef.current?.(e.touches[0].clientY, true);
+    };
+    const onMove = (e: TouchEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      mobileDragTouchMoveRef.current?.(e.touches[0].clientY);
+    };
+    const onEnd = (e: TouchEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      mobileDragTouchEndRef.current?.();
+    };
+    for (const el of grips) {
+      el.addEventListener('touchstart', onStart, { passive: false });
+      el.addEventListener('touchmove', onMove, { passive: false });
+      el.addEventListener('touchend', onEnd, { passive: false });
+    }
+    return () => {
+      for (const el of grips) {
+        el.removeEventListener('touchstart', onStart);
+        el.removeEventListener('touchmove', onMove);
+        el.removeEventListener('touchend', onEnd);
+      }
+    };
+  }, []);
 
   // 모바일 거래처 드롭다운: 네이티브 터치 이벤트 (passive: false)
   useEffect(() => {
@@ -256,8 +304,23 @@ export function TimeSlotRow({
 
   const isDone = schedule?.is_done || false;
   const isReserved = schedule?.is_reserved || false;
+  const eventIcon = schedule?.event_icon || null;
+  const [showEventPicker, setShowEventPicker] = useState(false);
+  const eventPickerRef = useRef<HTMLDivElement>(null);
   const hasTitle = (schedule?.title || '').trim() !== '';
   const isPending = hasTitle && !isDone;
+
+  // 이벤트 팝업 외부 클릭 닫기
+  useEffect(() => {
+    if (!showEventPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (eventPickerRef.current && !eventPickerRef.current.contains(e.target as Node)) {
+        setShowEventPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showEventPicker]);
 
   // 필터된 거래처 목록
   const filteredClients = clients.filter(c =>
@@ -283,13 +346,16 @@ export function TimeSlotRow({
     <>
       {/* 데스크탑 레이아웃 */}
       <div
+        data-timeslot={timeSlot}
         className={cn(
-          'hidden lg:grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_60px_70px] gap-2 px-3 py-2 border-b border-l-4 items-center transition-colors',
+          'hidden lg:grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px] gap-2 px-3 py-2 border-b border-l-4 items-center transition-colors',
           isPending && 'bg-red-50 border-l-red-500',
           isDone && 'bg-green-50 border-l-green-500',
           !isPending && !isDone && 'border-l-transparent hover:bg-gray-50',
           isDragging && 'opacity-40 bg-blue-100',
           isDragOver && 'border-t-2 border-t-primary bg-blue-50',
+          isMobileDragging && 'opacity-40 bg-blue-100',
+          isMobileDragOver && 'border-t-2 border-t-blue-500 bg-blue-50',
           isSelected && 'ring-2 ring-blue-500 ring-inset'
         )}
         onClick={() => onSelect?.()}
@@ -315,7 +381,12 @@ export function TimeSlotRow({
         }}
       >
         {/* 드래그 핸들 */}
-        <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-primary transition-colors flex justify-center">
+        <div
+          ref={pcGripRef}
+          data-grip
+          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-primary transition-colors flex justify-center"
+          style={{ touchAction: 'none' }}
+        >
           <GripVertical className="h-4 w-4" />
         </div>
 
@@ -347,6 +418,7 @@ export function TimeSlotRow({
                 payment_method: null as any,
                 is_done: false,
                 is_reserved: false,
+                event_icon: null,
               });
             }}
             title="초기화"
@@ -542,6 +614,52 @@ export function TimeSlotRow({
           ))}
         </select>
 
+        {/* 이벤트 아이콘 */}
+        <div className="relative flex justify-center" ref={eventPickerRef}>
+          <button
+            className={cn(
+              'w-8 h-8 rounded-md border text-base flex items-center justify-center transition-colors',
+              eventIcon ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50 text-gray-400'
+            )}
+            onClick={() => setShowEventPicker(!showEventPicker)}
+            title="이벤트"
+          >
+            {eventIcon ? EVENT_ICONS.find(e => e.value === eventIcon)?.emoji : '🏷️'}
+          </button>
+          {showEventPicker && (
+            <div className="absolute top-full mt-1 right-0 bg-white border rounded-lg shadow-lg z-50 p-1 flex gap-1">
+              {EVENT_ICONS.map((ev) => (
+                <button
+                  key={ev.value}
+                  className={cn(
+                    'w-9 h-9 rounded-md flex flex-col items-center justify-center text-xs transition-colors',
+                    eventIcon === ev.value ? 'bg-indigo-100 border border-indigo-400' : 'hover:bg-gray-100'
+                  )}
+                  onClick={() => {
+                    onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value } as any);
+                    setShowEventPicker(false);
+                  }}
+                  title={ev.label}
+                >
+                  <span className="text-base leading-none">{ev.emoji}</span>
+                </button>
+              ))}
+              {eventIcon && (
+                <button
+                  className="w-9 h-9 rounded-md flex items-center justify-center text-xs hover:bg-red-50 text-red-400"
+                  onClick={() => {
+                    onUpdate({ event_icon: null } as any);
+                    setShowEventPicker(false);
+                  }}
+                  title="제거"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* 예약 버튼 */}
         <Button
           variant={isReserved ? 'default' : 'outline'}
@@ -571,7 +689,7 @@ export function TimeSlotRow({
 
       {/* 모바일 카드 레이아웃 */}
       <div
-        ref={(el) => registerRowRef?.(timeSlot, el)}
+        data-timeslot={timeSlot}
         className={cn(
           'lg:hidden p-3 border-b border-l-4 transition-colors',
           isPending && 'bg-red-50 border-l-red-500',
@@ -618,28 +736,18 @@ export function TimeSlotRow({
           <div className="flex items-center gap-2">
             {/* 모바일 드래그 핸들 */}
             <div
+              ref={mobileGripRef}
+              data-grip
               style={{
-                padding: '6px 2px',
+                padding: '8px 4px',
                 cursor: 'grab',
                 touchAction: 'none',
                 color: '#9ca3af',
                 display: 'flex',
                 alignItems: 'center',
               }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                onMobileDragTouchStart?.(e.touches[0].clientY);
-              }}
-              onTouchMove={(e) => {
-                e.stopPropagation();
-                onMobileDragTouchMove?.(e.touches[0].clientY);
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                onMobileDragTouchEnd?.();
-              }}
             >
-              <GripVertical style={{ width: '18px', height: '18px' }} />
+              <GripVertical style={{ width: '20px', height: '20px' }} />
             </div>
             <span className={cn(
               'font-bold text-lg',
@@ -667,6 +775,7 @@ export function TimeSlotRow({
                   payment_method: null as any,
                   is_done: false,
                   is_reserved: false,
+                  event_icon: null,
                 });
               }}
               title="초기화"
@@ -675,6 +784,51 @@ export function TimeSlotRow({
             </button>
           </div>
           <div className="flex gap-2">
+            {/* 이벤트 아이콘 - 모바일 */}
+            <div className="relative" ref={showEventPicker ? eventPickerRef : undefined}>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'text-xs h-8 px-2',
+                  eventIcon && 'border-indigo-300 bg-indigo-50'
+                )}
+                onClick={() => setShowEventPicker(!showEventPicker)}
+              >
+                {eventIcon ? EVENT_ICONS.find(e => e.value === eventIcon)?.emoji : '🏷️'}
+              </Button>
+              {showEventPicker && (
+                <div className="absolute top-full mt-1 right-0 bg-white border rounded-lg shadow-lg z-50 p-1 flex gap-1">
+                  {EVENT_ICONS.map((ev) => (
+                    <button
+                      key={ev.value}
+                      className={cn(
+                        'w-10 h-10 rounded-md flex flex-col items-center justify-center text-xs transition-colors',
+                        eventIcon === ev.value ? 'bg-indigo-100 border border-indigo-400' : 'hover:bg-gray-100'
+                      )}
+                      onClick={() => {
+                        onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value } as any);
+                        setShowEventPicker(false);
+                      }}
+                    >
+                      <span className="text-lg leading-none">{ev.emoji}</span>
+                      <span className="text-[10px] mt-0.5">{ev.label}</span>
+                    </button>
+                  ))}
+                  {eventIcon && (
+                    <button
+                      className="w-10 h-10 rounded-md flex items-center justify-center text-xs hover:bg-red-50 text-red-400"
+                      onClick={() => {
+                        onUpdate({ event_icon: null } as any);
+                        setShowEventPicker(false);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <Button
               variant={isReserved ? 'default' : 'outline'}
               size="sm"

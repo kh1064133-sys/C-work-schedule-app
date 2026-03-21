@@ -46,7 +46,7 @@ function formatShortDate(dateStr: string): string {
   return `${parseInt(m)}/${parseInt(d)}`;
 }
 
-const PAYMENT_METHODS = ['현금', '카드', '계좌이체', '기타'];
+const PAYMENT_METHODS = ['현금', '카드', '계좌이체', '무상', '기타'];
 
 function getRowBg(c: GroupBuyCustomer): string {
   if (c.deposited) return '#F0FDF4';
@@ -685,12 +685,19 @@ export function GroupBuyPage() {
                     </select>
                   </td>
                   <td className="px-2 py-1.5 text-center border-r text-xs">
-                    {c.amount ? c.amount.toLocaleString() : ''}
+                    {c.amount != null && c.amount !== 0 ? c.amount.toLocaleString() : c.amount === 0 ? '0' : ''}
                   </td>
                   <td className="px-1 py-1 border-r">
                     <select
                       value={c.paymentMethod}
-                      onChange={e => updateInline(c.id, 'paymentMethod', e.target.value)}
+                      onChange={e => {
+                        const v = e.target.value;
+                        if (v === '무상') {
+                          setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, paymentMethod: v, amount: 0 } : x));
+                        } else {
+                          updateInline(c.id, 'paymentMethod', v);
+                        }
+                      }}
                       className="w-full px-0 py-0.5 text-xs"
                     >
                       <option value="">선택</option>

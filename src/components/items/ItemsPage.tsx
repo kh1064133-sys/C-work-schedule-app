@@ -1,13 +1,11 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, ChevronLeft, ChevronRight, Image, Camera, FolderOpen } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, Image, Camera, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem } from '@/hooks/useItems';
 import { cn } from '@/lib/utils';
 import type { Item, ItemInput } from '@/types';
-
-const ITEMS_PER_PAGE = 10;
 
 export function ItemsPage() {
   const { data: items = [], isLoading } = useItems();
@@ -21,7 +19,6 @@ export function ItemsPage() {
 
   // 상태
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -38,13 +35,6 @@ export function ItemsPage() {
   const filteredItems = items.filter((item: Item) =>
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (item.memo || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // 페이지네이션
-  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
-  const paginatedItems = filteredItems.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
   );
 
   // 모달 열기 (등록)
@@ -156,7 +146,6 @@ export function ItemsPage() {
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1);
             }}
           />
         </div>
@@ -173,7 +162,7 @@ export function ItemsPage() {
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white rounded-lg border overflow-hidden overflow-x-auto -mx-2 sm:mx-0">
+      <div className="bg-white rounded-lg border overflow-hidden overflow-x-auto -mx-2 sm:mx-0 max-h-[calc(100vh-280px)] overflow-y-auto">
         <table className="w-full min-w-[500px]">
           <thead className="bg-gray-50 border-b">
             <tr className="text-xs sm:text-sm font-semibold text-gray-700">
@@ -191,14 +180,14 @@ export function ItemsPage() {
                   로딩 중...
                 </td>
               </tr>
-            ) : paginatedItems.length === 0 ? (
+            ) : filteredItems.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                   {searchTerm ? '검색 결과가 없습니다.' : '등록된 품목이 없습니다.'}
                 </td>
               </tr>
             ) : (
-              paginatedItems.map((item: Item) => (
+              filteredItems.map((item: Item) => (
                 <tr key={item.id} className="border-b hover:bg-gray-50">
                   <td className="px-2 sm:px-4 py-2 sm:py-3">
                     <div className="flex justify-center">
@@ -251,31 +240,6 @@ export function ItemsPage() {
           </tbody>
         </table>
       </div>
-
-      {/* 페이지네이션 */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-gray-600">
-            {currentPage} / {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
 
       {/* 모달 */}
       {isModalOpen && (

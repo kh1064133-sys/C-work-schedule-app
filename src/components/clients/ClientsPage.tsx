@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Building2, ChevronLeft, ChevronRight, MapPin, X, FileText } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Building2, MapPin, X, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
 import { cn } from '@/lib/utils';
@@ -48,8 +48,6 @@ const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   etc: '기타',
 };
 
-const ITEMS_PER_PAGE = 10;
-
 export function ClientsPage() {
   const { data: clients = [], isLoading } = useClients();
   const createClient = useCreateClient();
@@ -59,7 +57,6 @@ export function ClientsPage() {
   // 상태
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<ClientType | ''>('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -83,13 +80,6 @@ export function ClientsPage() {
     const matchesType = filterType === '' || client.type === filterType;
     return matchesSearch && matchesType;
   });
-
-  // 페이지네이션
-  const totalPages = Math.ceil(filteredClients.length / ITEMS_PER_PAGE);
-  const paginatedClients = filteredClients.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
 
   // 모달 열기 (등록)
   const handleOpenAdd = () => {
@@ -215,7 +205,6 @@ export function ClientsPage() {
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1);
             }}
           />
         </div>
@@ -224,7 +213,6 @@ export function ClientsPage() {
           value={filterType}
           onChange={(e) => {
             setFilterType(e.target.value as ClientType | '');
-            setCurrentPage(1);
           }}
         >
           {CLIENT_TYPES.map((type) => (
@@ -244,16 +232,16 @@ export function ClientsPage() {
       </div>
 
       {/* 테이블 */}
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '4px', margin: '0 0 16px 0' }}>
+      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '4px', margin: '0 0 16px 0', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
         {isLoading ? (
           <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>로딩 중...</div>
-        ) : paginatedClients.length === 0 ? (
+        ) : filteredClients.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
             {searchTerm || filterType ? '검색 결과가 없습니다.' : '등록된 거래처가 없습니다.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {paginatedClients.map((client: Client) => (
+            {filteredClients.map((client: Client) => (
               <div key={client.id} style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -364,31 +352,6 @@ export function ClientsPage() {
           </div>
         )}
       </div>
-
-      {/* 페이지네이션 */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-gray-600">
-            {currentPage} / {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
 
       {/* 모달 */}
       {isModalOpen && (

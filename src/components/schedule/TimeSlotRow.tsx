@@ -605,8 +605,13 @@ export function TimeSlotRow({
           )}
           value={paymentMethodValue}
           onChange={(e) => {
-            setPaymentMethodValue(e.target.value);
-            onUpdate({ payment_method: e.target.value as PaymentMethod });
+            const v = e.target.value;
+            setPaymentMethodValue(v);
+            if (v === 'free') {
+              onUpdate({ payment_method: v as PaymentMethod, amount: 0 });
+            } else {
+              onUpdate({ payment_method: v as PaymentMethod });
+            }
           }}
         >
           {PAYMENT_METHODS.map((method) => (
@@ -1032,8 +1037,13 @@ export function TimeSlotRow({
               )}
               value={paymentMethodValue}
               onChange={(e) => {
-                setPaymentMethodValue(e.target.value);
-                onUpdate({ payment_method: e.target.value as PaymentMethod });
+                const v = e.target.value;
+                setPaymentMethodValue(v);
+                if (v === 'free') {
+                  onUpdate({ payment_method: v as PaymentMethod, amount: 0 });
+                } else {
+                  onUpdate({ payment_method: v as PaymentMethod });
+                }
               }}
             >
               {PAYMENT_METHODS.map((method) => (

@@ -1298,12 +1298,18 @@ export function GroupBuyPage() {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setShowResetConfirm(false)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>취소</button>
-              <button onClick={() => {
+              <button onClick={async () => {
                 customers.forEach(c => deleteCustomerMutation.mutate(c.id));
                 setCustomers([]);
                 saveCustomers([]);
                 setCurrentPage(1);
                 setShowResetConfirm(false);
+                // web_reservations 테이블도 초기화
+                try {
+                  const { createClient } = await import('@/lib/supabase/client');
+                  const supabase = createClient();
+                  await supabase.from('web_reservations').delete().neq('id', 0);
+                } catch {}
               }} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#EF4444', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#fff' }}>초기화</button>
             </div>
           </div>

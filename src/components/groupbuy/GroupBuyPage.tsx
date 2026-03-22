@@ -792,6 +792,7 @@ function exportToExcel(customers: GroupBuyCustomer[]) {
 
 const RESERVE_URL_KEY = 'reserve-base-url';
 const RESERVE_DATES_KEY = 'reserve-dates';
+const RESERVE_SENDER_KEY = 'reserve-sender-phone';
 
 function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCustomer[]; onClose: () => void }) {
   const list = customers.filter(c => c.contact && c.ho);
@@ -802,12 +803,17 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
     return arr.length > 0 ? arr : [''];
   });
   const [copied, setCopied] = useState('');
+  const [sender, setSender] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem(RESERVE_SENDER_KEY) : '') || '');
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ ok: number; fail: number } | null>(null);
 
   const dates = dateSlots.filter(Boolean).join(',');
   useEffect(() => { if (url) localStorage.setItem(RESERVE_URL_KEY, url); }, [url]);
   useEffect(() => { localStorage.setItem(RESERVE_DATES_KEY, dates); }, [dates]);
+  useEffect(() => { if (sender) localStorage.setItem(RESERVE_SENDER_KEY, sender); }, [sender]);
 
   const ok = /^https:\/\/.+/.test(url.trim()) && dates.length > 0;
+  const bulkOk = ok && sender.replace(/-/g, '').length >= 10;
 
   const setDateAt = (i: number, v: string) => setDateSlots(prev => prev.map((d, idx) => idx === i ? v : d));
   const addDateSlot = () => setDateSlots(prev => [...prev, '']);
@@ -833,6 +839,39 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
     setCopied(c.id); setTimeout(() => setCopied(''), 1200);
   };
 
+  const bulkSend = async () => {
+    if (!bulkOk || bulkSending || list.length === 0) return;
+    setBulkSending(true);
+    setBulkResult(null);
+    try {
+      const messages = list.map(c => {
+        const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
+        return {
+          to: c.contact,
+          from: sender,
+          text: `[${room}] 설치 예약 안내\n아래 링크에서 희망 시간을 선택해주세요.\n${link(c)}`,
+        };
+      });
+      const apiBase = url.replace(/\/+$/, '');
+      const res = await fetch(`${apiBase}/api/send-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+      });
+      const data = await res.json();
+      if (res.ok && data.groupInfo) {
+        const info = data.groupInfo;
+        setBulkResult({ ok: info.count?.total || list.length, fail: info.count?.registeredFailed || 0 });
+      } else {
+        setBulkResult({ ok: 0, fail: list.length });
+      }
+    } catch {
+      setBulkResult({ ok: 0, fail: list.length });
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
       <div style={{ background: '#fff', borderRadius: '14px 14px 0 0', width: '100%', maxWidth: 440, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
@@ -847,6 +886,22 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f3f3', fontSize: 13 }}>
           {!ok && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>⚠️ URL(https://)과 날짜를 모두 입력하세요</div>}
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://배포주소.vercel.app" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, marginBottom: 6, boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, color: '#555', fontWeight: 600, marginBottom: 4 }}>발신번호</div>
+              <input value={sender} onChange={e => setSender(e.target.value)} placeholder="010-1234-5678" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button onClick={bulkSend} disabled={!bulkOk || bulkSending || list.length === 0} style={{ padding: '7px 14px', borderRadius: 6, border: 'none', background: bulkOk && !bulkSending ? '#10B981' : '#ddd', color: '#fff', fontSize: 13, fontWeight: 700, cursor: bulkOk && !bulkSending ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
+                {bulkSending ? '발송중...' : `일괄발송 (${list.length}명)`}
+              </button>
+            </div>
+          </div>
+          {bulkResult && (
+            <div style={{ padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 6, background: bulkResult.fail === 0 ? '#DCFCE7' : '#FEF2F2', color: bulkResult.fail === 0 ? '#16A34A' : '#DC2626' }}>
+              {bulkResult.fail === 0 ? `✅ ${bulkResult.ok}건 발송 완료` : `⚠️ 성공 ${bulkResult.ok}건 / 실패 ${bulkResult.fail}건`}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: '#555', fontWeight: 600, marginBottom: 4 }}>예약년월일</div>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {dateSlots.map((d, i) => (

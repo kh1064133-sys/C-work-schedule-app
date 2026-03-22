@@ -796,17 +796,24 @@ const RESERVE_DATES_KEY = 'reserve-dates';
 function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCustomer[]; onClose: () => void }) {
   const list = customers.filter(c => c.contact && c.ho);
   const [url, setUrl] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem(RESERVE_URL_KEY) : '') || '');
-  const [dates, setDates] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem(RESERVE_DATES_KEY) : '') || '');
+  const [dateSlots, setDateSlots] = useState<string[]>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem(RESERVE_DATES_KEY) : '';
+    const arr = saved ? saved.split(',').filter(Boolean) : [];
+    return [...arr, ...Array(5 - arr.length).fill('')].slice(0, 5);
+  });
   const [copied, setCopied] = useState('');
 
+  const dates = dateSlots.filter(Boolean).join(',');
   useEffect(() => { if (url) localStorage.setItem(RESERVE_URL_KEY, url); }, [url]);
-  useEffect(() => { if (dates) localStorage.setItem(RESERVE_DATES_KEY, dates); }, [dates]);
+  useEffect(() => { localStorage.setItem(RESERVE_DATES_KEY, dates); }, [dates]);
 
-  const ok = /^https:\/\/.+/.test(url.trim()) && dates.trim().length > 0;
+  const ok = /^https:\/\/.+/.test(url.trim()) && dates.length > 0;
+
+  const setDateAt = (i: number, v: string) => setDateSlots(prev => prev.map((d, idx) => idx === i ? v : d));
 
   const link = (c: GroupBuyCustomer) => {
     const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
-    return `${url.replace(/\/+$/, '')}/reserve.html?d=${room}~${c.contact}~${dates.trim()}`;
+    return `${url.replace(/\/+$/, '')}/reserve.html?d=${room}~${c.contact}~${dates}`;
   };
 
   const send = (c: GroupBuyCustomer) => {
@@ -838,7 +845,30 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f3f3', fontSize: 13 }}>
           {!ok && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>⚠️ URL(https://)과 날짜를 모두 입력하세요</div>}
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://배포주소.vercel.app" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, marginBottom: 6, boxSizing: 'border-box' }} />
-          <input value={dates} onChange={e => setDates(e.target.value)} placeholder="날짜: 2026-03-24,2026-03-25" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+          <div style={{ fontSize: 12, color: '#555', fontWeight: 600, marginBottom: 4 }}>예약년월일</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {dateSlots.map((d, i) => (
+              <div key={i} style={{ flex: 1, position: 'relative' }}>
+                <div
+                  onClick={() => {
+                    const inp = document.getElementById(`date-slot-${i}`) as HTMLInputElement;
+                    inp?.showPicker?.();
+                    inp?.click();
+                  }}
+                  style={{ padding: '7px 2px', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, textAlign: 'center', cursor: 'pointer', background: d ? '#EFF6FF' : '#fff', color: d ? '#1D4ED8' : '#aaa', fontWeight: d ? 700 : 400, minHeight: 18, lineHeight: '18px' }}
+                >
+                  {d ? (() => { const dt = new Date(d + 'T00:00:00'); const day = ['일','월','화','수','목','금','토'][dt.getDay()]; return `${d.slice(5,7)}/${d.slice(8,10)}(${day})`; })() : '선택'}
+                </div>
+                <input
+                  id={`date-slot-${i}`}
+                  type="date"
+                  value={d}
+                  onChange={e => setDateAt(i, e.target.value)}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                />
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* 목록 */}

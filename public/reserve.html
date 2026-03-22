@@ -349,9 +349,20 @@
 
   // ===== URL 파라미터 =====
   const params = new URLSearchParams(window.location.search);
-  const room = params.get('room');
-  const phone = params.get('phone');
-  const datesParam = params.get('dates');
+  // 신규 방식: d=room|phone|dates (SMS &문자 잘림 방지)
+  const dParam = params.get('d');
+  let room, phone, datesParam;
+  if (dParam) {
+    const parts = dParam.split('|');
+    room = parts[0] || null;
+    phone = parts[1] || null;
+    datesParam = parts[2] || null;
+  } else {
+    // 구형 호환
+    room = params.get('room');
+    phone = params.get('phone');
+    datesParam = params.get('dates');
+  }
 
   // ===== DOM =====
   const $loading = document.getElementById('loadingView');

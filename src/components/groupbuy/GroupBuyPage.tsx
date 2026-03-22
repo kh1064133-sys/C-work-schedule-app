@@ -799,7 +799,7 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
   const [dateSlots, setDateSlots] = useState<string[]>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem(RESERVE_DATES_KEY) : '';
     const arr = saved ? saved.split(',').filter(Boolean) : [];
-    return [...arr, ...Array(5 - arr.length).fill('')].slice(0, 5);
+    return arr.length > 0 ? arr : [''];
   });
   const [copied, setCopied] = useState('');
 
@@ -810,6 +810,8 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
   const ok = /^https:\/\/.+/.test(url.trim()) && dates.length > 0;
 
   const setDateAt = (i: number, v: string) => setDateSlots(prev => prev.map((d, idx) => idx === i ? v : d));
+  const addDateSlot = () => setDateSlots(prev => [...prev, '']);
+  const removeDateSlot = (i: number) => setDateSlots(prev => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i));
 
   const link = (c: GroupBuyCustomer) => {
     const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
@@ -846,10 +848,10 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
           {!ok && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>⚠️ URL(https://)과 날짜를 모두 입력하세요</div>}
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://배포주소.vercel.app" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, marginBottom: 6, boxSizing: 'border-box' }} />
           <div style={{ fontSize: 12, color: '#555', fontWeight: 600, marginBottom: 4 }}>예약년월일</div>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {dateSlots.map((d, i) => (
-              <div key={i} style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 6, border: '1px solid #ddd', background: d ? '#EFF6FF' : '#fff' }}>
-                <div style={{ padding: '7px 2px', fontSize: 11, textAlign: 'center', color: d ? '#1D4ED8' : '#aaa', fontWeight: d ? 700 : 400, minHeight: 18, lineHeight: '18px', pointerEvents: 'none' }}>
+              <div key={i} style={{ position: 'relative', overflow: 'hidden', borderRadius: 6, border: '1px solid #ddd', background: d ? '#EFF6FF' : '#fff', minWidth: 62 }}>
+                <div style={{ padding: '7px 4px', fontSize: 11, textAlign: 'center', color: d ? '#1D4ED8' : '#aaa', fontWeight: d ? 700 : 400, minHeight: 18, lineHeight: '18px', pointerEvents: 'none', paddingRight: d ? 18 : 4 }}>
                   {d ? (() => { const dt = new Date(d + 'T00:00:00'); const day = ['일','월','화','수','목','금','토'][dt.getDay()]; return `${d.slice(5,7)}/${d.slice(8,10)}(${day})`; })() : '선택'}
                 </div>
                 <input
@@ -858,8 +860,12 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
                   onChange={e => setDateAt(i, e.target.value)}
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.01, cursor: 'pointer', zIndex: 1 }}
                 />
+                {d && dateSlots.length > 1 && (
+                  <button onClick={() => removeDateSlot(i)} style={{ position: 'absolute', top: 1, right: 1, background: 'none', border: 'none', color: '#999', fontSize: 13, cursor: 'pointer', zIndex: 2, padding: '0 3px', lineHeight: '18px' }}>✕</button>
+                )}
               </div>
             ))}
+            <button onClick={addDateSlot} style={{ width: 32, height: 32, borderRadius: 6, border: '1px dashed #bbb', background: '#fff', fontSize: 18, color: '#3B82F6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>+</button>
           </div>
         </div>
 

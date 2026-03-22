@@ -124,6 +124,10 @@
     color: var(--gray-900);
     transition: all 0.15s;
     -webkit-tap-highlight-color: transparent;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .time-btn:active { transform: scale(0.96); }
   .time-btn.selected {
@@ -145,6 +149,9 @@
     font-weight: 500;
     color: var(--red);
     margin-top: 2px;
+  }
+  .time-btn.lunch::after {
+    content: none;
   }
 
   /* 선택 요약 */
@@ -482,14 +489,14 @@
     $timeGrid.innerHTML = '';
     const bookedSet = reservedSlots[dateStr] || new Set();
 
-    for (let h = 9; h <= 18; h++) {
+    for (let h = 9; h <= 17; h++) {
       const timeStr = String(h).padStart(2, '0') + ':00';
       const btn = document.createElement('button');
       btn.className = 'time-btn';
 
       if (h === 12) {
         btn.textContent = '12:00 점심';
-        btn.classList.add('disabled');
+        btn.classList.add('disabled', 'lunch');
       } else if (bookedSet.has(timeStr)) {
         btn.textContent = timeStr;
         btn.classList.add('disabled');

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, Link2 } from 'lucide-react';
+import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, Link2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems } from '@/hooks/useItems';
 import { useGroupBuyCustomers, useBatchUpsertGroupBuy, useDeleteGroupBuyCustomer, GroupBuyCustomerDB } from '@/hooks/useGroupBuy';
@@ -869,6 +869,7 @@ export function GroupBuyPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const { data: items = [] } = useItems();
   const [showReservationModal, setShowReservationModal] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedCustomerId(prev => prev === id ? null : id);
@@ -1052,6 +1053,16 @@ export function GroupBuyPage() {
           <Button variant="outline" size="sm" onClick={addEmptyRow} className="gap-1">
             <Plus className="h-4 w-4" />
             리스트추가
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowResetConfirm(true)}
+            className="gap-1"
+            style={{ borderColor: '#FCA5A5', color: '#DC2626' }}
+          >
+            <RotateCcw className="h-4 w-4" />
+            초기화
           </Button>
         </div>
       </div>
@@ -1271,6 +1282,29 @@ export function GroupBuyPage() {
       {/* 예약링크 발송 모달 */}
       {showReservationModal && (
         <ReservationLinkModal customers={customers} onClose={() => setShowReservationModal(false)} />
+      )}
+
+      {/* 초기화 확인 팝업 */}
+      {showResetConfirm && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowResetConfirm(false)}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '28px 24px', maxWidth: 340, width: '90%', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, color: '#1F2937' }}>고객 목록 초기화</div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20, lineHeight: 1.5 }}>
+              전체 고객 목록이 삭제됩니다.<br />이 작업은 되돌릴 수 없습니다.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowResetConfirm(false)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #D1D5DB', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>취소</button>
+              <button onClick={() => {
+                customers.forEach(c => deleteCustomerMutation.mutate(c.id));
+                setCustomers([]);
+                saveCustomers([]);
+                setCurrentPage(1);
+                setShowResetConfirm(false);
+              }} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#EF4444', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#fff' }}>초기화</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

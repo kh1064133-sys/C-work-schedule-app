@@ -1308,7 +1308,7 @@ export function GroupBuyPage() {
                 try {
                   const { createClient } = await import('@/lib/supabase/client');
                   const supabase = createClient();
-                  await supabase.from('web_reservations').delete().neq('id', 0);
+                  await supabase.from('web_reservations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
                 } catch {}
               }} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#EF4444', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#fff' }}>초기화</button>
             </div>

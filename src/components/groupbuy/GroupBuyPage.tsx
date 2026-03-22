@@ -848,23 +848,15 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
           <div style={{ fontSize: 12, color: '#555', fontWeight: 600, marginBottom: 4 }}>예약년월일</div>
           <div style={{ display: 'flex', gap: 4 }}>
             {dateSlots.map((d, i) => (
-              <div key={i} style={{ flex: 1, position: 'relative' }}>
-                <div
-                  onClick={() => {
-                    const inp = document.getElementById(`date-slot-${i}`) as HTMLInputElement;
-                    inp?.showPicker?.();
-                    inp?.click();
-                  }}
-                  style={{ padding: '7px 2px', border: '1px solid #ddd', borderRadius: 6, fontSize: 11, textAlign: 'center', cursor: 'pointer', background: d ? '#EFF6FF' : '#fff', color: d ? '#1D4ED8' : '#aaa', fontWeight: d ? 700 : 400, minHeight: 18, lineHeight: '18px' }}
-                >
+              <div key={i} style={{ flex: 1, position: 'relative', overflow: 'hidden', borderRadius: 6, border: '1px solid #ddd', background: d ? '#EFF6FF' : '#fff' }}>
+                <div style={{ padding: '7px 2px', fontSize: 11, textAlign: 'center', color: d ? '#1D4ED8' : '#aaa', fontWeight: d ? 700 : 400, minHeight: 18, lineHeight: '18px', pointerEvents: 'none' }}>
                   {d ? (() => { const dt = new Date(d + 'T00:00:00'); const day = ['일','월','화','수','목','금','토'][dt.getDay()]; return `${d.slice(5,7)}/${d.slice(8,10)}(${day})`; })() : '선택'}
                 </div>
                 <input
-                  id={`date-slot-${i}`}
                   type="date"
                   value={d}
                   onChange={e => setDateAt(i, e.target.value)}
-                  style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.01, cursor: 'pointer', zIndex: 1 }}
                 />
               </div>
             ))}

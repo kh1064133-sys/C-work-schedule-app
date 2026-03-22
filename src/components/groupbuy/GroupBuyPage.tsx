@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems } from '@/hooks/useItems';
 import { useGroupBuyCustomers, useBatchUpsertGroupBuy, useDeleteGroupBuyCustomer, GroupBuyCustomerDB } from '@/hooks/useGroupBuy';
@@ -55,8 +55,155 @@ function getRowBg(c: GroupBuyCustomer): string {
   return 'white';
 }
 
+import { useSmsTemplates, useUpsertSmsTemplate } from '@/hooks/useSmsTemplates';
+import { useSmsSentStatusAll, useMarkSmsSent, isSent } from '@/hooks/useSmsSentStatus';
+
+const DEFAULT_SMS_TEMPLATES: Record<number, string> = {
+  1: '안녕하세요. {호수} 고객님, 설치 일정 안내드립니다. 설치일: {날짜} {시간}. 문의사항은 연락주세요.',
+  2: '{호수} 고객님, 설치 예정일 {날짜} {시간} 입니다. 확인 부탁드립니다.',
+  3: '{호수} 고객님, 내일 {시간} 설치 예정입니다. 참고 부탁드립니다.',
+  4: '{호수} 고객님, 설치가 완료되었습니다. 감사합니다.',
+};
+
+function applyPlaceholders(template: string, hosu: string, date: string, time: string) {
+  return template
+    .replace('{호수}', hosu)
+    .replace('{날짜}', date)
+    .replace('{시간}', time);
+}
+
+function SmsModal({ customer, smsNum, onClose, onSent }: { customer: GroupBuyCustomer; smsNum: number; onClose: () => void; onSent: () => void }) {
+  const hosu = customer.dong && customer.ho ? `${customer.dong}-${customer.ho}` : customer.ho || customer.dong || '';
+  const dateStr = customer.installDate ? formatDate(customer.installDate) : '';
+  const timeStr = customer.time || '';
+
+  const { data: templates = [], isLoading: templatesLoading } = useSmsTemplates();
+  const upsertTemplate = useUpsertSmsTemplate();
+
+  const savedTemplate = templates.find(t => t.sms_num === smsNum);
+  const initialText = applyPlaceholders(
+    savedTemplate?.template_text || DEFAULT_SMS_TEMPLATES[smsNum] || '',
+    hosu, dateStr, timeStr
+  );
+
+  const [smsText, setSmsText] = useState(initialText);
+  const [initialized, setInitialized] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 서버에서 템플릿 로드 후 텍스트 업데이트
+  useEffect(() => {
+    if (!templatesLoading && !initialized) {
+      const sv = templates.find(t => t.sms_num === smsNum);
+      if (sv) {
+        setSmsText(applyPlaceholders(sv.template_text, hosu, dateStr, timeStr));
+      }
+      setInitialized(true);
+    }
+  }, [templatesLoading, initialized, templates, smsNum, hosu, dateStr, timeStr]);
+
+  const charCount = smsText.length;
+  const isLong = charCount > 90;
+
+  const handleChange = (val: string) => {
+    setSmsText(val);
+    // 디바운스: 500ms 후 Supabase에 자동저장 (공통 템플릿)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const templateText = val
+        .replace(hosu, '{호수}')
+        .replace(dateStr, '{날짜}')
+        .replace(timeStr, '{시간}');
+      upsertTemplate.mutate({
+        sms_num: smsNum,
+        template_text: templateText,
+      });
+    }, 500);
+  };
+
+  const handleSend = () => {
+    const encoded = encodeURIComponent(smsText);
+    window.location.href = `sms:${customer.contact}?body=${encoded}`;
+    onSent();
+    onClose();
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '95%', maxWidth: 420, padding: 20, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>📩 문자 {smsNum} 발송</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#999' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <div style={{ flex: 1, background: '#F0F9FF', borderRadius: 8, padding: '8px 12px' }}>
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 2 }}>호수</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{hosu || '-'}</div>
+          </div>
+          <div style={{ flex: 1, background: '#F0F9FF', borderRadius: 8, padding: '8px 12px' }}>
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 2 }}>연락처</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{customer.contact || '-'}</div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <textarea
+            value={smsText}
+            onChange={e => handleChange(e.target.value)}
+            rows={5}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              border: `2px solid ${isLong ? '#EF4444' : '#D1D5DB'}`,
+              borderRadius: 10,
+              fontSize: 14,
+              lineHeight: 1.5,
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={e => { if (!isLong) e.target.style.borderColor = '#3B82F6'; }}
+            onBlur={e => { if (!isLong) e.target.style.borderColor = '#D1D5DB'; }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <span style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: isLong ? '#EF4444' : '#6B7280',
+          }}>
+            {charCount}자 / 90자
+            {isLong && <span style={{ marginLeft: 6, color: '#EF4444', fontWeight: 700 }}>⚠ 장문(LMS)</span>}
+          </span>
+          <span style={{ fontSize: 11, color: '#9CA3AF' }}>자동저장됨</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid #D1D5DB', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#374151' }}
+          >취소</button>
+          <button
+            onClick={handleSend}
+            disabled={!customer.contact}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: '#3B82F6', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#fff', opacity: customer.contact ? 1 : 0.4 }}
+          >문자 보내기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: GroupBuyCustomer[]; selectedId: string | null; onSelect: (id: string) => void }) {
   const [page, setPage] = useState(1);
+  const [smsTarget, setSmsTarget] = useState<{ customer: GroupBuyCustomer; num: number } | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [bulkSmsNum, setBulkSmsNum] = useState<number | null>(null);
+  const { data: sentStatusList = [] } = useSmsSentStatusAll();
+  const markSmsSent = useMarkSmsSent();
+  const { data: templates = [] } = useSmsTemplates();
   const PER_PAGE = 10;
 
   const sorted = [...customers]
@@ -83,19 +230,106 @@ function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: Gr
   const startIdx = (safePage - 1) * PER_PAGE;
   let prevDate = startIdx > 0 ? sorted[startIdx - 1]?.installDate || '' : '';
 
+  // 체크박스 헬퍼
+  const pagedWithContact = paged.filter(c => c.contact);
+  const allChecked = pagedWithContact.length > 0 && pagedWithContact.every(c => checkedIds.has(c.id));
+  const toggleAll = () => {
+    if (allChecked) {
+      const next = new Set(checkedIds);
+      pagedWithContact.forEach(c => next.delete(c.id));
+      setCheckedIds(next);
+    } else {
+      const next = new Set(checkedIds);
+      pagedWithContact.forEach(c => next.add(c.id));
+      setCheckedIds(next);
+    }
+  };
+  const toggleOne = (id: string) => {
+    const next = new Set(checkedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setCheckedIds(next);
+  };
+
+  // 단체발송
+  const checkedCustomers = sorted.filter(c => checkedIds.has(c.id) && c.contact);
+
+  const handleBulkSend = (smsNum: number) => {
+    if (checkedCustomers.length === 0) return;
+    const savedTpl = templates.find(t => t.sms_num === smsNum);
+    const tplText = savedTpl?.template_text || DEFAULT_SMS_TEMPLATES[smsNum] || '';
+    const contacts = checkedCustomers.map(c => c.contact).join(',');
+    // 단체발송 시 플레이스홀더를 일반 안내문으로 변환
+    const bodyText = tplText
+      .replace('{호수}', '고객')
+      .replace('{날짜}', '')
+      .replace('{시간}', '');
+    const encoded = encodeURIComponent(bodyText);
+    // 발송상태 기록
+    checkedCustomers.forEach(c => {
+      markSmsSent.mutate({ customer_id: c.id, sms_num: smsNum });
+    });
+    window.location.href = `sms:${contacts}?body=${encoded}`;
+    setBulkSmsNum(null);
+  };
+
   return (
     <div style={{ marginTop: 24 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>일별 설치일정</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 'bold', margin: 0 }}>일별 설치일정</h2>
+        {checkedCustomers.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setBulkSmsNum(bulkSmsNum ? null : 0)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '6px 14px', borderRadius: 8,
+                border: 'none', background: '#3B82F6', color: '#fff',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              📩 단체발송 ({checkedCustomers.length}명)
+            </button>
+            {bulkSmsNum === 0 && (
+              <div style={{
+                position: 'absolute', right: 0, top: '110%', zIndex: 50,
+                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 8, minWidth: 140,
+              }}>
+                <div style={{ fontSize: 12, color: '#6B7280', padding: '4px 8px', fontWeight: 600 }}>문자 선택</div>
+                {[1, 2, 3, 4].map(num => (
+                  <button
+                    key={num}
+                    onClick={() => handleBulkSend(num)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '8px 12px', border: 'none', background: 'transparent',
+                      fontSize: 14, cursor: 'pointer', borderRadius: 6,
+                    }}
+                    onMouseEnter={e => (e.target as HTMLElement).style.background = '#F0F9FF'}
+                    onMouseLeave={e => (e.target as HTMLElement).style.background = 'transparent'}
+                  >
+                    문자 {num} 발송
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div style={{ overflowX: 'auto', border: '1px solid #ddd', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ background: '#1E3A8A', color: '#fff' }}>
-              <th style={{ width: 40, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>순번</th>
+              <th style={{ width: 32, padding: '8px 2px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>
+                <input type="checkbox" checked={allChecked} onChange={toggleAll} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#60A5FA' }} />
+              </th>
+              <th style={{ width: 36, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>순</th>
               <th style={{ width: 70, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>날짜</th>
               <th style={{ width: 40, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>요일</th>
               <th style={{ width: 70, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>시간</th>
               <th style={{ width: 60, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>호수</th>
-              <th style={{ width: 120, padding: '8px 4px', textAlign: 'center' }}>연락처</th>
+              <th style={{ width: 100, padding: '8px 4px', textAlign: 'center', borderRight: '1px solid #3B5998' }}>연락처</th>
+              <th style={{ width: 110, padding: '8px 4px', textAlign: 'center' }}>문자</th>
             </tr>
           </thead>
           <tbody>
@@ -116,6 +350,17 @@ function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: Gr
                   borderTop: showBorderTop ? '2px solid #CBD5E1' : '1px solid #E5E7EB',
                   cursor: 'pointer',
                 }}>
+                  <td style={{ textAlign: 'center', borderRight: '1px solid #E5E7EB', padding: '2px' }}>
+                    {c.contact ? (
+                      <input
+                        type="checkbox"
+                        checked={checkedIds.has(c.id)}
+                        onChange={e => { e.stopPropagation(); toggleOne(c.id); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#3B82F6' }}
+                      />
+                    ) : null}
+                  </td>
                   <td style={{ textAlign: 'center', borderRight: '1px solid #E5E7EB', padding: '4px' }}>{seq}</td>
                   <td style={{ textAlign: 'center', borderRight: '1px solid #E5E7EB', padding: '4px', fontWeight: isNewDate ? 600 : 400 }}>
                     {isNewDate ? formatShortDate(c.installDate) : ''}
@@ -127,7 +372,7 @@ function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: Gr
                   <td style={{ textAlign: 'center', borderRight: '1px solid #E5E7EB', padding: '4px' }}>
                     {c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho || c.dong}
                   </td>
-                  <td style={{ textAlign: 'center', padding: '4px' }}>
+                  <td style={{ textAlign: 'center', padding: '4px', borderRight: '1px solid #E5E7EB' }}>
                     {c.contact ? (
                       <a href={`tel:${c.contact}`} style={{
                         color: '#2563EB',
@@ -139,6 +384,44 @@ function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: Gr
                       }}>
                         📞 {c.contact}
                       </a>
+                    ) : ''}
+                  </td>
+                  <td style={{ textAlign: 'center', padding: '2px 4px' }}>
+                    {c.contact ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: 3 }}>
+                        {[1, 2, 3, 4].map(num => {
+                          const sent = isSent(sentStatusList, c.id, num);
+                          return (
+                          <button
+                            key={num}
+                            onClick={e => { e.stopPropagation(); setSmsTarget({ customer: c, num }); }}
+                            title={`문자 ${num} ${sent ? '(발송완료)' : '발송'}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 24,
+                              height: 24,
+                              background: sent ? '#DCFCE7' : '#DBEAFE',
+                              borderRadius: 6,
+                              textDecoration: 'none',
+                              cursor: 'pointer',
+                              border: sent ? '1px solid #86EFAC' : 'none',
+                              padding: 0,
+                            }}
+                          >
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                              <path d="M4 4h16c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H7l-4 3V6c0-1.1.9-2 2-2z" fill={sent ? '#4ADE80' : '#60A5FA'} stroke={sent ? '#22C55E' : '#3B82F6'} strokeWidth="1"/>
+                              {sent ? (
+                                <path d="M9 12l2 2 4-4" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                              ) : (
+                                <text x="12" y="14" textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize="10" fontWeight="bold">{num}</text>
+                              )}
+                            </svg>
+                          </button>
+                          );
+                        })}
+                      </div>
                     ) : ''}
                   </td>
                 </tr>
@@ -160,6 +443,7 @@ function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: Gr
           </div>
         </div>
       )}
+      {smsTarget && <SmsModal customer={smsTarget.customer} smsNum={smsTarget.num} onClose={() => setSmsTarget(null)} onSent={() => markSmsSent.mutate({ customer_id: smsTarget.customer.id, sms_num: smsTarget.num })} />}
     </div>
   );
 }
@@ -449,11 +733,85 @@ function exportToExcel(customers: GroupBuyCustomer[]) {
   XLSX.writeFile(wb, `공동구매_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
+const RESERVE_URL_KEY = 'reserve-base-url';
+const RESERVE_DATES_KEY = 'reserve-dates';
+
+function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCustomer[]; onClose: () => void }) {
+  const list = customers.filter(c => c.contact && c.ho);
+  const [url, setUrl] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem(RESERVE_URL_KEY) : '') || '');
+  const [dates, setDates] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem(RESERVE_DATES_KEY) : '') || '');
+  const [copied, setCopied] = useState('');
+
+  useEffect(() => { if (url) localStorage.setItem(RESERVE_URL_KEY, url); }, [url]);
+  useEffect(() => { if (dates) localStorage.setItem(RESERVE_DATES_KEY, dates); }, [dates]);
+
+  const ok = /^https:\/\/.+/.test(url.trim()) && dates.trim().length > 0;
+
+  const link = (c: GroupBuyCustomer) => {
+    const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
+    return `${url.replace(/\/+$/, '')}/reserve.html?room=${room}&phone=${c.contact}&dates=${dates.trim()}`;
+  };
+
+  const send = (c: GroupBuyCustomer) => {
+    const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
+    const body = `[${room}] 설치 예약 안내\n아래 링크에서 희망 시간을 선택해주세요.\n${link(c)}`;
+    window.location.href = `sms:${c.contact}?body=${encodeURIComponent(body)}`;
+  };
+
+  const copy = async (c: GroupBuyCustomer) => {
+    const text = link(c);
+    try { await navigator.clipboard.writeText(text); } catch {
+      const t = document.createElement('textarea'); t.value = text; t.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
+    }
+    setCopied(c.id); setTimeout(() => setCopied(''), 1200);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '14px 14px 0 0', width: '100%', maxWidth: 440, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+
+        {/* 헤더 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #eee' }}>
+          <b style={{ fontSize: 16 }}>🔗 예약링크 발송</b>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#888', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {/* 설정 */}
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f3f3', fontSize: 13 }}>
+          {!ok && <div style={{ background: '#FEF2F2', color: '#DC2626', padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>⚠️ URL(https://)과 날짜를 모두 입력하세요</div>}
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://배포주소.vercel.app" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, marginBottom: 6, boxSizing: 'border-box' }} />
+          <input value={dates} onChange={e => setDates(e.target.value)} placeholder="날짜: 2026-03-24,2026-03-25" style={{ width: '100%', padding: '7px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+        </div>
+
+        {/* 목록 */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+          {list.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>발송 대상이 없습니다</div>
+          ) : list.map(c => {
+            const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
+            return (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid #f5f5f5' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{room} <span style={{ fontWeight: 400, fontSize: 12, color: '#888' }}>{c.contact}</span></div>
+                </div>
+                <button onClick={() => send(c)} disabled={!ok} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: ok ? '#3B82F6' : '#ddd', color: '#fff', fontSize: 12, fontWeight: 600, cursor: ok ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>발송</button>
+                <button onClick={() => copy(c)} style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #ddd', background: copied === c.id ? '#DCFCE7' : '#fff', color: copied === c.id ? '#16A34A' : '#333', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>{copied === c.id ? '✓' : '복사'}</button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GroupBuyPage() {
   const [customers, setCustomers] = useState<GroupBuyCustomer[]>(loadCustomers);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const { data: items = [] } = useItems();
+  const [showReservationModal, setShowReservationModal] = useState(false);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedCustomerId(prev => prev === id ? null : id);
@@ -568,6 +926,22 @@ export function GroupBuyPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">공동구매 고객 목록</h2>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowReservationModal(true)}
+            className="gap-1"
+            style={{ background: '#EFF6FF', borderColor: '#93C5FD', color: '#1D4ED8' }}
+          >
+            <Link2 className="h-4 w-4" />
+            예약링크
+            <span style={{
+              background: '#3B82F6', color: '#fff', fontSize: 10,
+              padding: '1px 6px', borderRadius: 8, fontWeight: 700, marginLeft: 2,
+            }}>
+              {customers.filter(c => c.contact && c.ho).length}
+            </span>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => exportToExcel(customers)} className="gap-1">
             <Download className="h-4 w-4" />
             엑셀
@@ -791,6 +1165,10 @@ export function GroupBuyPage() {
       {/* 시간대별 설치일정 */}
       <TimeSlotScheduleTable customers={customers} selectedId={selectedCustomerId} onSelect={toggleSelect} />
 
+      {/* 예약링크 발송 모달 */}
+      {showReservationModal && (
+        <ReservationLinkModal customers={customers} onClose={() => setShowReservationModal(false)} />
+      )}
     </div>
   );
 }

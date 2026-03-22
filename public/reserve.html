@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>설치 예약</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+    --green: #16a34a;
+    --green-bg: #f0fdf4;
+    --red: #dc2626;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--gray-100);
+    color: var(--gray-900);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 420px;
+    padding: 16px;
+    padding-bottom: 100px;
+  }
+
+  /* 상단 헤더 */
+  .header {
+    background: var(--primary);
+    color: white;
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-align: center;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  }
+  .header .icon { font-size: 32px; margin-bottom: 8px; }
+  .header .room { font-size: 24px; font-weight: 700; letter-spacing: 1px; }
+  .header .sub { font-size: 13px; opacity: 0.85; margin-top: 6px; }
+
+  /* 카드 */
+  .card {
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--gray-700);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .badge {
+    font-size: 11px;
+    background: var(--primary);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+
+  /* 날짜 버튼 */
+  .date-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .date-btn {
+    flex: 1 1 calc(33.33% - 6px);
+    min-width: 0;
+    padding: 12px 4px;
+    border: 2px solid var(--gray-200);
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .date-btn .day { font-size: 15px; font-weight: 700; color: var(--gray-900); }
+  .date-btn .weekday { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+  .date-btn:active { transform: scale(0.96); }
+  .date-btn.selected {
+    border-color: var(--primary);
+    background: #eff6ff;
+  }
+  .date-btn.selected .day { color: var(--primary); }
+
+  /* 시간 버튼 */
+  .time-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .time-btn {
+    padding: 14px 4px;
+    border: 2px solid var(--gray-200);
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-900);
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .time-btn:active { transform: scale(0.96); }
+  .time-btn.selected {
+    border-color: var(--primary);
+    background: #eff6ff;
+    color: var(--primary);
+  }
+  .time-btn.disabled {
+    background: var(--gray-100);
+    border-color: var(--gray-100);
+    color: var(--gray-400);
+    cursor: not-allowed;
+    position: relative;
+  }
+  .time-btn.disabled::after {
+    content: '마감';
+    display: block;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--red);
+    margin-top: 2px;
+  }
+
+  /* 선택 요약 */
+  .summary {
+    display: none;
+    background: #fefce8;
+    border: 1px solid #fde68a;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: var(--gray-700);
+    text-align: center;
+    line-height: 1.6;
+  }
+  .summary strong { color: var(--gray-900); }
+  .summary.show { display: block; }
+
+  /* 확정 버튼 */
+  .confirm-wrap {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: white;
+    border-top: 1px solid var(--gray-200);
+    display: flex;
+    justify-content: center;
+  }
+  .confirm-btn {
+    width: 100%;
+    max-width: 420px;
+    padding: 16px;
+    border: none;
+    border-radius: 14px;
+    background: var(--primary);
+    color: white;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .confirm-btn:active { background: var(--primary-dark); transform: scale(0.98); }
+  .confirm-btn:disabled {
+    background: var(--gray-300);
+    color: var(--gray-500);
+    cursor: not-allowed;
+  }
+  .confirm-btn:disabled:active { transform: none; }
+
+  /* 완료 화면 */
+  .done-screen {
+    display: none;
+    text-align: center;
+    padding: 60px 20px;
+  }
+  .done-screen.show { display: block; }
+  .done-icon { font-size: 64px; margin-bottom: 20px; }
+  .done-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: var(--green); }
+  .done-sub { font-size: 15px; color: var(--gray-500); margin-bottom: 32px; line-height: 1.6; }
+  .done-card {
+    background: var(--green-bg);
+    border: 1px solid #bbf7d0;
+    border-radius: 14px;
+    padding: 20px;
+    text-align: left;
+  }
+  .done-card .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    font-size: 15px;
+  }
+  .done-card .row:not(:last-child) { border-bottom: 1px solid #dcfce7; }
+  .done-card .label { color: var(--gray-500); }
+  .done-card .value { font-weight: 600; color: var(--gray-900); }
+
+  /* 에러 */
+  .error-screen {
+    display: none;
+    text-align: center;
+    padding: 80px 20px;
+  }
+  .error-screen.show { display: block; }
+  .error-icon { font-size: 48px; margin-bottom: 16px; }
+  .error-msg { font-size: 16px; color: var(--gray-500); line-height: 1.6; }
+
+  /* 이미 예약 완료 */
+  .already-screen {
+    display: none;
+    text-align: center;
+    padding: 60px 20px;
+  }
+  .already-screen.show { display: block; }
+
+  /* 로딩 */
+  .loading { text-align: center; padding: 40px; color: var(--gray-400); font-size: 14px; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--gray-200);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 토스트 */
+  .toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: #1f2937;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 9999;
+    transition: transform 0.3s ease;
+    max-width: 360px;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- 로딩 -->
+  <div id="loadingView" class="loading">
+    <div class="spinner"></div>
+    불러오는 중...
+  </div>
+
+  <!-- 에러 -->
+  <div id="errorView" class="error-screen">
+    <div class="error-icon">⚠️</div>
+    <div class="error-msg" id="errorMsg">잘못된 접근입니다.</div>
+  </div>
+
+  <!-- 이미 예약 완료 -->
+  <div id="alreadyView" class="already-screen">
+    <div class="done-icon">📋</div>
+    <div class="done-title" style="color: var(--primary);">이미 예약되었습니다</div>
+    <div class="done-sub">해당 호수는 이미 예약이 완료되었습니다.</div>
+    <div class="done-card" id="alreadyCard"></div>
+  </div>
+
+  <!-- 메인 예약 화면 -->
+  <div id="mainView" style="display:none;">
+    <div class="header">
+      <div class="icon">🏠</div>
+      <div class="room" id="roomDisplay"></div>
+      <div class="sub">설치 예약 페이지</div>
+    </div>
+
+    <!-- 날짜 선택 -->
+    <div class="card">
+      <div class="card-title">📅 날짜 선택 <span class="badge">STEP 1</span></div>
+      <div class="date-grid" id="dateGrid"></div>
+    </div>
+
+    <!-- 시간 선택 -->
+    <div class="card" id="timeCard" style="display:none;">
+      <div class="card-title">🕐 시간 선택 <span class="badge">STEP 2</span></div>
+      <div class="time-grid" id="timeGrid"></div>
+    </div>
+
+    <!-- 선택 요약 -->
+    <div class="summary" id="summary"></div>
+  </div>
+
+  <!-- 예약 완료 -->
+  <div id="doneView" class="done-screen">
+    <div class="done-icon">✅</div>
+    <div class="done-title">예약 완료!</div>
+    <div class="done-sub">설치 예약이 확정되었습니다.<br>변경이 필요하시면 관리자에게 연락해주세요.</div>
+    <div class="done-card" id="doneCard"></div>
+  </div>
+</div>
+
+<!-- 확정 버튼 -->
+<div class="confirm-wrap" id="confirmWrap" style="display:none;">
+  <button class="confirm-btn" id="confirmBtn" disabled>날짜와 시간을 선택해주세요</button>
+</div>
+
+<!-- 토스트 -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  // ===== Supabase 설정 =====
+  const SUPABASE_URL = 'https://bglnylaqvlwytnddjbqz.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_7kMAI0ixiHSt9ppojSpX5w_mmH0547r';
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ===== URL 파라미터 =====
+  const params = new URLSearchParams(window.location.search);
+  const room = params.get('room');
+  const phone = params.get('phone');
+  const datesParam = params.get('dates');
+
+  // ===== DOM =====
+  const $loading = document.getElementById('loadingView');
+  const $error = document.getElementById('errorView');
+  const $errorMsg = document.getElementById('errorMsg');
+  const $already = document.getElementById('alreadyView');
+  const $alreadyCard = document.getElementById('alreadyCard');
+  const $main = document.getElementById('mainView');
+  const $roomDisplay = document.getElementById('roomDisplay');
+  const $dateGrid = document.getElementById('dateGrid');
+  const $timeCard = document.getElementById('timeCard');
+  const $timeGrid = document.getElementById('timeGrid');
+  const $summary = document.getElementById('summary');
+  const $confirmWrap = document.getElementById('confirmWrap');
+  const $confirmBtn = document.getElementById('confirmBtn');
+  const $done = document.getElementById('doneView');
+  const $doneCard = document.getElementById('doneCard');
+  const $toast = document.getElementById('toast');
+
+  // ===== State =====
+  let dates = [];
+  let selectedDate = null;
+  let selectedTime = null;
+  let reservedSlots = {}; // { 'YYYY-MM-DD': Set(['09:00', '10:00', ...]) }
+  let isSubmitting = false;
+
+  // ===== 유효성 검사 =====
+  if (!room || !phone || !datesParam) {
+    showError('잘못된 링크입니다.<br>관리자에게 문의해주세요.');
+    return;
+  }
+
+  dates = datesParam.split(',').map(d => d.trim()).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  if (dates.length === 0) {
+    showError('선택 가능한 날짜가 없습니다.');
+    return;
+  }
+
+  // ===== 초기화 =====
+  init();
+
+  async function init() {
+    try {
+      // 이미 예약했는지 확인
+      const { data: existing } = await supabase
+        .from('web_reservations')
+        .select('*')
+        .eq('room', room)
+        .eq('phone', phone)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        showAlready(existing[0]);
+        return;
+      }
+
+      // 해당 날짜들의 예약 현황 조회
+      const { data: reserved } = await supabase
+        .from('web_reservations')
+        .select('reserve_date, reserve_time')
+        .in('reserve_date', dates);
+
+      if (reserved) {
+        reserved.forEach(r => {
+          if (!reservedSlots[r.reserve_date]) reservedSlots[r.reserve_date] = new Set();
+          reservedSlots[r.reserve_date].add(r.reserve_time);
+        });
+      }
+
+      // UI 표시
+      $loading.style.display = 'none';
+      $main.style.display = 'block';
+      $confirmWrap.style.display = 'flex';
+      $roomDisplay.textContent = room;
+
+      renderDates();
+    } catch (e) {
+      showError('데이터를 불러오지 못했습니다.<br>잠시 후 다시 시도해주세요.');
+    }
+  }
+
+  // ===== 날짜 렌더링 =====
+  function renderDates() {
+    $dateGrid.innerHTML = '';
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+
+    dates.forEach(dateStr => {
+      const d = new Date(dateStr + 'T00:00:00');
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const weekday = weekdays[d.getDay()];
+
+      const btn = document.createElement('button');
+      btn.className = 'date-btn';
+      btn.innerHTML = '<div class="day">' + month + '/' + day + '</div><div class="weekday">' + weekday + '요일</div>';
+      btn.addEventListener('click', function() { selectDate(dateStr, btn); });
+      $dateGrid.appendChild(btn);
+    });
+  }
+
+  function selectDate(dateStr, btn) {
+    selectedDate = dateStr;
+    selectedTime = null;
+
+    // 날짜 버튼 상태
+    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    // 시간 표시
+    $timeCard.style.display = 'block';
+    renderTimes(dateStr);
+    updateSummary();
+  }
+
+  // ===== 시간 렌더링 =====
+  function renderTimes(dateStr) {
+    $timeGrid.innerHTML = '';
+    const bookedSet = reservedSlots[dateStr] || new Set();
+
+    for (let h = 9; h <= 18; h++) {
+      const timeStr = String(h).padStart(2, '0') + ':00';
+      const btn = document.createElement('button');
+      btn.className = 'time-btn';
+      btn.textContent = timeStr;
+
+      if (bookedSet.has(timeStr)) {
+        btn.classList.add('disabled');
+      } else {
+        btn.addEventListener('click', function() { selectTime(timeStr, btn); });
+      }
+
+      $timeGrid.appendChild(btn);
+    }
+  }
+
+  function selectTime(timeStr, btn) {
+    selectedTime = timeStr;
+
+    document.querySelectorAll('.time-btn:not(.disabled)').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    updateSummary();
+  }
+
+  // ===== 요약 업데이트 =====
+  function updateSummary() {
+    if (selectedDate && selectedTime) {
+      var d = new Date(selectedDate + 'T00:00:00');
+      var weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+      var label = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + weekdays[d.getDay()] + ') ' + selectedTime;
+      $summary.innerHTML = '<strong>' + room + '</strong> · ' + label;
+      $summary.classList.add('show');
+      $confirmBtn.disabled = false;
+      $confirmBtn.textContent = '예약 확정하기';
+    } else {
+      $summary.classList.remove('show');
+      $confirmBtn.disabled = true;
+      $confirmBtn.textContent = '날짜와 시간을 선택해주세요';
+    }
+  }
+
+  // ===== 예약 확정 =====
+  $confirmBtn.addEventListener('click', async function() {
+    if (!selectedDate || !selectedTime || isSubmitting) return;
+
+    isSubmitting = true;
+    $confirmBtn.disabled = true;
+    $confirmBtn.textContent = '예약 중...';
+
+    try {
+      const { data, error } = await supabase
+        .from('web_reservations')
+        .insert({
+          room: room,
+          phone: phone,
+          reserve_date: selectedDate,
+          reserve_time: selectedTime
+        })
+        .select()
+        .single();
+
+      if (error) {
+        // unique constraint 위반 = 이미 마감
+        if (error.code === '23505') {
+          toast('해당 시간은 방금 마감되었습니다. 다른 시간을 선택해주세요.');
+          // 슬롯 업데이트
+          if (!reservedSlots[selectedDate]) reservedSlots[selectedDate] = new Set();
+          reservedSlots[selectedDate].add(selectedTime);
+          selectedTime = null;
+          renderTimes(selectedDate);
+          updateSummary();
+          isSubmitting = false;
+          return;
+        }
+        throw error;
+      }
+
+      // 성공
+      showDone(data);
+    } catch (e) {
+      toast('예약에 실패했습니다. 다시 시도해주세요.');
+      $confirmBtn.disabled = false;
+      $confirmBtn.textContent = '예약 확정하기';
+      isSubmitting = false;
+    }
+  });
+
+  // ===== 화면 전환 =====
+  function showError(msg) {
+    $loading.style.display = 'none';
+    $errorMsg.innerHTML = msg;
+    $error.classList.add('show');
+  }
+
+  function showAlready(reservation) {
+    $loading.style.display = 'none';
+    var d = new Date(reservation.reserve_date + 'T00:00:00');
+    var weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    $alreadyCard.innerHTML =
+      '<div class="row"><span class="label">호수</span><span class="value">' + reservation.room + '</span></div>' +
+      '<div class="row"><span class="label">날짜</span><span class="value">' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + weekdays[d.getDay()] + ')</span></div>' +
+      '<div class="row"><span class="label">시간</span><span class="value">' + reservation.reserve_time + '</span></div>';
+    $already.classList.add('show');
+  }
+
+  function showDone(reservation) {
+    $main.style.display = 'none';
+    $confirmWrap.style.display = 'none';
+    $summary.classList.remove('show');
+
+    var d = new Date(reservation.reserve_date + 'T00:00:00');
+    var weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    $doneCard.innerHTML =
+      '<div class="row"><span class="label">호수</span><span class="value">' + reservation.room + '</span></div>' +
+      '<div class="row"><span class="label">날짜</span><span class="value">' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + weekdays[d.getDay()] + ')</span></div>' +
+      '<div class="row"><span class="label">시간</span><span class="value">' + reservation.reserve_time + '</span></div>';
+    $done.classList.add('show');
+  }
+
+  // ===== 토스트 =====
+  function toast(msg) {
+    $toast.textContent = msg;
+    $toast.classList.add('show');
+    setTimeout(function() { $toast.classList.remove('show'); }, 3000);
+  }
+})();
+</script>
+</body>
+</html>

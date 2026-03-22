@@ -486,11 +486,15 @@
       const timeStr = String(h).padStart(2, '0') + ':00';
       const btn = document.createElement('button');
       btn.className = 'time-btn';
-      btn.textContent = timeStr;
 
-      if (bookedSet.has(timeStr)) {
+      if (h === 12) {
+        btn.textContent = '12:00 점심';
+        btn.classList.add('disabled');
+      } else if (bookedSet.has(timeStr)) {
+        btn.textContent = timeStr;
         btn.classList.add('disabled');
       } else {
+        btn.textContent = timeStr;
         btn.addEventListener('click', function() { selectTime(timeStr, btn); });
       }
 

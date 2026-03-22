@@ -1009,9 +1009,9 @@ export function GroupBuyPage() {
   return (
     <div className="space-y-4">
       {/* 상단 헤더 */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold">공동구매 고객 목록</h2>
-        <div className="flex gap-2">
+      <div>
+        <h2 className="text-lg font-bold mb-2">공동구매 고객 목록</h2>
+        <div className="flex flex-wrap gap-1.5">
           <Button
             variant="outline"
             size="sm"

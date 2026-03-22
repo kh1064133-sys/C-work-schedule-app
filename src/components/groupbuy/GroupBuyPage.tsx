@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Link2 } from 'lucide-react';
+import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems } from '@/hooks/useItems';
 import { useGroupBuyCustomers, useBatchUpsertGroupBuy, useDeleteGroupBuyCustomer, GroupBuyCustomerDB } from '@/hooks/useGroupBuy';
@@ -647,6 +647,63 @@ function saveCustomers(customers: GroupBuyCustomer[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(customers));
 }
 
+function parseExcelDate(val: unknown): string {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    // Excel serial date
+    const d = new Date((val - 25569) * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+  const s = String(val).trim();
+  // YY/MM/DD or YYYY/MM/DD or YYYY-MM-DD
+  const m = s.match(/(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) {
+    const y = m[1].length === 2 ? '20' + m[1] : m[1];
+    return `${y}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  }
+  return '';
+}
+
+function importFromExcel(file: File): Promise<GroupBuyCustomer[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws);
+
+        const customers: GroupBuyCustomer[] = rows.map(row => {
+          const installDate = parseExcelDate(row['설치일']);
+          return {
+            id: crypto.randomUUID(),
+            installDate,
+            dayOfWeek: getDayOfWeek(installDate),
+            time: String(row['시간'] ?? '').trim(),
+            dong: String(row['동'] ?? '').trim(),
+            ho: String(row['호수'] ?? row['호'] ?? '').trim(),
+            contact: String(row['연락처'] ?? '').trim(),
+            content: String(row['내용'] ?? '').trim(),
+            amount: Number(row['금액']) || 0,
+            paymentMethod: String(row['결재방법'] ?? row['결제방법'] ?? '').trim(),
+            note: String(row['비고'] ?? '').trim(),
+            reserved: String(row['예약']).toUpperCase() === 'O',
+            completed: String(row['완료']).toUpperCase() === 'O',
+            deposited: String(row['입금']).toUpperCase() === 'O',
+          };
+        }).filter(c => c.dong || c.ho || c.contact);
+
+        resolve(customers);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 function exportToExcel(customers: GroupBuyCustomer[]) {
   const wb = XLSX.utils.book_new();
 
@@ -946,6 +1003,24 @@ export function GroupBuyPage() {
             <Download className="h-4 w-4" />
             엑셀
           </Button>
+          <Button variant="outline" size="sm" className="gap-1" onClick={() => document.getElementById('excel-import')?.click()}>
+            <Upload className="h-4 w-4" />
+            가져오기
+          </Button>
+          <input id="excel-import" type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+              const imported = await importFromExcel(file);
+              if (imported.length === 0) { alert('가져올 데이터가 없습니다.'); return; }
+              if (!confirm(`${imported.length}명의 고객을 가져오시겠습니까?`)) return;
+              setCustomers(prev => [...prev, ...imported]);
+              alert(`${imported.length}명 가져오기 완료!`);
+            } catch {
+              alert('엑셀 파일을 읽을 수 없습니다.');
+            }
+            e.target.value = '';
+          }} />
           <Button variant="outline" size="sm" onClick={addEmptyRow} className="gap-1">
             <Plus className="h-4 w-4" />
             리스트추가

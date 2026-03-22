@@ -1107,14 +1107,14 @@ export function GroupBuyPage() {
                   }}
                 >
                   <td className="px-2 py-1.5 text-center border-r">{(currentPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
-                  <td className="px-1 py-1 border-r" style={{ position: 'relative' }}>
+                  <td className="px-1 py-1 border-r" style={{ position: 'relative', textAlign: 'center' }}>
                     <input
                       type="date"
                       value={c.installDate}
                       onChange={e => updateInstallDate(c.id, e.target.value)}
                       style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
                     />
-                    <span className="text-xs" style={{ pointerEvents: 'none' }}>
+                    <span className="text-xs" style={{ pointerEvents: 'none', display: 'inline-block', width: '100%', textAlign: 'center' }}>
                       {c.installDate ? formatDate(c.installDate) : ''}
                     </span>
                   </td>

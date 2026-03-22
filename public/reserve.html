@@ -564,7 +564,30 @@
         throw error;
       }
 
-      // 성공
+      // 성공: groupbuy_customers 테이블도 업데이트 (설치일/시간/예약)
+      try {
+        // room에서 dong-ho 분리
+        var parts = room.split('-');
+        var dong = parts.length >= 2 ? parts.slice(0, -1).join('-') : '';
+        var ho = parts.length >= 2 ? parts[parts.length - 1] : room;
+        var dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+        var dd = new Date(selectedDate + 'T00:00:00');
+        var dayOfWeek = dayNames[dd.getDay()] || '';
+
+        // dong+ho+contact로 매칭하여 update
+        await supabase
+          .from('groupbuy_customers')
+          .update({
+            install_date: selectedDate,
+            day_of_week: dayOfWeek,
+            time: selectedTime,
+            reserved: true
+          })
+          .eq('dong', dong)
+          .eq('ho', ho)
+          .eq('contact', phone);
+      } catch (ignore) {}
+
       showDone(data);
     } catch (e) {
       toast('예약에 실패했습니다. 다시 시도해주세요.');

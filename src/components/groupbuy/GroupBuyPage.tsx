@@ -887,7 +887,7 @@ export function GroupBuyPage() {
   const totalPages = Math.max(1, Math.ceil(customers.length / ITEMS_PER_PAGE));
   const pagedCustomers = customers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // Supabase에서 초기 데이터 로드
+  // Supabase에서 초기 데이터 로드 + web_reservations 동기화
   useEffect(() => {
     if (dbCustomers && !supabaseLoadedRef.current) {
       supabaseLoadedRef.current = true;
@@ -897,6 +897,34 @@ export function GroupBuyPage() {
         saveCustomers(loaded);
       }
     }
+  }, [dbCustomers]);
+
+  // web_reservations → groupbuy_customers 동기화 (앱 로드 시)
+  useEffect(() => {
+    if (!dbCustomers || dbCustomers.length === 0) return;
+    const syncReservations = async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: reservations } = await supabase.from('web_reservations').select('*');
+        if (!reservations || reservations.length === 0) return;
+
+        let updated = false;
+        setCustomers(prev => {
+          const next = prev.map(c => {
+            if (c.reserved && c.installDate) return c; // 이미 예약됨
+            const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
+            const match = reservations.find((r: { room: string; phone: string }) => r.room === room && r.phone === c.contact);
+            if (!match) return c;
+            updated = true;
+            const d = new Date(match.reserve_date + 'T00:00:00');
+            return { ...c, installDate: match.reserve_date, dayOfWeek: DAY_MAP[d.getDay()] ?? '', time: match.reserve_time, reserved: true };
+          });
+          return updated ? next : prev;
+        });
+      } catch {}
+    };
+    syncReservations();
   }, [dbCustomers]);
 
   // 변경 시 자동 저장 (localStorage 즉시 + Supabase 디바운스)

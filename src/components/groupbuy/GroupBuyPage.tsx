@@ -749,7 +749,7 @@ function ReservationLinkModal({ customers, onClose }: { customers: GroupBuyCusto
 
   const link = (c: GroupBuyCustomer) => {
     const room = c.dong && c.ho ? `${c.dong}-${c.ho}` : c.ho;
-    return `${url.replace(/\/+$/, '')}/reserve.html?d=${room}|${c.contact}|${dates.trim()}`;
+    return `${url.replace(/\/+$/, '')}/reserve.html?d=${room}~${c.contact}~${dates.trim()}`;
   };
 
   const send = (c: GroupBuyCustomer) => {

@@ -349,11 +349,11 @@
 
   // ===== URL 파라미터 =====
   const params = new URLSearchParams(window.location.search);
-  // 신규 방식: d=room|phone|dates (SMS &문자 잘림 방지)
+  // 신규 방식: d=room~phone~dates (SMS/카톡 URL 잘림 방지)
   const dParam = params.get('d');
   let room, phone, datesParam;
   if (dParam) {
-    const parts = dParam.split('|');
+    const parts = dParam.split('~');
     room = parts[0] || null;
     phone = parts[1] || null;
     datesParam = parts[2] || null;

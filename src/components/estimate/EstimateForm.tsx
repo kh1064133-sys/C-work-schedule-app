@@ -1209,14 +1209,14 @@ ${cloned.outerHTML}
                     )}
                   </td>
                   <td style={{ padding: "8px", textAlign: "center" }}>
-                    <input type="number" value={item.qty} onChange={e => updateItem(item.id, "qty", Math.max(1, Number(e.target.value)))}
+                    <input type="number" value={item.qty || ""} onChange={e => { const v = e.target.value === "" ? 0 : Number(e.target.value); updateItem(item.id, "qty", isNaN(v) ? 0 : v); }} onBlur={() => { if (!item.qty) updateItem(item.id, "qty", 1); }}
                       style={{ ...inputStyle, width: "42px", textAlign: "center", fontSize: "12.5px" }} min="1" />
                   </td>
                   <td style={{ padding: "8px", textAlign: "right" }}>
-                    <input type="number" value={item.price} onChange={e => updateItem(item.id, "price", Number(e.target.value))}
-                      style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px" }} />
+                    <input type="number" value={item.price || ""} onChange={e => { const v = Number(e.target.value); updateItem(item.id, "price", isNaN(v) ? 0 : v); }}
+                      style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px", color: item.price < 0 ? "#e53935" : "inherit" }} />
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "#1a237e" }}>
+                  <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: (item.qty * item.price) < 0 ? "#e53935" : "#1a237e" }}>
                     {(item.qty * item.price).toLocaleString()}
                   </td>
                   <td style={{ padding: "8px" }}>

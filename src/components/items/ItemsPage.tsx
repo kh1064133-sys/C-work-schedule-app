@@ -22,6 +22,7 @@ export function ItemsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [priceInput, setPriceInput] = useState('');
 
   // 폼 상태
   const [formData, setFormData] = useState<ItemInput>({
@@ -47,6 +48,7 @@ export function ItemsPage() {
       memo: '',
     });
     setPreviewImage(null);
+    setPriceInput('');
     setIsModalOpen(true);
   };
 
@@ -59,6 +61,7 @@ export function ItemsPage() {
       photo_url: item.photo_url || '',
       memo: item.memo || '',
     });
+    setPriceInput(item.price ? item.price.toLocaleString() : '');
     setPreviewImage(item.photo_url || null);
     setIsModalOpen(true);
   };
@@ -271,10 +274,19 @@ export function ItemsPage() {
                   <input
                     type="text"
                     className="w-full px-3 py-2 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-right"
-                    value={formData.price?.toLocaleString() || ''}
+                    value={priceInput}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9]/g, '');
-                      setFormData({ ...formData, price: value ? parseInt(value, 10) : undefined });
+                      const raw = e.target.value.replace(/[^0-9\-]/g, '');
+                      if (raw === '' || raw === '-') {
+                        setPriceInput(raw);
+                        setFormData({ ...formData, price: undefined });
+                        return;
+                      }
+                      const parsed = parseInt(raw, 10);
+                      if (!isNaN(parsed)) {
+                        setPriceInput(parsed.toLocaleString());
+                        setFormData({ ...formData, price: parsed });
+                      }
                     }}
                     placeholder="0"
                   />

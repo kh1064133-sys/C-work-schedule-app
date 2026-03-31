@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build MenuMoney APK",
+			"type": "shell",
+			"command": "cd C:\\work\\MenuMoney && npx cap sync android && cd android && .\\gradlew.bat assembleDebug && echo === BUILD COMPLETE === && dir /b app\\build\\outputs\\apk\\debug\\*.apk",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Build MenuMoney APK",
+			"type": "shell",
+			"command": "cd C:\\work\\MenuMoney; npx cap sync android; cd android; .\\gradlew.bat assembleDebug; Write-Host '=== BUILD RESULT ==='; Get-Item app\\build\\outputs\\apk\\debug\\app-debug.apk | Select-Object Name,Length,LastWriteTime",
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

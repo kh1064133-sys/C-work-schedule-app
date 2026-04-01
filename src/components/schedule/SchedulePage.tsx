@@ -305,7 +305,15 @@ export function SchedulePage() {
               amount: s.amount,
               payment_method: s.payment_method,
             });
-            setCopyFeedback('📋 복사됨');
+            // 시스템 클립보드에도 텍스트 복사
+            const lines: string[] = [];
+            lines.push(`📅 ${formatDate(useDateStore.getState().selectedDate)} ${slot}`);
+            lines.push(`거래처: ${s.title}`);
+            if (s.unit) lines.push(`동호수: ${s.unit}`);
+            if (s.memo) lines.push(`내용: ${s.memo}`);
+            if (s.amount) lines.push(`금액: ${s.amount.toLocaleString()}원`);
+            navigator.clipboard?.writeText(lines.join('\n')).catch(() => {});
+            setCopyFeedback('📋 복사됨 (클립보드)');
             setTimeout(() => setCopyFeedback(null), 1500);
           }
         }
@@ -477,6 +485,7 @@ export function SchedulePage() {
   const handleCopySchedule = useCallback((timeSlot: string) => {
     const s = scheduleMapRef.current[timeSlot];
     if (s?.title) {
+      // 앱 내부 복사 (붙여넣기용)
       setCopiedSchedule({
         title: s.title,
         unit: s.unit,
@@ -485,10 +494,21 @@ export function SchedulePage() {
         amount: s.amount,
         payment_method: s.payment_method,
       });
-      setCopyFeedback('📋 복사됨');
+
+      // 시스템 클립보드에 텍스트 복사 (카톡/문자용)
+      const lines: string[] = [];
+      lines.push(`📅 ${dateStr} ${timeSlot}`);
+      lines.push(`거래처: ${s.title}`);
+      if (s.unit) lines.push(`동호수: ${s.unit}`);
+      if (s.memo) lines.push(`내용: ${s.memo}`);
+      if (s.amount) lines.push(`금액: ${s.amount.toLocaleString()}원`);
+      const text = lines.join('\n');
+      navigator.clipboard?.writeText(text).catch(() => {});
+
+      setCopyFeedback('📋 복사됨 (클립보드)');
       setTimeout(() => setCopyFeedback(null), 1500);
     }
-  }, [setCopiedSchedule]);
+  }, [setCopiedSchedule, dateStr]);
 
   // 모바일 붙여넣기 콜백
   const handlePasteSchedule = useCallback((timeSlot: string) => {
@@ -507,17 +527,29 @@ export function SchedulePage() {
     }
   }, []);
 
-  // 완료 토글
-  const handleToggleDone = async (timeSlot: string) => {
+  // 완료/입금 확인 팝업 상태
+  const [confirmDoneTarget, setConfirmDoneTarget] = useState<{ timeSlot: string; schedule: Schedule } | null>(null);
+  const [confirmPaidTarget, setConfirmPaidTarget] = useState<{ timeSlot: string; schedule: Schedule } | null>(null);
+
+  // 완료 토글 → 팝업 열기
+  const handleToggleDone = (timeSlot: string) => {
     const existing = scheduleMap[timeSlot];
     if (existing) {
-      await upsertSchedule.mutateAsync({
-        id: existing.id,
-        date: dateStr,
-        time_slot: timeSlot,
-        is_done: !existing.is_done,
-      });
+      setConfirmDoneTarget({ timeSlot, schedule: existing });
     }
+  };
+
+  // 완료 팝업 확인
+  const handleConfirmDone = async () => {
+    if (!confirmDoneTarget) return;
+    const { schedule } = confirmDoneTarget;
+    await upsertSchedule.mutateAsync({
+      id: schedule.id,
+      date: dateStr,
+      time_slot: schedule.time_slot,
+      is_done: !schedule.is_done,
+    });
+    setConfirmDoneTarget(null);
   };
 
   // 예약 토글
@@ -533,17 +565,25 @@ export function SchedulePage() {
     }
   };
 
-  // 입금 토글
-  const handleTogglePaid = async (timeSlot: string) => {
+  // 입금 토글 → 팝업 열기
+  const handleTogglePaid = (timeSlot: string) => {
     const existing = scheduleMap[timeSlot];
     if (existing) {
-      await upsertSchedule.mutateAsync({
-        id: existing.id,
-        date: dateStr,
-        time_slot: timeSlot,
-        is_paid: !existing.is_paid,
-      });
+      setConfirmPaidTarget({ timeSlot, schedule: existing });
     }
+  };
+
+  // 입금 팝업 확인
+  const handleConfirmPaid = async () => {
+    if (!confirmPaidTarget) return;
+    const { schedule } = confirmPaidTarget;
+    await upsertSchedule.mutateAsync({
+      id: schedule.id,
+      date: dateStr,
+      time_slot: schedule.time_slot,
+      is_paid: !schedule.is_paid,
+    });
+    setConfirmPaidTarget(null);
   };
 
   // 드래그 시작
@@ -918,6 +958,64 @@ export function SchedulePage() {
         }}>
           {copyFeedback}
         </div>
+      )}
+
+      {/* 완료 확인 팝업 */}
+      {confirmDoneTarget && (
+        <>
+          <div onClick={() => setConfirmDoneTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 99998, background: 'rgba(0,0,0,0.4)' }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 99999, background: 'white', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', width: 'min(340px, 90vw)', overflow: 'hidden' }}>
+            <div style={{ background: confirmDoneTarget.schedule.is_done ? '#DC2626' : '#16a34a', color: 'white', padding: '16px 20px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {confirmDoneTarget.schedule.is_done ? '❌ 완료 취소' : '✅ 완료 처리 확인'}
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.7, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>시간</span><span style={{ fontWeight: 600 }}>{confirmDoneTarget.schedule.time_slot}</span></div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>거래처</span><span style={{ fontWeight: 600 }}>{confirmDoneTarget.schedule.title || '-'}</span></div>
+                {confirmDoneTarget.schedule.unit && <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>동호수</span><span style={{ fontWeight: 600 }}>{confirmDoneTarget.schedule.unit}</span></div>}
+                <div style={{ display: 'flex', gap: 8 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>금액</span><span style={{ fontWeight: 700, color: confirmDoneTarget.schedule.is_done ? '#DC2626' : '#16a34a' }}>{(confirmDoneTarget.schedule.amount || 0).toLocaleString()}원</span></div>
+              </div>
+              <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
+                {confirmDoneTarget.schedule.is_done ? '완료를 취소하시겠습니까?' : '이 스케줄을 완료 처리하시겠습니까?'}
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setConfirmDoneTarget(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid #D1D5DB', background: 'white', color: '#6B7280', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>취소</button>
+                <button onClick={handleConfirmDone} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: confirmDoneTarget.schedule.is_done ? '#DC2626' : '#16a34a', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                  {confirmDoneTarget.schedule.is_done ? '❌ 완료 취소' : '✅ 완료'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 입금 확인 팝업 */}
+      {confirmPaidTarget && (
+        <>
+          <div onClick={() => setConfirmPaidTarget(null)} style={{ position: 'fixed', inset: 0, zIndex: 99998, background: 'rgba(0,0,0,0.4)' }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 99999, background: 'white', borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', width: 'min(340px, 90vw)', overflow: 'hidden' }}>
+            <div style={{ background: confirmPaidTarget.schedule.is_paid ? '#DC2626' : '#D97706', color: 'white', padding: '16px 20px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {confirmPaidTarget.schedule.is_paid ? '❌ 입금 취소' : '💰 입금 확인'}
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.7, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>시간</span><span style={{ fontWeight: 600 }}>{confirmPaidTarget.schedule.time_slot}</span></div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>거래처</span><span style={{ fontWeight: 600 }}>{confirmPaidTarget.schedule.title || '-'}</span></div>
+                {confirmPaidTarget.schedule.unit && <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>동호수</span><span style={{ fontWeight: 600 }}>{confirmPaidTarget.schedule.unit}</span></div>}
+                <div style={{ display: 'flex', gap: 8 }}><span style={{ color: '#9CA3AF', minWidth: 52 }}>금액</span><span style={{ fontWeight: 700, color: confirmPaidTarget.schedule.is_paid ? '#DC2626' : '#D97706' }}>{(confirmPaidTarget.schedule.amount || 0).toLocaleString()}원</span></div>
+              </div>
+              <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
+                {confirmPaidTarget.schedule.is_paid ? '입금 확인을 취소하시겠습니까?' : '입금이 확인되었습니까?'}
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setConfirmPaidTarget(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid #D1D5DB', background: 'white', color: '#6B7280', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>취소</button>
+                <button onClick={handleConfirmPaid} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: 'none', background: confirmPaidTarget.schedule.is_paid ? '#DC2626' : '#D97706', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                  {confirmPaidTarget.schedule.is_paid ? '❌ 입금 취소' : '💰 입금 확인'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

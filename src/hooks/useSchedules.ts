@@ -87,7 +87,6 @@ export function useAllPendingSchedules(beforeDate: string) {
       const seen = new Set<string>();
       return all
         .filter(s => s.title && s.title.trim() !== '')
-        .filter(s => !s.event_icon)
         .filter(s => { if (seen.has(s.id)) return false; seen.add(s.id); return true; })
         .sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
     },
@@ -281,14 +280,12 @@ export function useSearchSchedules(params: {
 
       if (error) throw error;
 
-      // 데이터가 입력되지 않은 빈 시간대 및 이벤트 제외
+      // 데이터가 입력되지 않은 빈 시간대 제외 (이벤트 아이콘만 있는 것도 제외)
       return (data as Schedule[]).filter(s =>
-        !s.event_icon && (
-          (s.title && s.title.trim() !== '') ||
-          (s.memo && s.memo.trim() !== '') ||
-          (s.amount && s.amount > 0) ||
-          s.schedule_type
-        )
+        (s.title && s.title.trim() !== '') ||
+        (s.memo && s.memo.trim() !== '') ||
+        (s.amount && s.amount > 0) ||
+        s.schedule_type
       );
     },
     enabled: Boolean(params.query || params.fromDate || params.toDate || params.type),

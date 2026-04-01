@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { X, RotateCcw } from 'lucide-react';
-import type { Schedule } from '@/types';
+import { X, RotateCcw, Pencil } from 'lucide-react';
+import type { Schedule, CompletionRecord } from '@/types';
 
 interface CompletionPopupProps {
   schedule: Schedule;
@@ -18,9 +18,13 @@ interface CompletionPopupProps {
     amount: number;
     signature_data: string;
   }) => void;
+  existingRecord?: CompletionRecord | null;
 }
 
-export function CompletionPopup({ schedule, open, onClose, onConfirm }: CompletionPopupProps) {
+export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRecord }: CompletionPopupProps) {
+  const hasRecord = !!existingRecord;
+  const [isEditing, setIsEditing] = useState(false);
+
   const [apartmentName, setApartmentName] = useState(schedule.title || '');
   const [unitNumber, setUnitNumber] = useState(schedule.unit || '');
   const [customerName, setCustomerName] = useState('');
@@ -33,53 +37,69 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
   const isDrawingRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
   const hasSignatureRef = useRef(false);
+  const [showSavedSignature, setShowSavedSignature] = useState(false);
 
   // schedule이 바뀌면 초기값 재설정
   useEffect(() => {
     if (open) {
-      setApartmentName(schedule.title || '');
-      setUnitNumber(schedule.unit || '');
-      setCustomerName('');
-      setPhone('');
-      setContent(schedule.memo || '');
-      setAmount(schedule.amount || 0);
-      hasSignatureRef.current = false;
+      if (existingRecord) {
+        // 저장된 기록이 있으면 그 데이터로 채움
+        setApartmentName(existingRecord.apartment_name || '');
+        setUnitNumber(existingRecord.unit_number || '');
+        setCustomerName(existingRecord.customer_name || '');
+        setPhone(existingRecord.phone || '');
+        setContent(existingRecord.content || '');
+        setAmount(existingRecord.amount || 0);
+        setShowSavedSignature(!!existingRecord.signature_data);
+        setIsEditing(false);
+        hasSignatureRef.current = !!existingRecord.signature_data;
+      } else {
+        setApartmentName(schedule.title || '');
+        setUnitNumber(schedule.unit || '');
+        setCustomerName('');
+        setPhone('');
+        setContent(schedule.memo || '');
+        setAmount(schedule.amount || 0);
+        setShowSavedSignature(false);
+        setIsEditing(true);
+        hasSignatureRef.current = false;
+      }
     }
-  }, [open, schedule]);
+  }, [open, schedule, existingRecord]);
 
-  // 캔버스 초기화
-  useEffect(() => {
-    if (!open) return;
+  const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const rect = canvas.parentElement!.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = 150 * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '150px';
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(0, 0, rect.width, 150);
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(20, 120);
+    ctx.lineTo(rect.width - 20, 120);
+    ctx.stroke();
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('여기에 서명해 주세요', rect.width / 2, 140);
+  }, []);
 
-    const resizeCanvas = () => {
-      const rect = canvas.parentElement!.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = 150 * dpr;
-      canvas.style.width = rect.width + 'px';
-      canvas.style.height = '150px';
-      ctx.scale(dpr, dpr);
-      ctx.fillStyle = '#fafafa';
-      ctx.fillRect(0, 0, rect.width, 150);
-      ctx.strokeStyle = '#e5e7eb';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(20, 120);
-      ctx.lineTo(rect.width - 20, 120);
-      ctx.stroke();
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('여기에 서명해 주세요', rect.width / 2, 140);
-    };
+  // 캔버스 초기화
+  useEffect(() => {
+    if (!open) return;
+    if (showSavedSignature) return;
 
-    // requestAnimationFrame to ensure DOM layout is ready
-    requestAnimationFrame(resizeCanvas);
-  }, [open]);
+    requestAnimationFrame(() => initCanvas());
+  }, [open, showSavedSignature, initCanvas]);
 
   const getPos = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     const canvas = canvasRef.current!;
@@ -127,37 +147,33 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
   }, []);
 
   const clearSignature = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.parentElement!.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = 150 * dpr;
-    ctx.scale(dpr, dpr);
-    ctx.fillStyle = '#fafafa';
-    ctx.fillRect(0, 0, rect.width, 150);
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(20, 120);
-    ctx.lineTo(rect.width - 20, 120);
-    ctx.stroke();
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('여기에 서명해 주세요', rect.width / 2, 140);
-    hasSignatureRef.current = false;
-  }, []);
+    if (showSavedSignature) {
+      // 저장된 서명 이미지 → 캔버스로 전환 후 초기화
+      setShowSavedSignature(false);
+      hasSignatureRef.current = false;
+      // 캔버스가 렌더링된 후 초기화
+      requestAnimationFrame(() => initCanvas());
+    } else {
+      // 캔버스에 그린 서명 지우기
+      initCanvas();
+      hasSignatureRef.current = false;
+    }
+  }, [showSavedSignature, initCanvas]);
 
   const handleConfirm = () => {
-    if (!hasSignatureRef.current) {
+    // 서명 확인: 저장된 서명이 있거나 새로 그린 서명이 있어야 함
+    if (!showSavedSignature && !hasSignatureRef.current) {
       alert('고객 서명이 필요합니다.');
       return;
     }
-    const canvas = canvasRef.current;
-    const signatureData = canvas ? canvas.toDataURL('image/png') : '';
+
+    let signatureData = '';
+    if (showSavedSignature && existingRecord?.signature_data) {
+      signatureData = existingRecord.signature_data;
+    } else {
+      const canvas = canvasRef.current;
+      signatureData = canvas ? canvas.toDataURL('image/png') : '';
+    }
 
     onConfirm({
       apartment_name: apartmentName,
@@ -168,6 +184,11 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
       amount,
       signature_data: signatureData,
     });
+  };
+
+  // 수정 모드 전환
+  const handleStartEdit = () => {
+    setIsEditing(true);
   };
 
   if (!open) return null;
@@ -185,9 +206,16 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
           {/* 헤더 */}
           <div className="flex items-center justify-between px-5 py-4 border-b bg-green-600 text-white rounded-t-xl">
             <h2 className="text-lg font-bold">✅ 완료 확인서</h2>
-            <button onClick={onClose} className="p-1 hover:bg-green-700 rounded-md transition-colors">
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {hasRecord && !isEditing && (
+                <button onClick={handleStartEdit} className="p-1 hover:bg-green-700 rounded-md transition-colors" title="수정">
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+              <button onClick={onClose} className="p-1 hover:bg-green-700 rounded-md transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* 폼 */}
@@ -197,10 +225,11 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
               <label className="block text-sm font-medium text-gray-700 mb-1">아파트명 (거래처)</label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-600"
                 value={apartmentName}
                 onChange={(e) => setApartmentName(e.target.value)}
                 placeholder="아파트명 입력"
+                disabled={hasRecord && !isEditing}
               />
             </div>
 
@@ -209,10 +238,11 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
               <label className="block text-sm font-medium text-gray-700 mb-1">동호수</label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-600"
                 value={unitNumber}
                 onChange={(e) => setUnitNumber(e.target.value)}
                 placeholder="예: 101동 202호"
+                disabled={hasRecord && !isEditing}
               />
             </div>
 
@@ -221,10 +251,11 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
               <label className="block text-sm font-medium text-gray-700 mb-1">고객 이름</label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-600"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="이름 입력"
+                disabled={hasRecord && !isEditing}
               />
             </div>
 
@@ -233,10 +264,11 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
               <label className="block text-sm font-medium text-gray-700 mb-1">전화번호</label>
               <input
                 type="tel"
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-600"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="010-0000-0000"
+                disabled={hasRecord && !isEditing}
               />
             </div>
 
@@ -244,11 +276,12 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">내용</label>
               <textarea
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 resize-none"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 resize-none disabled:bg-gray-100 disabled:text-gray-600"
                 rows={2}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="작업 내용"
+                disabled={hasRecord && !isEditing}
               />
             </div>
 
@@ -258,13 +291,14 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
               <div className="relative">
                 <input
                   type="text"
-                  className="w-full px-3 py-2 pr-8 border rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
+                  className="w-full px-3 py-2 pr-8 border rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500 disabled:bg-gray-100 disabled:text-gray-600"
                   value={amount ? amount.toLocaleString() : ''}
                   onChange={(e) => {
                     const val = e.target.value.replace(/[^0-9]/g, '');
                     setAmount(val ? parseInt(val, 10) : 0);
                   }}
                   placeholder="0"
+                  disabled={hasRecord && !isEditing}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">원</span>
               </div>
@@ -274,27 +308,39 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-sm font-medium text-gray-700">고객 서명</label>
-                <button
-                  type="button"
-                  onClick={clearSignature}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition-colors"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  지우기
-                </button>
+                {(isEditing || !hasRecord) && (
+                  <button
+                    type="button"
+                    onClick={clearSignature}
+                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition-colors"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    지우기
+                  </button>
+                )}
               </div>
               <div className="border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
-                <canvas
-                  ref={canvasRef}
-                  className="cursor-crosshair touch-none"
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDrawing}
-                />
+                {showSavedSignature && existingRecord?.signature_data ? (
+                  /* 저장된 서명 이미지 표시 */
+                  <img
+                    src={existingRecord.signature_data}
+                    alt="고객 서명"
+                    className="w-full h-[150px] object-contain bg-gray-50"
+                  />
+                ) : (
+                  /* 서명 캔버스 */
+                  <canvas
+                    ref={canvasRef}
+                    className="cursor-crosshair touch-none"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -306,14 +352,16 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm }: Completi
               className="flex-1"
               onClick={onClose}
             >
-              취소
+              {hasRecord && !isEditing ? '닫기' : '취소'}
             </Button>
-            <Button
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-              onClick={handleConfirm}
-            >
-              ✅ 완료 확인
-            </Button>
+            {(isEditing || !hasRecord) && (
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                onClick={handleConfirm}
+              >
+                ✅ {hasRecord ? '수정 저장' : '완료 확인'}
+              </Button>
+            )}
           </div>
         </div>
       </div>

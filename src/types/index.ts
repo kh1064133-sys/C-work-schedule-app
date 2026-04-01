@@ -64,6 +64,38 @@ export interface ClientInput {
   memo?: string;
 }
 
+// ===== 완료 확인서 관련 타입 =====
+export interface CompletionRecord {
+  id: string;
+  schedule_id: string;
+  user_id: string;
+  apartment_name: string | null;
+  unit_number: string | null;
+  customer_name: string | null;
+  phone: string | null;
+  content: string | null;
+  amount: number;
+  signature_data: string | null;
+  record_type: 'completion' | 'deposit';
+  payment_method: string | null;
+  memo: string | null;
+  created_at: string;
+}
+
+export interface CompletionRecordInput {
+  schedule_id: string;
+  apartment_name?: string;
+  unit_number?: string;
+  customer_name?: string;
+  phone?: string;
+  content?: string;
+  amount?: number;
+  signature_data?: string;
+  record_type?: 'completion' | 'deposit';
+  payment_method?: string;
+  memo?: string;
+}
+
 // ===== 품목 관련 타입 =====
 export interface Item {
   id: string;

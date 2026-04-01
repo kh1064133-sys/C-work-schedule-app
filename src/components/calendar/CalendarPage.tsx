@@ -357,9 +357,9 @@ export function CalendarPage() {
     setActiveTab('schedule');
   };
 
-  // 미결 스케줄 (제목이 있고 완료되지 않은 것, 이벤트 제외) - 현재 월 데이터 기준 (예약 분리용)
+  // 미결 스케줄 (제목이 있고 완료되지 않은 것) - 현재 월 데이터 기준 (예약 분리용)
   const pendingSchedules = useMemo(() => {
-    return schedules.filter((s: Schedule) => s.title && !s.is_done && !s.event_icon);
+    return schedules.filter((s: Schedule) => s.title && !s.is_done);
   }, [schedules]);
 
   // 이전 미결: 전체 기간 데이터 사용 / 예약: 현재 월 데이터에서 분리

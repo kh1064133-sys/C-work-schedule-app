@@ -101,7 +101,7 @@ export function DepositPopup({ schedule, open, onClose, onConfirm }: DepositPopu
                         ? 'bg-amber-500 text-white border-amber-500'
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-amber-50'
                     }`}
-                    onClick={() => setPaymentMethod(opt.value)}
+                    onClick={() => setPaymentMethod(opt.value as typeof paymentMethod)}
                   >
                     {opt.label}
                   </button>

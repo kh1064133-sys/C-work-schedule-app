@@ -8,6 +8,7 @@ import { formatCurrencyInput } from '@/lib/utils/format';
 import type { Schedule, ScheduleType, PaymentMethod, EventIcon, Client, Item } from '@/types';
 import { CompletionPopup } from './CompletionPopup';
 import { DepositPopup } from './DepositPopup';
+import { useSaveCompletionRecord, useCompletionRecords, useDeleteCompletionRecords } from '@/hooks/useCompletionRecords';
 
 interface TimeSlotRowProps {
   timeSlot: string;
@@ -354,13 +355,36 @@ export function TimeSlotRow({
   // 입금 팝업 상태
   const [showDepositPopup, setShowDepositPopup] = useState(false);
 
+  // 완료 기록 조회/저장/삭제
+  const saveCompletionRecord = useSaveCompletionRecord();
+  const deleteCompletionRecords = useDeleteCompletionRecords();
+  const { data: completionRecords } = useCompletionRecords(schedule?.id);
+  const existingRecord = completionRecords?.[0] || null;
+
   // 완료 팝업 확인 핸들러
-  const handleCompletionConfirm = (data: any) => {
+  const handleCompletionConfirm = async (data: any) => {
+    // 완료 확인서 데이터 DB 저장
+    if (schedule) {
+      try {
+        await saveCompletionRecord.mutateAsync({
+          schedule_id: schedule.id,
+          apartment_name: data.apartment_name,
+          unit_number: data.unit_number,
+          customer_name: data.customer_name,
+          phone: data.phone,
+          content: data.content,
+          amount: data.amount,
+          signature_data: data.signature_data,
+          record_type: 'completion',
+        });
+      } catch (e) {
+        console.error('완료 기록 저장 실패:', e);
+      }
+    }
     // 완료 처리: 완료 체크, 예약 해제
     onUpdate({
       is_done: true,
       is_reserved: false,
-      // 필요시 추가 데이터 저장
     });
     setShowCompletionPopup(false);
   };
@@ -442,6 +466,10 @@ export function TimeSlotRow({
               setUnitValue('');
               setScheduleTypeValue('');
               setPaymentMethodValue('');
+              // 완료 기록 삭제
+              if (schedule?.id) {
+                deleteCompletionRecords.mutate(schedule.id);
+              }
               onUpdate({
                 title: '',
                 unit: '',
@@ -818,6 +846,10 @@ export function TimeSlotRow({
                 setUnitValue('');
                 setScheduleTypeValue('');
                 setPaymentMethodValue('');
+                // 완료 기록 삭제
+                if (schedule?.id) {
+                  deleteCompletionRecords.mutate(schedule.id);
+                }
                 onUpdate({
                   title: '',
                   unit: '',
@@ -1174,6 +1206,7 @@ export function TimeSlotRow({
           open={showCompletionPopup}
           onClose={() => setShowCompletionPopup(false)}
           onConfirm={handleCompletionConfirm}
+          existingRecord={existingRecord}
         />
       )}
       {/* 입금 팝업 */}

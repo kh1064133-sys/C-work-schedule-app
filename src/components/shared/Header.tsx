@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Calendar, ClipboardList, BarChart3, Building2, Package, Search, Menu, Download, Upload, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/uiStore';
+import { useDateStore } from '@/stores/dateStore';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
@@ -18,6 +19,7 @@ const tabs = [
 
 export function Header() {
   const { activeTab, setActiveTab, toggleSidebar } = useUIStore();
+  const { setSelectedDate, setCalendarDate } = useDateStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -162,7 +164,14 @@ export function Header() {
               key={tab.id}
               variant="ghost"
               size="sm"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                if (tab.id === 'schedule' || tab.id === 'calendar') {
+                  const today = new Date();
+                  setSelectedDate(today);
+                  setCalendarDate(today);
+                }
+                setActiveTab(tab.id);
+              }}
               className={`text-white hover:bg-white/20 ${
                 activeTab === tab.id ? 'bg-white/25' : ''
               }`}

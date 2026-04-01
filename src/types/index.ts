@@ -12,6 +12,7 @@ export interface Schedule {
   payment_method: PaymentMethod | null;
   is_done: boolean;
   is_reserved: boolean;
+  is_paid: boolean;
   event_icon: EventIcon | null;
   sort_order: number;
   created_at: string;
@@ -33,6 +34,7 @@ export interface ScheduleInput {
   payment_method?: PaymentMethod;
   is_done?: boolean;
   is_reserved?: boolean;
+  is_paid?: boolean;
   event_icon?: EventIcon | null;
   sort_order?: number;
 }

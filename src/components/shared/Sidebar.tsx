@@ -3,6 +3,7 @@
 import { Calendar, ClipboardList, BarChart3, Building2, Package, Search, FileText, ShoppingCart, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/uiStore';
+import { useDateStore } from '@/stores/dateStore';
 import { cn } from '@/lib/utils';
 
 const tabs = [
@@ -18,6 +19,17 @@ const tabs = [
 
 export function Sidebar() {
   const { activeTab, setActiveTab, isSidebarOpen, toggleSidebar } = useUIStore();
+  const { setSelectedDate, setCalendarDate } = useDateStore();
+
+  const handleTabClick = (tabId: string) => {
+    if (tabId === 'schedule' || tabId === 'calendar') {
+      const today = new Date();
+      setSelectedDate(today);
+      setCalendarDate(today);
+    }
+    setActiveTab(tabId as any);
+    if (window.innerWidth < 768) toggleSidebar();
+  };
 
   return (
     <>
@@ -48,10 +60,7 @@ export function Sidebar() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                if (window.innerWidth < 768) toggleSidebar();
-              }}
+              onClick={() => handleTabClick(tab.id)}
               className={cn(
                 'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors',
                 activeTab === tab.id

@@ -445,6 +445,7 @@ export function SchedulePage() {
       if ('amount' in data) updateData.amount = data.amount;
       if ('is_done' in data) updateData.is_done = data.is_done;
       if ('is_reserved' in data) updateData.is_reserved = data.is_reserved;
+      if ('is_paid' in data) updateData.is_paid = data.is_paid;
       if ('schedule_type' in data) updateData.schedule_type = scheduleType;
       if ('payment_method' in data) updateData.payment_method = paymentMethod;
       if ('event_icon' in data) updateData.event_icon = data.event_icon;
@@ -528,6 +529,19 @@ export function SchedulePage() {
         date: dateStr,
         time_slot: timeSlot,
         is_reserved: !existing.is_reserved,
+      });
+    }
+  };
+
+  // 입금 토글
+  const handleTogglePaid = async (timeSlot: string) => {
+    const existing = scheduleMap[timeSlot];
+    if (existing) {
+      await upsertSchedule.mutateAsync({
+        id: existing.id,
+        date: dateStr,
+        time_slot: timeSlot,
+        is_paid: !existing.is_paid,
       });
     }
   };
@@ -697,23 +711,6 @@ export function SchedulePage() {
         </div>
       </div>
 
-      {/* 테이블 헤더 - 데스크탑만 */}
-      <div className="hidden lg:block bg-gray-100 border rounded-t-lg">
-        <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700">
-          <div></div>
-          <div>시간</div>
-          <div>거래처명</div>
-          <div>동호수</div>
-          <div>내용</div>
-          <div>유형</div>
-          <div className="text-right">금액</div>
-          <div>결제방법</div>
-          <div className="text-center">🏷️</div>
-          <div className="text-center">예약</div>
-          <div className="text-center">완료</div>
-        </div>
-      </div>
-
       {/* 모바일 헤더 */}
       <div className="lg:hidden bg-gray-100 border rounded-t-lg px-3 py-2 text-sm font-semibold text-gray-700">
         스케줄 목록
@@ -722,9 +719,26 @@ export function SchedulePage() {
       {/* 스케줄 목록 */}
       <div
         ref={scheduleListRef}
-        className="flex-1 overflow-y-auto border border-t-0 bg-white"
+        className="flex-1 overflow-y-auto border border-t-0 lg:border-t lg:rounded-t-lg bg-white"
         style={{ touchAction: 'pan-y pinch-zoom' }}
       >
+        {/* 테이블 헤더 - 데스크탑만 (sticky: 스크롤 시에도 고정, 너비 일치) */}
+        <div className="hidden lg:block bg-gray-100 border-b sticky top-0 z-10 rounded-t-lg">
+          <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px_60px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700 border-l-4 border-l-transparent">
+            <div></div>
+            <div className="text-center">시간</div>
+            <div className="text-center">거래처명</div>
+            <div className="text-center">동호수</div>
+            <div className="text-center">내용</div>
+            <div className="text-center">유형</div>
+            <div className="text-center">금액</div>
+            <div className="text-center">결제방법</div>
+            <div className="text-center">🏷️</div>
+            <div className="text-center">예약</div>
+            <div className="text-center">완료</div>
+            <div className="text-center">입금</div>
+          </div>
+        </div>
         {schedulesLoading ? (
           <div className="flex items-center justify-center h-40 text-gray-500">
             <div className="animate-spin mr-2">⏳</div>
@@ -741,6 +755,8 @@ export function SchedulePage() {
               onUpdate={(data) => handleUpdate(timeSlot, data)}
               onToggleDone={() => handleToggleDone(timeSlot)}
               onToggleReserved={() => handleToggleReserved(timeSlot)}
+              onCompletionClick={() => handleToggleDone(timeSlot)}
+              onDepositClick={() => handleTogglePaid(timeSlot)}
               isDragging={dragSourceSlot === timeSlot}
               isDragOver={dragOverSlot === timeSlot}
               onDragStart={() => handleDragStart(timeSlot)}

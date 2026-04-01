@@ -5,6 +5,7 @@ import { Search, RotateCcw, FileSpreadsheet, Calendar, Clock, MapPin } from 'luc
 import { Button } from '@/components/ui/button';
 import { useSearchSchedules } from '@/hooks/useSchedules';
 import { useDateStore } from '@/stores/dateStore';
+import { useUIStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
 import { format, subMonths } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -34,6 +35,7 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 
 export function SearchPage() {
   const { setSelectedDate } = useDateStore();
+  const { setActiveTab } = useUIStore();
   
   // 검색 조건
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,10 +122,11 @@ export function SearchPage() {
     XLSX.writeFile(workbook, `스케줄_검색결과_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
   };
 
-  // 날짜 클릭 시 해당 날짜로 이동
+  // 날짜 클릭 시 해당 일별 스케줄로 이동
   const handleDateClick = (dateStr: string) => {
     const [year, month, day] = dateStr.split('-').map(Number);
     setSelectedDate(new Date(year, month - 1, day));
+    setActiveTab('schedule');
   };
 
   return (

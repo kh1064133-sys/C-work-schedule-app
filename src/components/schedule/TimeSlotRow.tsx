@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatCurrencyInput } from '@/lib/utils/format';
 import type { Schedule, ScheduleType, PaymentMethod, EventIcon, Client, Item } from '@/types';
+import { CompletionPopup } from './CompletionPopup';
+import { DepositPopup } from './DepositPopup';
 
 interface TimeSlotRowProps {
   timeSlot: string;
@@ -15,6 +17,8 @@ interface TimeSlotRowProps {
   onUpdate: (data: Partial<Schedule>) => void;
   onToggleDone: () => void;
   onToggleReserved: () => void;
+  onCompletionClick: () => void;
+  onDepositClick: () => void;
   // 드래그 관련 (PC)
   isDragging?: boolean;
   isDragOver?: boolean;
@@ -70,6 +74,8 @@ export function TimeSlotRow({
   onUpdate,
   onToggleDone,
   onToggleReserved,
+  onCompletionClick,
+  onDepositClick,
   isDragging = false,
   isDragOver = false,
   onDragStart,
@@ -304,6 +310,7 @@ export function TimeSlotRow({
 
   const isDone = schedule?.is_done || false;
   const isReserved = schedule?.is_reserved || false;
+  const isPaid = schedule?.is_paid || false;
   const eventIcon = schedule?.event_icon || null;
   const [showEventPicker, setShowEventPicker] = useState(false);
   const eventPickerRef = useRef<HTMLDivElement>(null);
@@ -342,13 +349,39 @@ export function TimeSlotRow({
     '': 'bg-white border-gray-200',
   };
 
+  // 완료 팝업 상태
+  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+  // 입금 팝업 상태
+  const [showDepositPopup, setShowDepositPopup] = useState(false);
+
+  // 완료 팝업 확인 핸들러
+  const handleCompletionConfirm = (data: any) => {
+    // 완료 처리: 완료 체크, 예약 해제
+    onUpdate({
+      is_done: true,
+      is_reserved: false,
+      // 필요시 추가 데이터 저장
+    });
+    setShowCompletionPopup(false);
+  };
+
+  // 입금 팝업 확인 핸들러
+  const handleDepositConfirm = (data: any) => {
+    // 입금 처리: 입금 체크, 완료는 원상태
+    onUpdate({
+      is_paid: true,
+      // 필요시 추가 데이터 저장
+    });
+    setShowDepositPopup(false);
+  };
+
   return (
     <>
       {/* 데스크탑 레이아웃 */}
       <div
         data-timeslot={timeSlot}
         className={cn(
-          'hidden lg:grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px] gap-2 px-3 py-2 border-b border-l-4 items-center transition-colors',
+          'hidden lg:grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px_60px] gap-2 px-3 py-2 border-b border-l-4 items-center transition-colors',
           isPending && 'bg-red-50 border-l-red-500',
           isDone && 'bg-green-50 border-l-green-500',
           !isPending && !isDone && 'border-l-transparent hover:bg-gray-50',
@@ -418,6 +451,7 @@ export function TimeSlotRow({
                 payment_method: null as any,
                 is_done: false,
                 is_reserved: false,
+                is_paid: false,
                 event_icon: null,
               });
             }}
@@ -686,9 +720,22 @@ export function TimeSlotRow({
             'text-xs font-bold',
             isDone ? 'bg-green-600 hover:bg-green-700' : 'border-yellow-400 text-yellow-600 hover:bg-yellow-50'
           )}
-          onClick={onToggleDone}
+          onClick={() => setShowCompletionPopup(true)}
         >
           {isDone ? '✅' : ''} 완료
+        </Button>
+
+        {/* 입금 버튼 */}
+        <Button
+          variant={isPaid ? 'default' : 'outline'}
+          size="sm"
+          className={cn(
+            'text-xs font-bold',
+            isPaid ? 'bg-amber-500 hover:bg-amber-600' : 'border-amber-400 text-amber-600 hover:bg-amber-50'
+          )}
+          onClick={() => setShowDepositPopup(true)}
+        >
+          {isPaid ? '💰' : '입금'}
         </Button>
       </div>
 
@@ -780,6 +827,7 @@ export function TimeSlotRow({
                   payment_method: null as any,
                   is_done: false,
                   is_reserved: false,
+                  is_paid: false,
                   event_icon: null,
                 });
               }}
@@ -852,9 +900,20 @@ export function TimeSlotRow({
                 'text-xs h-8 px-2',
                 isDone ? 'bg-green-600 hover:bg-green-700' : 'border-yellow-400 text-yellow-600'
               )}
-              onClick={onToggleDone}
+              onClick={onCompletionClick}
             >
               {isDone ? '✅' : '완료'}
+            </Button>
+            <Button
+              variant={isPaid ? 'default' : 'outline'}
+              size="sm"
+              className={cn(
+                'text-xs h-8 px-2',
+                isPaid ? 'bg-amber-500 hover:bg-amber-600' : 'border-amber-400 text-amber-600'
+              )}
+              onClick={onDepositClick}
+            >
+              {isPaid ? '💰' : '입금'}
             </Button>
           </div>
         </div>
@@ -1107,6 +1166,24 @@ export function TimeSlotRow({
             >❌ 취소</button>
           </div>
         </>
+      )}
+      {/* 완료 팝업 */}
+      {schedule && showCompletionPopup && (
+        <CompletionPopup
+          schedule={schedule}
+          open={showCompletionPopup}
+          onClose={() => setShowCompletionPopup(false)}
+          onConfirm={handleCompletionConfirm}
+        />
+      )}
+      {/* 입금 팝업 */}
+      {schedule && showDepositPopup && (
+        <DepositPopup
+          schedule={schedule}
+          open={showDepositPopup}
+          onClose={() => setShowDepositPopup(false)}
+          onConfirm={handleDepositConfirm}
+        />
       )}
     </>
   );

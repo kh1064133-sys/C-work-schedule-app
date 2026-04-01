@@ -50,15 +50,17 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 function PendingTable({
   items,
   onMarkDone,
+  onMarkPaid,
   onRowDoubleClick,
   amountColor,
-  buttonVariant = 'orange',
+  showDeposit = false,
 }: {
   items: Schedule[];
   onMarkDone: (s: Schedule) => void;
+  onMarkPaid?: (s: Schedule) => void;
   onRowDoubleClick?: (s: Schedule) => void;
   amountColor?: string;
-  buttonVariant?: 'gray' | 'orange';
+  showDeposit?: boolean;
 }) {
   const lastTapRef = useRef<{ time: number; id: string }>({ time: 0, id: '' });
 
@@ -107,71 +109,97 @@ function PendingTable({
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr>
-            <th style={thStyle('10%')}>날짜</th>
-            <th style={thStyle('10%')}>시간</th>
-            <th style={thStyle('25%')}>거래처</th>
-            <th style={thStyle('13%')}>동호수</th>
-            <th style={thStyle('10%')}>유형</th>
-            <th style={thStyle('18%', 'right')}>금액</th>
-            <th style={thStyle('7%', 'center')}>완료</th>
+            <th style={thStyle('9%')}>날짜</th>
+            <th style={thStyle('9%')}>시간</th>
+            <th style={thStyle('22%')}>거래처</th>
+            <th style={thStyle('11%')}>동호수</th>
+            <th style={thStyle('9%')}>유형</th>
+            <th style={thStyle('15%', 'right')}>금액</th>
+            <th style={thStyle('12%', 'center')}>상태</th>
+            <th style={thStyle('6%', 'center')}>완료</th>
+            {showDeposit && <th style={thStyle('7%', 'center')}>입금</th>}
           </tr>
         </thead>
         <tbody>
-          {items.map((s) => (
-            <tr
-              key={s.id}
-              onClick={() => handleRowTap(s)}
-              onDoubleClick={() => onRowDoubleClick?.(s)}
-              style={{ cursor: 'pointer' }}
-              title="더블탭하면 해당일 스케줄로 이동"
-            >
-              <td style={tdStyle('10%')}>{s.date.slice(5)}</td>
-              <td style={tdStyle('10%')}>{s.time_slot}</td>
-              <td style={{ ...tdStyle('25%'), fontWeight: 500 }}>{s.title || '-'}</td>
-              <td style={tdStyle('13%')}>{s.unit || '-'}</td>
-              <td style={tdStyle('10%')}>{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
-              <td style={{ ...tdStyle('18%', 'right'), color: amountColor || undefined }}>{(s.amount || 0).toLocaleString()}</td>
-              <td style={tdStyle('7%', 'center')}>
-                {s.is_done ? (
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    border: 'none',
-                    backgroundColor: buttonVariant === 'gray' ? '#9CA3AF' : '#F97316',
-                    color: 'white',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    lineHeight: 1,
-                  }}>✓</span>
-                ) : (
-                  <button
-                    onClick={() => onMarkDone(s)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      border: buttonVariant === 'gray' ? '1px solid #D1D5DB' : '1px solid #FDBA74',
-                      background: buttonVariant === 'gray' ? 'transparent' : '#FFF7ED',
-                      color: buttonVariant === 'gray' ? '#6B7280' : '#FB923C',
-                      cursor: 'pointer',
-                      padding: 0,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      lineHeight: 1,
-                    }}
-                    title="완료 처리"
-                  >✓</button>
+          {items.map((s) => {
+            const isDone = s.is_done;
+            const isPaid = s.is_paid;
+            // 상태 뱃지
+            let statusBadge: React.ReactNode;
+            if (isDone && isPaid) {
+              statusBadge = <span style={{ backgroundColor: '#DCFCE7', color: '#16a34a', border: '1px solid #86EFAC', padding: '1px 5px', borderRadius: 9999, fontSize: 'clamp(7px, 1.6vw, 10px)', fontWeight: 700, whiteSpace: 'nowrap' }}>✅ 완료</span>;
+            } else if (isDone && !isPaid) {
+              statusBadge = <span style={{ backgroundColor: '#FEF3C7', color: '#D97706', border: '1px solid #FCD34D', padding: '1px 5px', borderRadius: 9999, fontSize: 'clamp(7px, 1.6vw, 10px)', fontWeight: 700, whiteSpace: 'nowrap' }}>💰 미입금</span>;
+            } else {
+              statusBadge = <span style={{ backgroundColor: '#FEE2E2', color: '#DC2626', border: '1px solid #EF4444', padding: '1px 5px', borderRadius: 9999, fontSize: 'clamp(7px, 1.6vw, 10px)', fontWeight: 700, whiteSpace: 'nowrap' }}>⚠ 미완료</span>;
+            }
+
+            return (
+              <tr
+                key={s.id}
+                onClick={() => handleRowTap(s)}
+                onDoubleClick={() => onRowDoubleClick?.(s)}
+                style={{ cursor: 'pointer', backgroundColor: isDone && !isPaid ? '#FFFBEB' : undefined }}
+                title="더블탭하면 해당일 스케줄로 이동"
+              >
+                <td style={tdStyle('9%')}>{s.date.slice(5)}</td>
+                <td style={tdStyle('9%')}>{s.time_slot}</td>
+                <td style={{ ...tdStyle('22%'), fontWeight: 500 }}>{s.title || '-'}</td>
+                <td style={tdStyle('11%')}>{s.unit || '-'}</td>
+                <td style={tdStyle('9%')}>{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
+                <td style={{ ...tdStyle('15%', 'right'), color: amountColor || undefined, fontWeight: 600 }}>{(s.amount || 0).toLocaleString()}</td>
+                <td style={tdStyle('12%', 'center')}>{statusBadge}</td>
+                <td style={tdStyle('6%', 'center')}>
+                  {isDone ? (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 20, height: 20, borderRadius: '50%',
+                      backgroundColor: '#16a34a', color: 'white',
+                      fontSize: 12, fontWeight: 700,
+                    }}>✓</span>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMarkDone(s); }}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: '50%',
+                        border: '1.5px solid #FDBA74', background: '#FFF7ED',
+                        color: '#FB923C', cursor: 'pointer', padding: 0,
+                        fontSize: 12, fontWeight: 700,
+                      }}
+                      title="완료 처리"
+                    >✓</button>
+                  )}
+                </td>
+                {showDeposit && (
+                  <td style={tdStyle('7%', 'center')}>
+                    {isPaid ? (
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: '50%',
+                        backgroundColor: '#D97706', color: 'white',
+                        fontSize: 11, fontWeight: 700,
+                      }}>₩</span>
+                    ) : isDone ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onMarkPaid?.(s); }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%',
+                          border: '1.5px solid #FCD34D', background: '#FFFBEB',
+                          color: '#D97706', cursor: 'pointer', padding: 0,
+                          fontSize: 11, fontWeight: 700,
+                        }}
+                        title="입금 처리"
+                      >₩</button>
+                    ) : (
+                      <span style={{ color: '#D1D5DB', fontSize: 11 }}>-</span>
+                    )}
+                  </td>
                 )}
-              </td>
-            </tr>
-          ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -329,9 +357,9 @@ export function CalendarPage() {
     setActiveTab('schedule');
   };
 
-  // 미결 스케줄 (제목이 있고 완료되지 않은 것) - 현재 월 데이터 기준 (예약 분리용)
+  // 미결 스케줄 (제목이 있고 완료되지 않은 것, 이벤트 제외) - 현재 월 데이터 기준 (예약 분리용)
   const pendingSchedules = useMemo(() => {
-    return schedules.filter((s: Schedule) => s.title && !s.is_done);
+    return schedules.filter((s: Schedule) => s.title && !s.is_done && !s.event_icon);
   }, [schedules]);
 
   // 이전 미결: 전체 기간 데이터 사용 / 예약: 현재 월 데이터에서 분리
@@ -352,14 +380,43 @@ export function CalendarPage() {
   const prevPendingAmount = prevPending.reduce((sum, s) => sum + (s.amount || 0), 0);
   const reservedAmount = reservedSchedules.reduce((sum, s) => sum + (s.amount || 0), 0);
 
-  // 완료 처리
-  const handleMarkDone = async (schedule: Schedule) => {
+  // 완료 확인 팝업 상태
+  const [confirmTarget, setConfirmTarget] = useState<Schedule | null>(null);
+  // 입금 확인 팝업 상태
+  const [depositTarget, setDepositTarget] = useState<Schedule | null>(null);
+
+  // 완료 처리 (팝업 확인 후)
+  const handleConfirmDone = async () => {
+    if (!confirmTarget) return;
     await upsertSchedule.mutateAsync({
-      id: schedule.id,
-      date: schedule.date,
-      time_slot: schedule.time_slot,
+      id: confirmTarget.id,
+      date: confirmTarget.date,
+      time_slot: confirmTarget.time_slot,
       is_done: true,
     });
+    setConfirmTarget(null);
+  };
+
+  // 입금 처리 (팝업 확인 후)
+  const handleConfirmPaid = async () => {
+    if (!depositTarget) return;
+    await upsertSchedule.mutateAsync({
+      id: depositTarget.id,
+      date: depositTarget.date,
+      time_slot: depositTarget.time_slot,
+      is_paid: true,
+    });
+    setDepositTarget(null);
+  };
+
+  // 완료 버튼 클릭 → 팝업 열기
+  const handleMarkDone = (schedule: Schedule) => {
+    setConfirmTarget(schedule);
+  };
+
+  // 입금 버튼 클릭 → 팝업 열기
+  const handleMarkPaid = (schedule: Schedule) => {
+    setDepositTarget(schedule);
   };
 
   // 선택된 날짜의 일정 목록
@@ -637,29 +694,31 @@ export function CalendarPage() {
           </button>
           {showPrevPending && (
             <div className="bg-white p-1 md:p-3">
-              <PendingTable items={prevPending} onMarkDone={handleMarkDone} amountColor="#DC2626" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
+              <PendingTable items={prevPending} onMarkDone={handleMarkDone} onMarkPaid={handleMarkPaid} showDeposit={true} amountColor="#DC2626" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
             </div>
           )}
         </div>
       )}
 
       {/* ===== 4. 예약 섹션 ===== */}
-      {reservedSchedules.length > 0 && (
-        <div className="rounded-lg border overflow-hidden shadow-sm">
-          <button
-            onClick={() => toggleSection('showReserved')}
-            className="w-full flex items-center justify-between px-4 py-3 bg-blue-100 text-blue-700 font-semibold text-sm"
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>📅 예약 <span style={{ backgroundColor: '#2563EB', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{reservedSchedules.length}건</span> / {reservedAmount.toLocaleString()}</span>
-            {showReserved ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-          {showReserved && (
-            <div className="bg-white p-1 md:p-3">
-              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} buttonVariant="gray" onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
-            </div>
-          )}
-        </div>
-      )}
+      <div className="rounded-lg border overflow-hidden shadow-sm">
+        <button
+          onClick={() => toggleSection('showReserved')}
+          className="w-full flex items-center justify-between px-4 py-3 bg-blue-100 text-blue-700 font-semibold text-sm"
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>📅 예약 <span style={{ backgroundColor: '#2563EB', color: '#fff', borderRadius: 9999, padding: '1px 8px', fontSize: 12, fontWeight: 700, lineHeight: '18px', whiteSpace: 'nowrap' }}>{reservedSchedules.length}건</span> / {reservedAmount.toLocaleString()}</span>
+          {showReserved ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {showReserved && (
+          <div className="bg-white p-1 md:p-3">
+            {reservedSchedules.length > 0 ? (
+              <PendingTable items={reservedSchedules} onMarkDone={handleMarkDone} onRowDoubleClick={(s) => { setSelectedDate(new Date(s.date + 'T00:00:00')); setActiveTab('schedule'); }} />
+            ) : (
+              <p style={{ fontSize: 'clamp(9px, 2vw, 13px)', color: '#9ca3af', padding: '12px 4px' }}>예약된 일정이 없습니다.</p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ===== 5. 월 매출현황 섹션 ===== */}
       <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-xl overflow-hidden shadow-lg">
@@ -733,6 +792,160 @@ export function CalendarPage() {
         </div>
         )}
       </div>
+
+      {/* 완료 확인 팝업 */}
+      {confirmTarget && (
+        <>
+          <div
+            onClick={() => setConfirmTarget(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 99998,
+              background: 'rgba(0,0,0,0.4)',
+            }}
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 99999, background: 'white',
+            borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+            width: 'min(340px, 90vw)', overflow: 'hidden',
+          }}>
+            <div style={{ background: '#16a34a', color: 'white', padding: '16px 20px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              ✅ 완료 처리 확인
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.7, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>날짜</span>
+                  <span style={{ fontWeight: 600 }}>{confirmTarget.date}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>시간</span>
+                  <span style={{ fontWeight: 600 }}>{confirmTarget.time_slot}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>거래처</span>
+                  <span style={{ fontWeight: 600 }}>{confirmTarget.title || '-'}</span>
+                </div>
+                {confirmTarget.unit && (
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                    <span style={{ color: '#9CA3AF', minWidth: 52 }}>동호수</span>
+                    <span style={{ fontWeight: 600 }}>{confirmTarget.unit}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>금액</span>
+                  <span style={{ fontWeight: 700, color: '#16a34a' }}>{(confirmTarget.amount || 0).toLocaleString()}원</span>
+                </div>
+              </div>
+              <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
+                이 스케줄을 완료 처리하시겠습니까?
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setConfirmTarget(null)}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 10,
+                    border: '1px solid #D1D5DB', background: 'white',
+                    color: '#6B7280', fontSize: 14, fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmDone}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 10,
+                    border: 'none', background: '#16a34a',
+                    color: 'white', fontSize: 14, fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✅ 완료
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 입금 확인 팝업 */}
+      {depositTarget && (
+        <>
+          <div
+            onClick={() => setDepositTarget(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 99998,
+              background: 'rgba(0,0,0,0.4)',
+            }}
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 99999, background: 'white',
+            borderRadius: 16, boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+            width: 'min(340px, 90vw)', overflow: 'hidden',
+          }}>
+            <div style={{ background: '#D97706', color: 'white', padding: '16px 20px', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              💰 입금 확인
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.7, marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>날짜</span>
+                  <span style={{ fontWeight: 600 }}>{depositTarget.date}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>시간</span>
+                  <span style={{ fontWeight: 600 }}>{depositTarget.time_slot}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>거래처</span>
+                  <span style={{ fontWeight: 600 }}>{depositTarget.title || '-'}</span>
+                </div>
+                {depositTarget.unit && (
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                    <span style={{ color: '#9CA3AF', minWidth: 52 }}>동호수</span>
+                    <span style={{ fontWeight: 600 }}>{depositTarget.unit}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <span style={{ color: '#9CA3AF', minWidth: 52 }}>금액</span>
+                  <span style={{ fontWeight: 700, color: '#D97706' }}>{(depositTarget.amount || 0).toLocaleString()}원</span>
+                </div>
+              </div>
+              <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
+                입금이 확인되었습니까?
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setDepositTarget(null)}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 10,
+                    border: '1px solid #D1D5DB', background: 'white',
+                    color: '#6B7280', fontSize: 14, fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleConfirmPaid}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 10,
+                    border: 'none', background: '#D97706',
+                    color: 'white', fontSize: 14, fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  💰 입금 확인
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

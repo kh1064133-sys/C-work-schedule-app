@@ -53,14 +53,15 @@ export function useSchedulesByMonth(year: number, month: number) {
   });
 }
 
-// 오늘 이전의 모든 미완료 스케줄 조회 (이전 미결용)
+// 이전 미결 조회: 미완료(날짜<오늘) OR 완료했지만 미입금
 export function useAllPendingSchedules(beforeDate: string) {
   const supabase = createClient();
 
   return useQuery({
     queryKey: ['schedules', 'allPending', beforeDate],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // 1) 미완료 + 날짜 < 오늘
+      const { data: undone, error: err1 } = await supabase
         .from('schedules')
         .select('*')
         .eq('is_done', false)
@@ -68,10 +69,27 @@ export function useAllPendingSchedules(beforeDate: string) {
         .lt('date', beforeDate)
         .order('date', { ascending: true })
         .order('time_slot', { ascending: true });
+      if (err1) throw err1;
 
-      if (error) throw error;
-      // title이 null인 경우도 제외
-      return (data as Schedule[]).filter(s => s.title && s.title.trim() !== '');
+      // 2) 완료 + 미입금 (전체 기간)
+      const { data: doneUnpaid, error: err2 } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('is_done', true)
+        .eq('is_paid', false)
+        .neq('title', '')
+        .order('date', { ascending: true })
+        .order('time_slot', { ascending: true });
+      if (err2) throw err2;
+
+      const all = [...(undone || []), ...(doneUnpaid || [])] as Schedule[];
+      // 중복 제거 + title 필터
+      const seen = new Set<string>();
+      return all
+        .filter(s => s.title && s.title.trim() !== '')
+        .filter(s => !s.event_icon)
+        .filter(s => { if (seen.has(s.id)) return false; seen.add(s.id); return true; })
+        .sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
     },
   });
 }
@@ -262,7 +280,16 @@ export function useSearchSchedules(params: {
       const { data, error } = await query.order('date', { ascending: false }).order('time_slot');
 
       if (error) throw error;
-      return data as Schedule[];
+
+      // 데이터가 입력되지 않은 빈 시간대 및 이벤트 제외
+      return (data as Schedule[]).filter(s =>
+        !s.event_icon && (
+          (s.title && s.title.trim() !== '') ||
+          (s.memo && s.memo.trim() !== '') ||
+          (s.amount && s.amount > 0) ||
+          s.schedule_type
+        )
+      );
     },
     enabled: Boolean(params.query || params.fromDate || params.toDate || params.type),
   });

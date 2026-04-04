@@ -21,7 +21,7 @@ export interface Schedule {
 
 export type ScheduleType = 'sale' | 'as' | 'agency' | 'group';
 export type PaymentMethod = 'cash' | 'card' | 'vat' | 'free';
-export type EventIcon = 'golf' | 'birthday' | 'meeting';
+export type EventIcon = 'golf' | 'birthday' | 'meeting' | 'install';
 
 export interface ScheduleInput {
   date: string;

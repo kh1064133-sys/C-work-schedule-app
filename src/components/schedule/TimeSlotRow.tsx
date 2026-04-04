@@ -65,6 +65,7 @@ const EVENT_ICONS: { value: EventIcon; label: string; emoji: string }[] = [
   { value: 'golf', label: '골프', emoji: '⛳' },
   { value: 'birthday', label: '생일', emoji: '🎂' },
   { value: 'meeting', label: '미팅', emoji: '🤝' },
+  { value: 'install', label: '설치', emoji: '🔨' },
 ];
 
 export function TimeSlotRow({
@@ -315,6 +316,7 @@ export function TimeSlotRow({
   const eventIcon = schedule?.event_icon || null;
   const [showEventPicker, setShowEventPicker] = useState(false);
   const eventPickerRef = useRef<HTMLDivElement>(null);
+  const eventPickerMobileRef = useRef<HTMLDivElement>(null);
   const hasTitle = (schedule?.title || '').trim() !== '';
   const isPending = hasTitle && !isDone;
 
@@ -322,9 +324,14 @@ export function TimeSlotRow({
   useEffect(() => {
     if (!showEventPicker) return;
     const handleClick = (e: MouseEvent) => {
-      if (eventPickerRef.current && !eventPickerRef.current.contains(e.target as Node)) {
-        setShowEventPicker(false);
+      const target = e.target as Node;
+      if (
+        (eventPickerRef.current && eventPickerRef.current.contains(target)) ||
+        (eventPickerMobileRef.current && eventPickerMobileRef.current.contains(target))
+      ) {
+        return;
       }
+      setShowEventPicker(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -686,9 +693,11 @@ export function TimeSlotRow({
           <button
             className={cn(
               'w-8 h-8 rounded-md border text-base flex items-center justify-center transition-colors',
+              eventIcon === 'install' ? 'border-red-300 bg-red-50' :
               eventIcon ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50 text-gray-400'
             )}
             onClick={() => setShowEventPicker(!showEventPicker)}
+            onMouseDown={(e) => e.stopPropagation()}
             title="이벤트"
           >
             {eventIcon ? EVENT_ICONS.find(e => e.value === eventIcon)?.emoji : '🏷️'}
@@ -700,12 +709,15 @@ export function TimeSlotRow({
                   key={ev.value}
                   className={cn(
                     'w-9 h-9 rounded-md flex flex-col items-center justify-center text-xs transition-colors',
-                    eventIcon === ev.value ? 'bg-indigo-100 border border-indigo-400' : 'hover:bg-gray-100'
+                    eventIcon === ev.value
+                      ? ev.value === 'install' ? 'bg-red-100 border border-red-400' : 'bg-indigo-100 border border-indigo-400'
+                      : 'hover:bg-gray-100'
                   )}
                   onClick={() => {
                     onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value } as any);
                     setShowEventPicker(false);
                   }}
+                  onMouseDown={(e) => e.stopPropagation()}
                   title={ev.label}
                 >
                   <span className="text-base leading-none">{ev.emoji}</span>
@@ -718,6 +730,7 @@ export function TimeSlotRow({
                     onUpdate({ event_icon: null } as any);
                     setShowEventPicker(false);
                   }}
+                  onMouseDown={(e) => e.stopPropagation()}
                   title="제거"
                 >
                   ✕
@@ -870,12 +883,13 @@ export function TimeSlotRow({
           </div>
           <div className="flex gap-2">
             {/* 이벤트 아이콘 - 모바일 */}
-            <div className="relative" ref={showEventPicker ? eventPickerRef : undefined}>
+            <div className="relative" ref={eventPickerMobileRef}>
               <Button
                 variant="outline"
                 size="sm"
                 className={cn(
                   'text-xs h-8 px-2',
+                  eventIcon === 'install' ? 'border-red-300 bg-red-50' :
                   eventIcon && 'border-indigo-300 bg-indigo-50'
                 )}
                 onClick={() => setShowEventPicker(!showEventPicker)}
@@ -889,7 +903,9 @@ export function TimeSlotRow({
                       key={ev.value}
                       className={cn(
                         'w-10 h-10 rounded-md flex flex-col items-center justify-center text-xs transition-colors',
-                        eventIcon === ev.value ? 'bg-indigo-100 border border-indigo-400' : 'hover:bg-gray-100'
+                        eventIcon === ev.value
+                          ? ev.value === 'install' ? 'bg-red-100 border border-red-400' : 'bg-indigo-100 border border-indigo-400'
+                          : 'hover:bg-gray-100'
                       )}
                       onClick={() => {
                         onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value } as any);
@@ -923,18 +939,18 @@ export function TimeSlotRow({
               )}
               onClick={onToggleReserved}
             >
-              {isReserved ? '📋' : '예약'}
+              {isReserved ? '📋' : ''} 예약
             </Button>
             <Button
               variant={isDone ? 'default' : 'outline'}
               size="sm"
               className={cn(
                 'text-xs h-8 px-2',
-                isDone ? 'bg-green-600 hover:bg-green-700' : 'border-yellow-400 text-yellow-600'
+                isDone ? 'bg-green-600 hover:bg-green-700' : 'border-yellow-400 text-yellow-600 hover:bg-yellow-50'
               )}
-              onClick={onCompletionClick}
+              onClick={() => setShowCompletionPopup(true)}
             >
-              {isDone ? '✅' : '완료'}
+              {isDone ? '✅' : ''} 완료
             </Button>
             <Button
               variant={isPaid ? 'default' : 'outline'}
@@ -943,7 +959,7 @@ export function TimeSlotRow({
                 'text-xs h-8 px-2',
                 isPaid ? 'bg-amber-500 hover:bg-amber-600' : 'border-amber-400 text-amber-600'
               )}
-              onClick={onDepositClick}
+              onClick={() => setShowDepositPopup(true)}
             >
               {isPaid ? '💰' : '입금'}
             </Button>
@@ -957,8 +973,8 @@ export function TimeSlotRow({
             <div className="relative">
               <input
                 type="text"
-                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="거래처 🔍"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                placeholder="이름 🔍"
                 value={titleValue}
                 onChange={(e) => {
                   setTitleValue(e.target.value);
@@ -975,7 +991,7 @@ export function TimeSlotRow({
                   setClientSearch('');
                 }}
                 onBlur={(e) => {
-                  setTimeout(() => setShowClientPickerMobile(false), 200);
+                  setTimeout(() => setShowClientPickerMobile(false), 150);
                   if (!blockSaveRef?.current && e.target.value !== schedule?.title) {
                     onUpdate({ title: e.target.value });
                   }
@@ -1025,7 +1041,7 @@ export function TimeSlotRow({
             </div>
             <input
               type="text"
-              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               placeholder="동호수"
               value={unitValue}
               onChange={(e) => setUnitValue(e.target.value)}
@@ -1037,7 +1053,7 @@ export function TimeSlotRow({
           <div className="relative">
             <input
               type="text"
-              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               placeholder="내용 🔍"
               value={memoValue}
               onChange={(e) => {
@@ -1055,7 +1071,7 @@ export function TimeSlotRow({
                 setItemSearch('');
               }}
               onBlur={(e) => {
-                setTimeout(() => setShowItemPickerMobile(false), 200);
+                setTimeout(() => setShowItemPickerMobile(false), 150);
                 if (!blockSaveRef?.current && e.target.value !== schedule?.memo) {
                   onUpdate({ memo: e.target.value });
                 }
@@ -1110,7 +1126,7 @@ export function TimeSlotRow({
           {/* 유형 + 결제방법 + 금액 */}
           <div className="grid grid-cols-3 gap-2 relative z-10">
             <select
-              className="w-full px-2 py-2 border rounded-md text-sm bg-white appearance-auto cursor-pointer"
+              className="w-full px-2 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white appearance-auto cursor-pointer"
               value={scheduleTypeValue}
               onChange={(e) => {
                 setScheduleTypeValue(e.target.value);

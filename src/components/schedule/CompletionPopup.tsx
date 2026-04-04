@@ -73,24 +73,26 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const rect = canvas.parentElement!.getBoundingClientRect();
+    const isMobile = window.innerWidth < 1024;
+    const canvasH = isMobile ? 120 : 150;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
-    canvas.height = 150 * dpr;
+    canvas.height = canvasH * dpr;
     canvas.style.width = rect.width + 'px';
-    canvas.style.height = '150px';
+    canvas.style.height = canvasH + 'px';
     ctx.scale(dpr, dpr);
     ctx.fillStyle = '#fafafa';
-    ctx.fillRect(0, 0, rect.width, 150);
+    ctx.fillRect(0, 0, rect.width, canvasH);
     ctx.strokeStyle = '#e5e7eb';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(20, 120);
-    ctx.lineTo(rect.width - 20, 120);
+    ctx.moveTo(20, canvasH - 30);
+    ctx.lineTo(rect.width - 20, canvasH - 30);
     ctx.stroke();
     ctx.fillStyle = '#9ca3af';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('여기에 서명해 주세요', rect.width / 2, 140);
+    ctx.fillText('여기에 서명해 주세요', rect.width / 2, canvasH - 10);
   }, []);
 
   // 캔버스 초기화
@@ -100,6 +102,50 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
 
     requestAnimationFrame(() => initCanvas());
   }, [open, showSavedSignature, initCanvas]);
+
+  // 네이티브 터치 이벤트 등록 (passive: false → preventDefault 가능)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !open || showSavedSignature) return;
+
+    const onTouchStart = (e: globalThis.TouchEvent) => {
+      e.preventDefault();
+      isDrawingRef.current = true;
+      const rect = canvas.getBoundingClientRect();
+      const pos = { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      lastPosRef.current = pos;
+      hasSignatureRef.current = true;
+    };
+    const onTouchMove = (e: globalThis.TouchEvent) => {
+      if (!isDrawingRef.current) return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const pos = { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      const ctx = canvas.getContext('2d')!;
+      ctx.strokeStyle = '#1a237e';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastPosRef.current = pos;
+    };
+    const onTouchEnd = (e: globalThis.TouchEvent) => {
+      e.preventDefault();
+      isDrawingRef.current = false;
+    };
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+    return () => {
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [open, showSavedSignature]);
 
   const getPos = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     const canvas = canvasRef.current!;
@@ -201,8 +247,8 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
         onClick={onClose}
       />
       {/* 팝업 */}
-      <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 z-[10001] flex items-center justify-center p-2 lg:p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90dvh] flex flex-col">
           {/* 헤더 */}
           <div className="flex items-center justify-between px-5 py-4 border-b bg-green-600 text-white rounded-t-xl">
             <h2 className="text-lg font-bold">✅ 완료 확인서</h2>
@@ -219,7 +265,7 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
           </div>
 
           {/* 폼 */}
-          <div className="p-5 space-y-4">
+          <div className="p-4 lg:p-5 space-y-3 lg:space-y-4 overflow-y-auto flex-1 min-h-0">
             {/* 아파트명 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">아파트명 (거래처)</label>
@@ -325,7 +371,7 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
                   <img
                     src={existingRecord.signature_data}
                     alt="고객 서명"
-                    className="w-full h-[150px] object-contain bg-gray-50"
+                    className="w-full h-[120px] lg:h-[150px] object-contain bg-gray-50"
                   />
                 ) : (
                   /* 서명 캔버스 */
@@ -336,9 +382,6 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
                     onMouseMove={draw}
                     onMouseUp={stopDrawing}
                     onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
                   />
                 )}
               </div>
@@ -346,7 +389,7 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
           </div>
 
           {/* 하단 버튼 */}
-          <div className="flex gap-3 px-5 py-4 border-t bg-gray-50 rounded-b-xl">
+          <div className="flex gap-3 px-4 lg:px-5 py-3 lg:py-4 border-t bg-gray-50 rounded-b-xl flex-shrink-0">
             <Button
               variant="outline"
               className="flex-1"

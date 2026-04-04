@@ -149,6 +149,27 @@ export function useUpsertSchedule() {
       queryClient.invalidateQueries({ queryKey: ['schedules', data.date] });
       queryClient.invalidateQueries({ queryKey: ['schedules', 'month'] });
       queryClient.invalidateQueries({ queryKey: ['schedules', 'allPending'] });
+      queryClient.invalidateQueries({ queryKey: ['schedules', 'install'] });
+    },
+  });
+}
+
+// 설치 뱃지 전체 조회 (외주설치 페이지용)
+export function useInstallSchedules() {
+  const supabase = createClient();
+
+  return useQuery({
+    queryKey: ['schedules', 'install'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('event_icon', 'install')
+        .order('date', { ascending: true })
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      return data as Schedule[];
     },
   });
 }

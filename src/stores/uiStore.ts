@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy';
+type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy' | 'install';
 
 export interface CopiedScheduleData {
   title: string | null;
@@ -29,6 +29,10 @@ interface UIState {
   showMonthlySales: boolean;
   showSalesSummary: boolean;
   showYearlySales: boolean;
+
+  // 외주설치 페이지 대상 날짜 (설치 뱃지 클릭 시 설정)
+  installTargetDate: string | null;
+  setInstallTargetDate: (date: string | null) => void;
 
   // 탭 전환 가드 (스케줄 페이지 변경사항 감지)
   _tabChangeGuard: ((tab: Tab) => boolean) | null;
@@ -60,6 +64,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   showMonthlySales: false,
   showSalesSummary: false,
   showYearlySales: false,
+
+  installTargetDate: null,
+  setInstallTargetDate: (date) => set({ installTargetDate: date }),
 
   _tabChangeGuard: null,
   setTabChangeGuard: (guard) => set({ _tabChangeGuard: guard }),

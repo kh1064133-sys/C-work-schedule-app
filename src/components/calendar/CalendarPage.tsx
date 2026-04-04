@@ -30,6 +30,7 @@ const EVENT_ICON_EMOJI: Record<EventIcon, string> = {
   golf: '⛳',
   birthday: '🎂',
   meeting: '🤝',
+  install: '🔨',
 };
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {

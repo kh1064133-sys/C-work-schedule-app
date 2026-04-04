@@ -59,7 +59,7 @@ export function SchedulePage() {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const { copiedSchedule, setCopiedSchedule } = useUIStore();
 
-  const { _forceSetActiveTab } = useUIStore();
+  const { _forceSetActiveTab, setInstallTargetDate } = useUIStore();
 
   // 드래그 상태
   const [dragSourceSlot, setDragSourceSlot] = useState<string | null>(null);
@@ -188,7 +188,16 @@ export function SchedulePage() {
   const touchEndY = useRef<number>(0);
   const isVerticalScrolling = useRef(false);
   
+  const swipeValid = useRef(false);
+
   const handleTouchStart = (e: TouchEvent) => {
+    // 팝업, 캔버스, 모달 내부 터치는 스와이프 무시
+    const target = e.target as HTMLElement;
+    if (target.closest('canvas, [role="dialog"], .fixed')) {
+      swipeValid.current = false;
+      return;
+    }
+    swipeValid.current = true;
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     touchEndX.current = e.touches[0].clientX;
@@ -208,6 +217,10 @@ export function SchedulePage() {
   };
   
   const handleTouchEnd = () => {
+    // 유효하지 않은 스와이프(팝업/캔버스 내부)면 무시
+    if (!swipeValid.current) return;
+    swipeValid.current = false;
+
     // 세로 스크롤 중이었으면 스와이프 무시
     if (isVerticalScrolling.current) {
       touchStartX.current = 0;
@@ -458,9 +471,18 @@ export function SchedulePage() {
       if ('payment_method' in data) updateData.payment_method = paymentMethod;
       if ('event_icon' in data) updateData.event_icon = data.event_icon;
       
+      // 설치 뱃지 설정 시 외주설치 페이지 대상 날짜 업데이트
+      if (data.event_icon === 'install') {
+        setInstallTargetDate(dateStr);
+      }
+      
       await upsertSchedule.mutateAsync(updateData as unknown as ScheduleInput & { id?: string });
     } else if (data.title || data.memo || data.amount || data.event_icon) {
       // 새 스케줄 생성 (내용 또는 이벤트가 있을 때)
+      // 설치 뱃지 설정 시 외주설치 페이지 대상 날짜 업데이트
+      if (data.event_icon === 'install') {
+        setInstallTargetDate(dateStr);
+      }
       await upsertSchedule.mutateAsync({
         date: dateStr,
         time_slot: timeSlot,

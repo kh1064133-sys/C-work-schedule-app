@@ -58,8 +58,8 @@ export function DepositPopup({ schedule, open, onClose, onConfirm }: DepositPopu
         onClick={onClose}
       />
       {/* 팝업 */}
-      <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 z-[10001] flex items-center justify-center p-2 lg:p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90dvh] flex flex-col">
           {/* 헤더 */}
           <div className="flex items-center justify-between px-5 py-4 border-b bg-amber-500 text-white rounded-t-xl">
             <h2 className="text-lg font-bold">💰 입금 확인</h2>
@@ -69,7 +69,7 @@ export function DepositPopup({ schedule, open, onClose, onConfirm }: DepositPopu
           </div>
 
           {/* 폼 */}
-          <div className="p-5 space-y-4">
+          <div className="p-4 lg:p-5 space-y-3 lg:space-y-4 overflow-y-auto flex-1 min-h-0">
             {/* 입금 금액 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">입금 금액</label>
@@ -123,7 +123,7 @@ export function DepositPopup({ schedule, open, onClose, onConfirm }: DepositPopu
           </div>
 
           {/* 하단 버튼 */}
-          <div className="flex gap-3 px-5 py-4 border-t bg-gray-50 rounded-b-xl">
+          <div className="flex gap-3 px-4 lg:px-5 py-3 lg:py-4 border-t bg-gray-50 rounded-b-xl flex-shrink-0">
             <Button
               variant="outline"
               className="flex-1"

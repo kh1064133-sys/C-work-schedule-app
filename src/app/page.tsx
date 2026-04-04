@@ -12,6 +12,7 @@ import { AnalyticsPage } from '@/components/analytics';
 import { SearchPage } from '@/components/search';
 import { EstimateForm } from '@/components/estimate';
 import { GroupBuyPage } from '@/components/groupbuy';
+import { InstallPage } from '@/components/install';
 import { useUIStore } from '@/stores/uiStore';
 
 // 탭별 콘텐츠 컴포넌트
@@ -79,6 +80,14 @@ function GroupBuyContent() {
   );
 }
 
+function InstallContent() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
+      <InstallPage />
+    </div>
+  );
+}
+
 export default function Home() {
   const { activeTab, setActiveTab, isSidebarOpen, toggleSidebar } = useUIStore();
 
@@ -142,6 +151,8 @@ export default function Home() {
         return <EstimateContent />;
       case 'groupbuy':
         return <GroupBuyContent />;
+      case 'install':
+        return <InstallContent />;
       default:
         return <ScheduleContent />;
     }

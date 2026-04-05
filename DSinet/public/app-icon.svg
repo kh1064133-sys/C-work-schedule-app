@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+    <linearGradient id="cal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f0f0ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- 배경 라운드 사각형 -->
+  <rect x="0" y="0" width="512" height="512" rx="100" ry="100" fill="url(#bg)"/>
+  
+  <!-- 달력 본체 -->
+  <rect x="80" y="120" width="352" height="300" rx="24" ry="24" fill="url(#cal)" filter="url(#shadow)"/>
+  
+  <!-- 달력 상단 바 -->
+  <rect x="80" y="120" width="352" height="72" rx="24" ry="24" fill="#5a67d8"/>
+  <rect x="80" y="160" width="352" height="32" fill="#5a67d8"/>
+  
+  <!-- 달력 고리 -->
+  <rect x="170" y="90" width="20" height="60" rx="10" ry="10" fill="#4c51bf"/>
+  <rect x="322" y="90" width="20" height="60" rx="10" ry="10" fill="#4c51bf"/>
+  
+  <!-- 달력 그리드 라인 (가로) -->
+  <line x1="110" y1="260" x2="402" y2="260" stroke="#e2e8f0" stroke-width="1.5"/>
+  <line x1="110" y1="320" x2="402" y2="320" stroke="#e2e8f0" stroke-width="1.5"/>
+  <line x1="110" y1="380" x2="402" y2="380" stroke="#e2e8f0" stroke-width="1.5"/>
+  
+  <!-- 달력 그리드 라인 (세로) -->
+  <line x1="180" y1="210" x2="180" y2="400" stroke="#e2e8f0" stroke-width="1.5"/>
+  <line x1="256" y1="210" x2="256" y2="400" stroke="#e2e8f0" stroke-width="1.5"/>
+  <line x1="332" y1="210" x2="332" y2="400" stroke="#e2e8f0" stroke-width="1.5"/>
+  
+  <!-- 요일 텍스트 -->
+  <text x="145" y="240" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#4a5568" text-anchor="middle">월</text>
+  <text x="218" y="240" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#4a5568" text-anchor="middle">화</text>
+  <text x="294" y="240" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#4a5568" text-anchor="middle">수</text>
+  <text x="367" y="240" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#4a5568" text-anchor="middle">목</text>
+  
+  <!-- 날짜 숫자들 -->
+  <text x="145" y="295" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">3</text>
+  <text x="218" y="295" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">4</text>
+  <text x="294" y="295" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">5</text>
+  <text x="367" y="295" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">6</text>
+  
+  <text x="145" y="355" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">10</text>
+  <text x="218" y="355" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">11</text>
+  <text x="294" y="355" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">12</text>
+  <text x="367" y="355" font-family="Arial, sans-serif" font-size="24" fill="#2d3748" text-anchor="middle">13</text>
+  
+  <!-- 오늘 날짜 하이라이트 (5일) -->
+  <circle cx="294" cy="289" r="22" fill="#667eea" opacity="0.9"/>
+  <text x="294" y="296" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="white" text-anchor="middle">5</text>
+  
+  <!-- 매출 표시 (₩ 아이콘) - 우하단 뱃지 -->
+  <circle cx="390" cy="390" r="52" fill="#48bb78" stroke="white" stroke-width="6" filter="url(#shadow)"/>
+  <text x="390" y="405" font-family="Arial, sans-serif" font-size="44" font-weight="bold" fill="white" text-anchor="middle">₩</text>
+  
+  <!-- 체크마크 데코 - 좌상단 -->
+  <circle cx="130" cy="295" r="10" fill="#48bb78" opacity="0.6"/>
+  <circle cx="130" cy="355" r="10" fill="#48bb78" opacity="0.6"/>
+</svg>

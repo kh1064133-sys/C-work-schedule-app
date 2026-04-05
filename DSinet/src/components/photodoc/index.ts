@@ -1,0 +1,1 @@
+export { PhotoDocPage } from './PhotoDocPage';

@@ -40,6 +40,32 @@ function newPage(): PhotoPage {
   };
 }
 
+/* 이전 버전 localStorage 데이터에 누락 필드 보완 */
+function normalizePage(p: any): PhotoPage {
+  return {
+    id: p.id ?? crypto.randomUUID(),
+    photos: p.photos ?? [null, null, null, null],
+    rowTitles: p.rowTitles ?? ['사진설명', '사진설명'],
+    rowDescriptions: p.rowDescriptions ?? ['작업 내용', '작업 내용'],
+    captions: p.captions ?? ['사진 1', '사진 2', '사진 3', '사진 4'],
+  };
+}
+
+function normalizeDoc(d: any): DocState {
+  const def = defaultState();
+  return {
+    docTitle: d.docTitle ?? def.docTitle,
+    projectName: d.projectName ?? def.projectName,
+    date: d.date ?? def.date,
+    logo: d.logo ?? null,
+    logoPos: d.logoPos ?? def.logoPos,
+    logoSize: d.logoSize ?? def.logoSize,
+    titleBoxPos: d.titleBoxPos ?? def.titleBoxPos,
+    datePos: d.datePos ?? def.datePos,
+    pages: Array.isArray(d.pages) ? d.pages.map(normalizePage) : [newPage()],
+  };
+}
+
 function defaultState(): DocState {
   const now = new Date();
   return {
@@ -281,17 +307,17 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
   };
 
   return (
-    <div className="photo-page" style={{ width: 720, height: 960, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '80px 32px' }}>
+    <div className="photo-page" style={{ width: 720, height: 960, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '80px 32px 40px' }}>
       {/* 헤더 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 140px', border: '2px solid #333', marginBottom: 6 }}>
-        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
-          {doc.logo ? <img src={doc.logo} alt="로고" style={{ maxHeight: 36, maxWidth: 110, objectFit: 'contain' }} /> : <span style={{ fontSize: 10, color: '#aaa' }}>로고</span>}
+      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px', border: '2px solid #333', marginBottom: 6 }}>
+        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5, height: 80 }}>
+          {doc.logo ? <img src={doc.logo} alt="로고" style={{ maxHeight: 70, maxWidth: 143, objectFit: 'contain' }} /> : <span style={{ fontSize: 10, color: '#aaa' }}>로고</span>}
         </div>
-        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>{doc.projectName}</span>
+        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+          <span style={{ fontWeight: 700, fontSize: 18 }}>{doc.projectName}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8 }}>
-          <span style={{ fontSize: 12, color: '#555' }}>{doc.date}</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+          <span style={{ fontSize: 16, color: '#555' }}>{doc.date}</span>
         </div>
       </div>
 
@@ -306,27 +332,27 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
       </div>
 
       {/* 상단 블록 (Row1 타이틀 + 사진 1,2) */}
-      <div style={{ border: '2px solid #333' }}>
+      <div style={{ border: '2px solid #333', flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* 사진설명 행 */}
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', borderBottom: '2px solid #333' }}>
           <div style={{ borderRight: '2px solid #333', padding: '12px 6px', background: '#f0f4ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <EditableText value={page.rowTitles[0]} onChange={v => onPageChange({ rowTitles: [v, page.rowTitles[1]] as [string, string] })} style={{ fontSize: 12, fontWeight: 600 }} />
           </div>
-          <div style={{ padding: '12px 10px', background: '#f0f4ff', display: 'flex', alignItems: 'center' }}>
-            <EditableText value={page.rowDescriptions[0]} onChange={v => onPageChange({ rowDescriptions: [v, page.rowDescriptions[1]] as [string, string] })} style={{ fontSize: 12, fontWeight: 600 }} />
+          <div style={{ padding: '12px 10px', background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <EditableText value={page.rowDescriptions[0]} onChange={v => onPageChange({ rowDescriptions: [v, page.rowDescriptions[1]] as [string, string] })} style={{ fontSize: 12, fontWeight: 600, textAlign: 'center' }} />
           </div>
         </div>
         {/* 사진 행 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+        <div style={{ display: 'flex', flex: 1 }}>
           {[0, 1].map(idx => {
             const photo = page.photos[idx];
             const aspectH = Math.round((page.photos[0] || page.photos[1]) ? 220 : 220);
             return (
-              <div key={idx} style={{ borderRight: idx === 0 ? '2px solid #333' : undefined, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ position: 'relative', aspectRatio: '4 / 3.3', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <div key={idx} style={{ borderRight: idx === 0 ? '2px solid #333' : undefined, display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <div style={{ position: 'relative', flex: 1, background: '#fafafa', overflow: 'hidden' }}>
                   {photo ? (
                     <>
-                      <img src={photo.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      <img src={photo.src} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                       <button className="no-print-edit" style={{ position: 'absolute', top: 2, right: 2, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', lineHeight: '18px', textAlign: 'center' }}
                         onClick={() => removePhoto(idx)}>✕</button>
                     </>
@@ -345,7 +371,7 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
                     const newCaptions = [...page.captions] as [string, string, string, string];
                     newCaptions[idx] = v;
                     onPageChange({ captions: newCaptions });
-                  }} style={{ fontSize: 10, color: '#555' }} />
+                  }} style={{ fontSize: 12, color: '#000' }} />
                 </div>
               </div>
             );
@@ -354,26 +380,26 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
       </div>
 
       {/* 하단 블록 (Row2 타이틀 + 사진 3,4) */}
-      <div style={{ borderLeft: '2px solid #333', borderRight: '2px solid #333', borderBottom: '2px solid #333' }}>
+      <div style={{ borderLeft: '2px solid #333', borderRight: '2px solid #333', borderBottom: '2px solid #333', flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* 사진설명 행 */}
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', borderBottom: '2px solid #333' }}>
           <div style={{ borderRight: '2px solid #333', padding: '12px 6px', background: '#f0f4ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <EditableText value={page.rowTitles[1]} onChange={v => onPageChange({ rowTitles: [page.rowTitles[0], v] as [string, string] })} style={{ fontSize: 12, fontWeight: 600 }} />
           </div>
-          <div style={{ padding: '12px 10px', background: '#f0f4ff', display: 'flex', alignItems: 'center' }}>
-            <EditableText value={page.rowDescriptions[1]} onChange={v => onPageChange({ rowDescriptions: [page.rowDescriptions[0], v] as [string, string] })} style={{ fontSize: 12, fontWeight: 600 }} />
+          <div style={{ padding: '12px 10px', background: '#f0f4ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <EditableText value={page.rowDescriptions[1]} onChange={v => onPageChange({ rowDescriptions: [page.rowDescriptions[0], v] as [string, string] })} style={{ fontSize: 12, fontWeight: 600, textAlign: 'center' }} />
           </div>
         </div>
         {/* 사진 행 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+        <div style={{ display: 'flex', flex: 1 }}>
           {[2, 3].map(idx => {
             const photo = page.photos[idx];
             return (
-              <div key={idx} style={{ borderRight: idx === 2 ? '2px solid #333' : undefined, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ position: 'relative', aspectRatio: '4 / 3.3', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <div key={idx} style={{ borderRight: idx === 2 ? '2px solid #333' : undefined, display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <div style={{ position: 'relative', flex: 1, background: '#fafafa', overflow: 'hidden' }}>
                   {photo ? (
                     <>
-                      <img src={photo.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      <img src={photo.src} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                       <button className="no-print-edit" style={{ position: 'absolute', top: 2, right: 2, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: 18, height: 18, fontSize: 10, cursor: 'pointer', lineHeight: '18px', textAlign: 'center' }}
                         onClick={() => removePhoto(idx)}>✕</button>
                     </>
@@ -392,7 +418,7 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
                     const newCaptions = [...page.captions] as [string, string, string, string];
                     newCaptions[idx] = v;
                     onPageChange({ captions: newCaptions });
-                  }} style={{ fontSize: 10, color: '#555' }} />
+                  }} style={{ fontSize: 12, color: '#000' }} />
                 </div>
               </div>
             );
@@ -406,7 +432,7 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
       </div>
 
       {/* 페이지 번호 */}
-      <div style={{ position: 'absolute', bottom: 6, right: 12, fontSize: 10, color: '#aaa' }}>
+      <div style={{ paddingTop: 25, textAlign: 'center', fontSize: 13, color: '#333' }}>
         {pageIndex + 1}
       </div>
     </div>
@@ -421,7 +447,7 @@ export function PhotoDocPage() {
   // Load from localStorage
   useEffect(() => {
     const saved = getStoredValue<DocState | null>(STORAGE_KEY, null);
-    if (saved) setDoc(saved);
+    if (saved) setDoc(normalizeDoc(saved));
     setLoaded(true);
   }, []);
 

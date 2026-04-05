@@ -1,11 +1,21 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, Image, Camera, FolderOpen } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, Image, Camera, FolderOpen, FileSpreadsheet, X, Check } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem } from '@/hooks/useItems';
 import { cn } from '@/lib/utils';
 import type { Item, ItemInput } from '@/types';
+
+interface ExcelRow {
+  name: string;
+  spec: string;
+  unit: string;
+  price: number | undefined;
+  memo: string;
+  selected: boolean;
+}
 
 export function ItemsPage() {
   const { data: items = [], isLoading } = useItems();
@@ -16,6 +26,7 @@ export function ItemsPage() {
   // 파일 입력 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   // 상태
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,9 +35,15 @@ export function ItemsPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState('');
 
+  // 엑셀 미리보기 상태
+  const [excelRows, setExcelRows] = useState<ExcelRow[]>([]);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
   // 폼 상태
   const [formData, setFormData] = useState<ItemInput>({
     name: '',
+    spec: '',
     price: undefined,
     photo_url: '',
     memo: '',
@@ -43,6 +60,7 @@ export function ItemsPage() {
     setEditingItem(null);
     setFormData({
       name: '',
+      spec: '',
       price: undefined,
       photo_url: '',
       memo: '',
@@ -57,6 +75,7 @@ export function ItemsPage() {
     setEditingItem(item);
     setFormData({
       name: item.name,
+      spec: item.spec || '',
       price: item.price || undefined,
       photo_url: item.photo_url || '',
       memo: item.memo || '',
@@ -124,6 +143,109 @@ export function ItemsPage() {
     e.target.value = '';
   };
 
+  // 엑셀 파일 파싱
+  const handleExcelSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const data = ev.target?.result;
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      // 헤더 포함 raw 배열로 읽기
+      const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (raw.length < 2) { alert('데이터가 없습니다.'); return; }
+
+      const headerRow = raw[0].map(h => String(h ?? '').trim().toLowerCase());
+      const dataRows = raw.slice(1);
+
+      const findCol = (candidates: string[]): number => {
+        for (const c of candidates) {
+          const idx = headerRow.findIndex(h => h === c);
+          if (idx >= 0) return idx;
+        }
+        return -1;
+      };
+
+      // 헤더 기반 컬럼 인덱스 찾기
+      let nameIdx = findCol(['품목명', 'name', '품 목 명', '품목']);
+      let specIdx = findCol(['규격', 'spec', '규 격']);
+      let unitIdx = findCol(['단위', 'unit', '단 위']);
+      let priceIdx = findCol(['단가', 'price', '가격', '단 가']);
+      let memoIdx = findCol(['메모', 'memo', '비고', 'note']);
+
+      // 헤더 매칭 실패 시 컬럼 위치 기반 fallback (1열=품목명, 2열=규격, 3열=단위, 4열=단가, 5열=메모)
+      const noHeader = nameIdx === -1;
+      if (noHeader) {
+        nameIdx = 0; specIdx = 1; unitIdx = 2; priceIdx = 3; memoIdx = 4;
+      }
+
+      const getCell = (row: unknown[], idx: number) =>
+        idx >= 0 && idx < row.length ? String(row[idx] ?? '').trim() : '';
+
+      // 헤더 행이 실제로 헤더가 아니라 데이터인 경우 포함
+      const allRows = noHeader ? raw : dataRows;
+
+      const parsed: ExcelRow[] = allRows.map((row) => {
+        const priceRaw = getCell(row, priceIdx);
+        const priceNum = parseInt(priceRaw.replace(/[^0-9]/g, ''), 10);
+        return {
+          name: getCell(row, nameIdx),
+          spec: getCell(row, specIdx),
+          unit: getCell(row, unitIdx),
+          price: isNaN(priceNum) ? undefined : priceNum,
+          memo: getCell(row, memoIdx),
+          selected: true,
+        };
+      }).filter(r => r.name);
+
+      if (parsed.length === 0) {
+        alert('품목명 데이터를 찾을 수 없습니다.\n엑셀 첫 행에 헤더(품목명, 규격, 단가, 메모)가 있는지 확인해주세요.');
+        return;
+      }
+
+      setExcelRows(parsed);
+      setIsExcelModalOpen(true);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  // 엑셀 선택 항목 일괄 등록
+  const handleExcelImport = async () => {
+    const targets = excelRows.filter(r => r.selected);
+    if (targets.length === 0) { alert('선택된 항목이 없습니다.'); return; }
+
+    // 기존 품목과 중복 제거 (이름 + 규격 동일 시 스킵)
+    const newTargets = targets.filter(row =>
+      !items.some((item: Item) =>
+        item.name === row.name && (item.spec ?? '') === (row.spec ?? '')
+      )
+    );
+
+    if (newTargets.length === 0) {
+      alert(`선택한 ${targets.length}건이 모두 이미 등록된 항목입니다.`);
+      return;
+    }
+
+    const skipCount = targets.length - newTargets.length;
+    setIsImporting(true);
+    try {
+      for (const row of newTargets) {
+        await createItem.mutateAsync({ name: row.name, spec: row.spec || undefined, unit: row.unit || undefined, price: row.price, memo: row.memo || undefined });
+      }
+      setIsExcelModalOpen(false);
+      setExcelRows([]);
+      alert(`${newTargets.length}건 등록 완료${skipCount > 0 ? ` (중복 ${skipCount}건 제외)` : ''}`);
+    } catch (err) {
+      console.error(err);
+      alert('일부 항목 등록에 실패했습니다.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* 헤더 */}
@@ -132,10 +254,17 @@ export function ItemsPage() {
           <Package className="h-5 w-5" />
           품목 관리
         </h2>
-        <Button onClick={handleOpenAdd} className="gap-2">
-          <Plus className="h-4 w-4" />
-          품목 등록
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => excelInputRef.current?.click()} className="gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-green-600" />
+            엑셀 불러오기
+          </Button>
+          <input ref={excelInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelSelect} />
+          <Button onClick={handleOpenAdd} className="gap-2">
+            <Plus className="h-4 w-4" />
+            품목 등록
+          </Button>
+        </div>
       </div>
 
       {/* 검색 */}
@@ -171,6 +300,7 @@ export function ItemsPage() {
             <tr className="text-xs sm:text-sm font-semibold text-gray-700">
               <th className="px-2 sm:px-4 py-2 sm:py-3 text-center w-14 sm:w-20">사진</th>
               <th className="px-2 sm:px-4 py-2 sm:py-3 text-left">품목명</th>
+              <th className="px-2 sm:px-4 py-2 sm:py-3 text-left">규격</th>
               <th className="px-2 sm:px-4 py-2 sm:py-3 text-right whitespace-nowrap">단가</th>
               <th className="px-2 sm:px-4 py-2 sm:py-3 text-left">메모</th>
               <th className="px-2 sm:px-4 py-2 sm:py-3 text-center w-20 sm:w-24">관리</th>
@@ -179,13 +309,13 @@ export function ItemsPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   로딩 중...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   {searchTerm ? '검색 결과가 없습니다.' : '등록된 품목이 없습니다.'}
                 </td>
               </tr>
@@ -211,6 +341,7 @@ export function ItemsPage() {
                     </div>
                   </td>
                   <td className="px-2 sm:px-4 py-2 sm:py-3 font-medium text-sm sm:text-base">{item.name}</td>
+                  <td className="px-2 sm:px-4 py-2 sm:py-3 text-gray-500 text-xs sm:text-sm">{item.spec || '-'}</td>
                   <td className="px-2 sm:px-4 py-2 sm:py-3 text-right text-green-600 font-medium text-sm sm:text-base whitespace-nowrap">
                     {item.price ? `${item.price.toLocaleString()}원` : '-'}
                   </td>
@@ -263,6 +394,19 @@ export function ItemsPage() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="품목명 입력"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  규격
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  value={formData.spec || ''}
+                  onChange={(e) => setFormData({ ...formData, spec: e.target.value })}
+                  placeholder="규격 입력 (예: 100x200mm)"
                 />
               </div>
 
@@ -397,6 +541,64 @@ export function ItemsPage() {
               </Button>
               <Button onClick={handleSave}>
                 {editingItem ? '수정' : '등록'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 엑셀 미리보기 모달 */}
+      {isExcelModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl m-4 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-bold">엑셀 불러오기 미리보기</h3>
+              <button onClick={() => setIsExcelModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 border-b bg-gray-50 text-sm text-gray-600">
+              엑셀 열 이름: <span className="font-mono bg-white px-1 rounded border">품목명</span>, <span className="font-mono bg-white px-1 rounded border">규격</span>, <span className="font-mono bg-white px-1 rounded border">단위</span>, <span className="font-mono bg-white px-1 rounded border">단가</span> 순서로 매핑됩니다.
+              <span className="ml-2 text-blue-600">총 {excelRows.length}건 / 선택 {excelRows.filter(r => r.selected).length}건</span>
+            </div>
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100 sticky top-0">
+                  <tr>
+                    <th className="p-2 w-8">
+                      <input type="checkbox"
+                        checked={excelRows.every(r => r.selected)}
+                        onChange={e => setExcelRows(rows => rows.map(r => ({ ...r, selected: e.target.checked })))}
+                      />
+                    </th>
+                    <th className="p-2 text-left">품목명</th>
+                    <th className="p-2 text-left">규격</th>
+                    <th className="p-2 text-left">단위</th>
+                    <th className="p-2 text-right">단가</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {excelRows.map((row, i) => (
+                    <tr key={i} className={`border-b ${row.selected ? '' : 'opacity-40'}`}>
+                      <td className="p-2 text-center">
+                        <input type="checkbox" checked={row.selected}
+                          onChange={e => setExcelRows(rows => rows.map((r, ri) => ri === i ? { ...r, selected: e.target.checked } : r))}
+                        />
+                      </td>
+                      <td className="p-2 font-medium">{row.name}</td>
+                      <td className="p-2 text-gray-500">{row.spec}</td>
+                      <td className="p-2 text-gray-500">{row.unit}</td>
+                      <td className="p-2 text-right text-green-600">{row.price !== undefined ? row.price.toLocaleString() + '원' : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t">
+              <Button variant="outline" onClick={() => setIsExcelModalOpen(false)}>취소</Button>
+              <Button onClick={handleExcelImport} disabled={isImporting} className="gap-2 bg-green-600 hover:bg-green-700">
+                <Check className="h-4 w-4" />
+                {isImporting ? '등록 중...' : `선택 항목 등록 (${excelRows.filter(r => r.selected).length}건)`}
               </Button>
             </div>
           </div>

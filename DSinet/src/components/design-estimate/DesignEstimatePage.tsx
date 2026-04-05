@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Plus, Trash2, Download, Save, FileSpreadsheet } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Plus, Trash2, Download, Save, FileSpreadsheet, Search, X, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getStoredValue, setStoredValue } from '@/lib/storage';
+import { useItems } from '@/hooks/useItems';
+import type { Item } from '@/types';
 
 /* ════════════════════════ Types ════════════════════════ */
 interface LaborRate {
@@ -51,13 +54,24 @@ interface QuantityItem {
   unit: string;
 }
 
+interface SummaryItem {
+  id: string;
+  category: string;   // 공종
+  name: string;       // 항목명
+  spec: string;       // 규격
+  unit: string;       // 단위
+  quantity: number;   // 수량
+  unitPrice: number;  // 단가
+}
+
 interface DesignEstimateItem {
   id: string;
   category: 'material' | 'labor' | 'expense';
   name: string;
   spec: string;
   unit: string;
-  quantity: number;
+  quantity: number;       // 계산된 실제 수량
+  quantityExpr?: string; // 입력 표현식 (예: "50%", "1.5")
   unitPrice: number;
 }
 
@@ -68,6 +82,7 @@ interface ProjectData {
   materials: Material[];
   unitCosts: UnitCost[];
   quantities: QuantityItem[];
+  summaryItems: SummaryItem[];
   estimateItems: DesignEstimateItem[];
 }
 
@@ -100,6 +115,7 @@ function defaultProject(): ProjectData {
     ],
     unitCosts: [],
     quantities: [],
+    summaryItems: [],
     estimateItems: [],
   };
 }
@@ -136,7 +152,90 @@ function calcCost(data: ProjectData) {
 /* ─── 숫자 포맷 ─── */
 const fmt = (n: number) => n.toLocaleString();
 
-/* ─── 공통 편집 입력 ─── */
+/* ─── 공유 Excel 파싱 유틸 ─── */
+function readExcelFile(file: File): Promise<unknown[][]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target?.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' }) as unknown[][]);
+      } catch (e) { reject(e); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+function xCell(row: unknown[], idx: number): string {
+  return idx >= 0 && idx < row.length ? String(row[idx] ?? '').trim() : '';
+}
+function xNum(row: unknown[], idx: number): number {
+  const v = parseInt(xCell(row, idx).replace(/[^0-9]/g, ''), 10);
+  return isNaN(v) ? 0 : v;
+}
+function xFloat(row: unknown[], idx: number): number {
+  const v = parseFloat(xCell(row, idx).replace(/[^0-9.]/g, ''));
+  return isNaN(v) ? 0 : v;
+}
+function xFindCol(headerRow: string[], ...candidates: string[]): number {
+  for (const c of candidates) {
+    const idx = headerRow.findIndex(h => h === c.toLowerCase());
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+function ExcelImportBtn({ label = '엑셀 불러오기', onFile }: { label?: string; onFile: (file: File) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input ref={ref} type="file" accept=".xlsx,.xls" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} />
+      <Button variant="outline" size="sm" className="gap-1" onClick={() => ref.current?.click()}>
+        <Upload className="h-3.5 w-3.5" /> {label}
+      </Button>
+    </>
+  );
+}
+
+/* ─── % 포함 수량 입력 ─── */
+function parseQuantityExpr(expr: string): number {
+  const s = expr.trim();
+  if (s.endsWith('%')) {
+    const v = parseFloat(s.slice(0, -1));
+    return isNaN(v) ? 0 : v / 100;
+  }
+  const v = parseFloat(s.replace(/,/g, ''));
+  return isNaN(v) ? 0 : v;
+}
+
+function QuantityInput({ expr, onChange, className }: { expr: string; onChange: (expr: string, qty: number) => void; className?: string }) {
+  const [localVal, setLocalVal] = useState(expr);
+  useEffect(() => { setLocalVal(expr); }, [expr]);
+
+  const computed = parseQuantityExpr(localVal);
+  const isPercent = localVal.trim().endsWith('%');
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        className={cn('w-full px-2 py-1 border rounded text-right text-sm focus:outline-none focus:ring-1 focus:ring-blue-300', isPercent ? 'bg-purple-50 text-purple-700' : '', className)}
+        value={localVal}
+        onChange={e => setLocalVal(e.target.value)}
+        onBlur={() => onChange(localVal, parseQuantityExpr(localVal))}
+        onKeyDown={e => { if (e.key === 'Enter') onChange(localVal, parseQuantityExpr(localVal)); }}
+        placeholder="0 또는 50%"
+      />
+      {isPercent && (
+        <span style={{ position: 'absolute', right: 4, bottom: -14, fontSize: 10, color: '#7e22ce', whiteSpace: 'nowrap' }}>
+          = {computed % 1 === 0 ? computed : computed.toFixed(4)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function NumInput({ value, onChange, className }: { value: number; onChange: (v: number) => void; className?: string }) {
   return (
     <input type="text" className={cn('w-full px-2 py-1 border rounded text-right text-sm focus:outline-none focus:ring-1 focus:ring-blue-300', className)}
@@ -162,12 +261,34 @@ function LaborSheet({ data, onChange }: { data: ProjectData; onChange: (d: Parti
   const upd = (id: string, field: string, val: string | number) =>
     onChange({ laborRates: data.laborRates.map(r => r.id === id ? { ...r, [field]: val } : r) });
 
+  const handleExcel = async (file: File) => {
+    try {
+      const rows = await readExcelFile(file);
+      if (rows.length < 1) { alert('데이터가 없습니다.'); return; }
+      const h = rows[0].map(c => String(c ?? '').trim().toLowerCase());
+      const hasHeader = ['직종명', '직종', '일당'].some(k => h.includes(k));
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      let typeIdx = xFindCol(h, '직종명', '직종', 'type'); if (typeIdx < 0) typeIdx = 0;
+      let rateIdx = xFindCol(h, '일당', '단가', '일당(원)', 'rate'); if (rateIdx < 0) rateIdx = 1;
+      const added = dataRows
+        .map(row => ({ id: crypto.randomUUID(), type: xCell(row, typeIdx), dailyRate: xNum(row, rateIdx) }))
+        .filter(r => r.type);
+      if (added.length === 0) { alert('직종명 데이터를 찾을 수 없습니다.'); return; }
+      onChange({ laborRates: [...data.laborRates, ...added] });
+      alert(`${added.length}개 직종이 추가되었습니다.`);
+    } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg">노임단가표 ({data.year}년)</h3>
-        <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        <div className="flex gap-2 no-print">
+          <ExcelImportBtn onFile={handleExcel} />
+          <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        </div>
       </div>
+      <p className="text-xs text-gray-400 mb-2">헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">직종명 | 일당(원)</span></p>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-blue-50 border">
@@ -201,12 +322,44 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   const upd = (id: string, field: string, val: string | number) =>
     onChange({ materials: data.materials.map(m => m.id === id ? { ...m, [field]: val } : m) });
 
+  const handleExcel = async (file: File) => {
+    try {
+      const rows = await readExcelFile(file);
+      if (rows.length < 1) { alert('데이터가 없습니다.'); return; }
+      const h = rows[0].map(c => String(c ?? '').trim().toLowerCase());
+      const hasHeader = ['자재명', '자재', '단가'].some(k => h.includes(k));
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      let nameIdx = xFindCol(h, '자재명', '자재', 'name'); if (nameIdx < 0) nameIdx = 0;
+      let specIdx = xFindCol(h, '규격', 'spec'); if (specIdx < 0) specIdx = 1;
+      let unitIdx = xFindCol(h, '단위', 'unit'); if (unitIdx < 0) unitIdx = 2;
+      let priceIdx = xFindCol(h, '단가', '단가(원)', 'price'); if (priceIdx < 0) priceIdx = 3;
+      let qtyIdx = xFindCol(h, '수량', 'qty', 'quantity'); if (qtyIdx < 0) qtyIdx = 4;
+      const added = dataRows
+        .map(row => ({
+          id: crypto.randomUUID(),
+          name: xCell(row, nameIdx),
+          spec: xCell(row, specIdx),
+          unit: xCell(row, unitIdx) || '개',
+          unitPrice: xNum(row, priceIdx),
+          quantity: xFloat(row, qtyIdx),
+        }))
+        .filter(r => r.name);
+      if (added.length === 0) { alert('자재명 데이터를 찾을 수 없습니다.'); return; }
+      onChange({ materials: [...data.materials, ...added] });
+      alert(`${added.length}개 자재가 추가되었습니다.`);
+    } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg">자재단가표</h3>
-        <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        <div className="flex gap-2 no-print">
+          <ExcelImportBtn onFile={handleExcel} />
+          <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        </div>
       </div>
+      <p className="text-xs text-gray-400 mb-2">헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">자재명 | 규격 | 단위 | 단가 | 수량</span></p>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-green-50 border">
@@ -255,11 +408,49 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   const updUC = (id: string, partial: Partial<UnitCost>) =>
     onChange({ unitCosts: data.unitCosts.map(u => u.id === id ? { ...u, ...partial } : u) });
 
+  const handleExcel = async (file: File) => {
+    try {
+      const rows = await readExcelFile(file);
+      const newUnitCosts: UnitCost[] = [];
+      let current: UnitCost | null = null;
+      for (const row of rows) {
+        const colA = xCell(row, 0);
+        const colB = xCell(row, 1).replace(/\s/g, '');
+        if (!colA && !colB) continue;
+        if (colA === '공종명' || colB === '구분') continue; // 헤더행 스킵
+        if (colB === '' || colB === '공종') {
+          if (colA) { current = { id: crypto.randomUUID(), workType: colA, workers: [], materials: [] }; newUnitCosts.push(current); }
+        } else if (colB === '노무' && current) {
+          const laborType = xCell(row, 2);
+          const count = xFloat(row, 3) || 1;
+          const days = xFloat(row, 4) || 1;
+          if (laborType) current.workers.push({ laborType, count, days });
+        } else if (colB === '자재' && current) {
+          const materialName = xCell(row, 2);
+          if (materialName) current.materials.push({ materialName, spec: xCell(row, 3), unit: xCell(row, 4) || '개', quantity: xFloat(row, 5), unitPrice: xNum(row, 6) });
+        }
+      }
+      if (newUnitCosts.length === 0) {
+        alert('공종 데이터를 찾을 수 없습니다.\nB열에 "공종"/"노무"/"자재"로 구분 입력\n(B열이 비면 A열 값을 공종명으로 인식)');
+        return;
+      }
+      onChange({ unitCosts: [...data.unitCosts, ...newUnitCosts] });
+      alert(`${newUnitCosts.length}개 공종이 추가되었습니다.`);
+    } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg">일위대가표</h3>
-        <Button variant="outline" size="sm" className="gap-1" onClick={addUC}><Plus className="h-3.5 w-3.5" /> 공종 추가</Button>
+        <div className="flex gap-2 no-print">
+          <ExcelImportBtn onFile={handleExcel} />
+          <Button variant="outline" size="sm" className="gap-1" onClick={addUC}><Plus className="h-3.5 w-3.5" /> 공종 추가</Button>
+        </div>
+      </div>
+      <div className="text-xs text-gray-400 mb-2 space-y-0.5">
+        <p>헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">A(공종명) | B(구분) | C(명칭/직종) | D(규격/인원) | E(단위/일수) | F(수량) | G(단가)</span></p>
+        <p>B열: 공종·노무·자재 중 하나. B열이 빈 첫 행은 공종명 행으로 인식</p>
       </div>
       {data.unitCosts.length === 0 && <p className="text-gray-400 text-center py-8">공종을 추가하세요.</p>}
       {data.unitCosts.map((uc, i) => {
@@ -350,12 +541,30 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   const upd = (id: string, field: string, val: string | number) =>
     onChange({ quantities: data.quantities.map(q => q.id === id ? { ...q, [field]: val } : q) });
 
+  const handleExcel = async (file: File) => {
+    try {
+      const rows = await readExcelFile(file);
+      if (rows.length < 1) { alert('데이터가 없습니다.'); return; }
+      const h = rows[0].map(c => String(c ?? '').trim().toLowerCase());
+      const hasHeader = ['공종', '위치', '수량'].some(k => h.includes(k));
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      let wtIdx = xFindCol(h, '공종', '공종명', 'worktype'); if (wtIdx < 0) wtIdx = 0;
+      let locIdx = xFindCol(h, '위치', 'location'); if (locIdx < 0) locIdx = 1;
+      let qtyIdx = xFindCol(h, '수량', 'qty', 'quantity'); if (qtyIdx < 0) qtyIdx = 2;
+      let unitIdx = xFindCol(h, '단위', 'unit'); if (unitIdx < 0) unitIdx = 3;
+      const added = dataRows
+        .map(row => ({ id: crypto.randomUUID(), workType: xCell(row, wtIdx), location: xCell(row, locIdx), quantity: xFloat(row, qtyIdx), unit: xCell(row, unitIdx) || '식' }))
+        .filter(r => r.workType);
+      if (added.length === 0) { alert('공종 데이터를 찾을 수 없습니다.'); return; }
+      onChange({ quantities: [...data.quantities, ...added] });
+      alert(`${added.length}개 항목이 추가되었습니다.`);
+    } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
+  };
+
   // 공종별 합계
   const grouped = useMemo(() => {
     const g: Record<string, number> = {};
-    data.quantities.forEach(q => {
-      g[q.workType] = (g[q.workType] || 0) + q.quantity;
-    });
+    data.quantities.forEach(q => { g[q.workType] = (g[q.workType] || 0) + q.quantity; });
     return g;
   }, [data.quantities]);
 
@@ -363,8 +572,12 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg">물량내역서</h3>
-        <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        <div className="flex gap-2 no-print">
+          <ExcelImportBtn onFile={handleExcel} />
+          <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        </div>
       </div>
+      <p className="text-xs text-gray-400 mb-2">헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">공종 | 위치 | 수량 | 단위</span></p>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-yellow-50 border">
@@ -413,7 +626,218 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   );
 }
 
-/* ════════════════════ Sheet: 설계내역서 ════════════════════ */
+/* ════════════════════ Sheet: 산출집계표 ════════════════════ */
+function SummarySheet({ data, onChange }: { data: ProjectData; onChange: (d: Partial<ProjectData>) => void }) {
+  const add = () => onChange({ summaryItems: [...(data.summaryItems ?? []), { id: crypto.randomUUID(), category: '', name: '', spec: '', unit: '식', quantity: 0, unitPrice: 0 }] });
+  const del = (id: string) => onChange({ summaryItems: (data.summaryItems ?? []).filter(s => s.id !== id) });
+  const upd = (id: string, field: string, val: string | number) =>
+    onChange({ summaryItems: (data.summaryItems ?? []).map(s => s.id === id ? { ...s, [field]: val } : s) });
+
+  const handleExcel = async (file: File) => {
+    try {
+      const rows = await readExcelFile(file);
+      if (rows.length < 1) { alert('데이터가 없습니다.'); return; }
+      const h = rows[0].map(c => String(c ?? '').trim().toLowerCase());
+      const hasHeader = ['공종', '항목명', '수량', '단가'].some(k => h.includes(k));
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+      let catIdx = xFindCol(h, '공종', '공종명', 'category'); if (catIdx < 0) catIdx = 0;
+      let nameIdx = xFindCol(h, '항목명', '품명', 'name'); if (nameIdx < 0) nameIdx = 1;
+      let specIdx = xFindCol(h, '규격', 'spec'); if (specIdx < 0) specIdx = 2;
+      let unitIdx = xFindCol(h, '단위', 'unit'); if (unitIdx < 0) unitIdx = 3;
+      let qtyIdx = xFindCol(h, '수량', 'qty'); if (qtyIdx < 0) qtyIdx = 4;
+      let priceIdx = xFindCol(h, '단가', '단가(원)', 'price'); if (priceIdx < 0) priceIdx = 5;
+      const added = dataRows
+        .map(row => ({
+          id: crypto.randomUUID(),
+          category: xCell(row, catIdx),
+          name: xCell(row, nameIdx),
+          spec: xCell(row, specIdx),
+          unit: xCell(row, unitIdx) || '식',
+          quantity: xFloat(row, qtyIdx),
+          unitPrice: xNum(row, priceIdx),
+        }))
+        .filter(r => r.name);
+      if (added.length === 0) { alert('항목명 데이터를 찾을 수 없습니다.'); return; }
+      onChange({ summaryItems: [...(data.summaryItems ?? []), ...added] });
+      alert(`${added.length}개 항목이 추가되었습니다.`);
+    } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
+  };
+
+  const items = data.summaryItems ?? [];
+  const total = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-lg">산출집계표</h3>
+        <div className="flex gap-2 no-print">
+          <ExcelImportBtn onFile={handleExcel} />
+          <Button variant="outline" size="sm" className="gap-1" onClick={add}><Plus className="h-3.5 w-3.5" /> 추가</Button>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mb-2">헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">공종 | 항목명 | 규격 | 단위 | 수량 | 단가</span></p>
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="bg-orange-50 border">
+            <th className="border p-2 w-10">No</th>
+            <th className="border p-2 w-28">공종</th>
+            <th className="border p-2">항목명</th>
+            <th className="border p-2 w-24">규격</th>
+            <th className="border p-2 w-14">단위</th>
+            <th className="border p-2 w-20">수량</th>
+            <th className="border p-2 w-28">단가(원)</th>
+            <th className="border p-2 w-28">금액(원)</th>
+            <th className="border p-2 w-14 no-print"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, i) => (
+            <tr key={item.id} className="border hover:bg-gray-50">
+              <td className="border p-1 text-center text-gray-500">{i + 1}</td>
+              <td className="border p-1"><TextInput value={item.category} onChange={v => upd(item.id, 'category', v)} /></td>
+              <td className="border p-1"><TextInput value={item.name} onChange={v => upd(item.id, 'name', v)} /></td>
+              <td className="border p-1"><TextInput value={item.spec} onChange={v => upd(item.id, 'spec', v)} /></td>
+              <td className="border p-1"><TextInput value={item.unit} onChange={v => upd(item.id, 'unit', v)} /></td>
+              <td className="border p-1"><NumInput value={item.quantity} onChange={v => upd(item.id, 'quantity', v)} /></td>
+              <td className="border p-1"><NumInput value={item.unitPrice} onChange={v => upd(item.id, 'unitPrice', v)} /></td>
+              <td className="border p-1 text-right pr-3 font-medium">{fmt(item.quantity * item.unitPrice)}</td>
+              <td className="border p-1 text-center no-print">
+                <button className="text-red-500 hover:text-red-700" onClick={() => del(item.id)}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-gray-50 font-bold">
+            <td colSpan={7} className="border p-2 text-center">합계</td>
+            <td className="border p-2 text-right pr-3">{fmt(total)}</td>
+            <td className="border no-print"></td>
+          </tr>
+        </tfoot>
+      </table>
+      {items.length === 0 && <p className="text-gray-400 text-center py-8 text-sm">항목을 추가하거나 엑셀 파일을 불러오세요.</p>}
+    </div>
+  );
+}
+
+
+
+/* 품목 선택 팝업 모달 */
+function ItemSelectModal({ onSelect, onClose }: {
+  onSelect: (item: Item) => void;
+  onClose: () => void;
+}) {
+  const { data: allItems = [] } = useItems();
+  const [search, setSearch] = useState('');
+  const filtered = allItems.filter((item: Item) =>
+    item.name.toLowerCase().includes(search.toLowerCase()) ||
+    (item.spec ?? '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 flex flex-col" style={{ height: '80vh' }}>
+        <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
+          <h3 className="font-bold text-base">품목 선택 <span className="text-sm font-normal text-gray-400">({filtered.length}건)</span></h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="p-3 border-b flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              autoFocus
+              type="text"
+              className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              placeholder="품목명 또는 규격 검색..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 min-h-0">
+          {filtered.length === 0 ? (
+            <div className="p-6 text-center text-gray-400 text-sm">검색 결과가 없습니다.</div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 border-b">품목명</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 border-b">규격</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 border-b">단위</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600 border-b">단가</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item: Item) => (
+                  <tr key={item.id} className="border-b hover:bg-blue-50 cursor-pointer" onClick={() => { onSelect(item); onClose(); }}>
+                    <td className="px-3 py-2 font-medium">{item.name}</td>
+                    <td className="px-3 py-2 text-gray-500">{item.spec || '-'}</td>
+                    <td className="px-3 py-2 text-gray-500">{(item as any).unit || '-'}</td>
+                    <td className="px-3 py-2 text-right text-green-600">{item.price ? item.price.toLocaleString() + '원' : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* 항목명 셀 (돋보기 버튼으로 팝업 열기) */
+function ItemNameCell({ value, onChange, onSelect }: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelect: (item: Item) => void;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  return (
+    <div style={{ display: 'flex', gap: 2 }}>
+      <input
+        type="text"
+        className="w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-300"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="flex-shrink-0 px-1.5 border rounded text-gray-400 hover:text-blue-600 hover:border-blue-400 bg-gray-50"
+        onClick={() => setModalOpen(true)}
+        title="품목 검색"
+      >
+        <Search className="h-3.5 w-3.5" />
+      </button>
+      {modalOpen && (
+        <ItemSelectModal
+          onSelect={item => { onSelect(item); setModalOpen(false); }}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* % 수량 행의 금액을 누적합 기반으로 계산 */
+function computeEstimateAmounts(items: DesignEstimateItem[]): Map<string, number> {
+  const map = new Map<string, number>();
+  let runningTotal = 0;
+  for (const item of items) {
+    let amount: number;
+    const expr = item.quantityExpr?.trim() ?? '';
+    if (expr.endsWith('%')) {
+      const pct = parseFloat(expr.slice(0, -1));
+      amount = isNaN(pct) ? 0 : Math.round(runningTotal * pct / 100);
+    } else {
+      amount = item.quantity * item.unitPrice;
+    }
+    map.set(item.id, amount);
+    runningTotal += amount;
+  }
+  return map;
+}
+
 function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Partial<ProjectData>) => void }) {
   const add = (category: 'material' | 'labor' | 'expense') =>
     onChange({ estimateItems: [...data.estimateItems, { id: crypto.randomUUID(), category, name: '', spec: '', unit: '식', quantity: 1, unitPrice: 0 }] });
@@ -427,12 +851,14 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
     { key: 'expense', label: '경비 (직접)', bg: 'bg-orange-50' },
   ];
 
+  const amountMap = computeEstimateAmounts(data.estimateItems);
+
   return (
     <div>
       <h3 className="font-bold text-lg mb-3">설계내역서</h3>
       {categories.map(cat => {
         const items = data.estimateItems.filter(e => e.category === cat.key);
-        const subtotal = items.reduce((s, e) => s + e.quantity * e.unitPrice, 0);
+        const subtotal = items.reduce((s, e) => s + (amountMap.get(e.id) ?? e.quantity * e.unitPrice), 0);
         return (
           <div key={cat.key} className="mb-4">
             <div className="flex items-center justify-between mb-1">
@@ -449,12 +875,45 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                 {items.map((item, i) => (
                   <tr key={item.id} className="border hover:bg-gray-50">
                     <td className="border p-1 text-center text-gray-400">{i + 1}</td>
-                    <td className="border p-1"><TextInput value={item.name} onChange={v => upd(item.id, 'name', v)} /></td>
+                    <td className="border p-1">
+                      <ItemNameCell
+                        value={item.name}
+                        onChange={v => upd(item.id, 'name', v)}
+                        onSelect={selected => {
+                          onChange({
+                            estimateItems: data.estimateItems.map(e =>
+                              e.id === item.id
+                                ? { ...e, name: selected.name, spec: selected.spec ?? '', unit: (selected as any).unit ?? e.unit, unitPrice: selected.price ?? e.unitPrice }
+                                : e
+                            ),
+                          });
+                        }}
+                      />
+                    </td>
                     <td className="border p-1"><TextInput value={item.spec} onChange={v => upd(item.id, 'spec', v)} /></td>
                     <td className="border p-1"><TextInput value={item.unit} onChange={v => upd(item.id, 'unit', v)} /></td>
-                    <td className="border p-1"><NumInput value={item.quantity} onChange={v => upd(item.id, 'quantity', v)} /></td>
-                    <td className="border p-1"><NumInput value={item.unitPrice} onChange={v => upd(item.id, 'unitPrice', v)} /></td>
-                    <td className="border p-1 text-right pr-2 font-medium">{fmt(item.quantity * item.unitPrice)}</td>
+                    <td className="border p-1" style={{ paddingBottom: item.quantityExpr?.endsWith('%') ? 16 : undefined }}>
+                      <QuantityInput
+                        expr={item.quantityExpr ?? String(item.quantity)}
+                        onChange={(expr, qty) => {
+                          onChange({
+                            estimateItems: data.estimateItems.map(e =>
+                              e.id === item.id ? { ...e, quantityExpr: expr, quantity: qty } : e
+                            ),
+                          });
+                        }}
+                      />
+                    </td>
+                    <td className="border p-1">
+                      {item.quantityExpr?.trim().endsWith('%') ? (
+                        <div className="px-2 py-1 text-right text-xs text-purple-500 bg-purple-50 rounded">
+                          기준: {fmt((() => { let t = 0; for (const e of data.estimateItems) { if (e.id === item.id) break; t += amountMap.get(e.id) ?? e.quantity * e.unitPrice; } return t; })())}원
+                        </div>
+                      ) : (
+                        <NumInput value={item.unitPrice} onChange={v => upd(item.id, 'unitPrice', v)} />
+                      )}
+                    </td>
+                    <td className="border p-1 text-right pr-2 font-medium">{fmt(amountMap.get(item.id) ?? item.quantity * item.unitPrice)}</td>
                     <td className="border p-1 text-center no-print"><button className="text-red-400" onClick={() => del(item.id)}>✕</button></td>
                   </tr>
                 ))}
@@ -609,12 +1068,7 @@ export function DesignEstimatePage() {
         {activeSheet === 'quantity' && <QuantitySheet data={data} onChange={updateData} />}
         {activeSheet === 'estimate' && <EstimateSheet data={data} onChange={updateData} />}
         {activeSheet === 'cost-calc' && <CostCalcSheet data={data} />}
-        {activeSheet === 'summary' && (
-          <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">
-            <p className="text-lg font-semibold">산출집계표</p>
-            <p className="text-sm mt-2">준비 중입니다.</p>
-          </div>
-        )}
+        {activeSheet === 'summary' && <SummarySheet data={data} onChange={updateData} />}
         {activeSheet === 'diagram' && (
           <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">
             <p className="text-lg font-semibold">구성도</p>

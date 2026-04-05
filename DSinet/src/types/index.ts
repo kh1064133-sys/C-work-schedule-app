@@ -105,6 +105,8 @@ export interface Item {
   id: string;
   user_id: string;
   name: string;
+  spec?: string | null;
+  unit?: string | null;
   price: number;
   category: ItemCategory | null;
   memo: string | null;
@@ -117,6 +119,8 @@ export type ItemCategory = 'product' | 'part' | 'service' | 'etc';
 
 export interface ItemInput {
   name: string;
+  spec?: string;
+  unit?: string;
   price?: number;
   category?: ItemCategory;
   memo?: string;

@@ -43,6 +43,8 @@ export function useCreateItem() {
         id: crypto.randomUUID(),
         user_id: 'local',
         name: input.name,
+        spec: input.spec || null,
+        unit: input.unit || null,
         price: input.price || 0,
         category: input.category || null,
         memo: input.memo || null,

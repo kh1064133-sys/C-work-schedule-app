@@ -19,7 +19,15 @@ export function getStoredValue<T>(key: string, defaultValue: T): T {
 }
 
 export function setStoredValue<T>(key: string, value: T): void {
-  localStorage.setItem(PREFIX + key, JSON.stringify(value));
+  try {
+    localStorage.setItem(PREFIX + key, JSON.stringify(value));
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      console.warn('[storage] QuotaExceededError - 저장 고간.');
+    } else {
+      throw e;
+    }
+  }
 }
 
 export function getAllStoredData(): Record<string, unknown> {

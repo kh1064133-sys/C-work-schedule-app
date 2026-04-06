@@ -311,7 +311,15 @@ const defaultCompanies: Company[] = [
 const defaultClient: Client = { name: "(서통)타워1차_ABCD", address: "서울시 강남구 도곡동 467", contact: "김담당", tel: "010-1234-5678" };
 
 export default function EstimateForm() {
-  const [items, setItems] = useState<Item[]>(() => loadFromStorage(`${STORAGE_KEY}_items`, initialItems));
+  const [items, setItems] = useState<Item[]>(() => {
+    const loaded = loadFromStorage(`${STORAGE_KEY}_items`, initialItems);
+    const seen = new Set<number>();
+    return loaded.map(item => {
+      if (seen.has(item.id)) return { ...item, id: Date.now() + Math.random() };
+      seen.add(item.id);
+      return item;
+    });
+  });
   const [companies, setCompanies] = useState<Company[]>(() => loadFromStorage(`${STORAGE_KEY}_companies`, defaultCompanies));
   const [activeCompanyId, setActiveCompanyId] = useState<number>(() => loadFromStorage(`${STORAGE_KEY}_activeId`, 1));
   const [client, setClient] = useState<Client>(() => loadFromStorage(`${STORAGE_KEY}_client`, defaultClient));
@@ -466,7 +474,7 @@ export default function EstimateForm() {
 
   const addCompany = () => {
     if (companies.length >= 5) return;
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     setCompanies(prev => [...prev, newCompany(id)]);
     setActiveCompanyId(id);
   };
@@ -482,7 +490,7 @@ export default function EstimateForm() {
   const vat = vatIncluded ? Math.round(subtotal * 0.1) : 0;
   const total = subtotal + vat;
 
-  const addItem = () => setItems([...items, { id: Date.now(), name: "", qty: 1, price: 0, note: "", photoUrl: null }]);
+  const addItem = () => setItems(prev => [...prev, { id: Date.now() + Math.random(), name: "", qty: 1, price: 0, note: "", photoUrl: null }]);
   const removeItem = (id: number) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: number, field: keyof Item, value: string | number | null) => setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
 

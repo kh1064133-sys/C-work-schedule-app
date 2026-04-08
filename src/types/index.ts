@@ -13,29 +13,35 @@ export interface Schedule {
   is_done: boolean;
   is_reserved: boolean;
   is_paid: boolean;
+  install_paid: boolean;
   event_icon: EventIcon | null;
+  install_type: ScheduleType | null;
+  install_amount: number;
   sort_order: number;
   created_at: string;
   updated_at: string;
 }
 
-export type ScheduleType = 'sale' | 'as' | 'agency' | 'group';
+export type ScheduleType = 'sale' | 'as' | 'agency' | 'group' | 'install' | 'daily';
 export type PaymentMethod = 'cash' | 'card' | 'vat' | 'free';
 export type EventIcon = 'golf' | 'birthday' | 'meeting' | 'install';
 
 export interface ScheduleInput {
   date: string;
   time_slot: string;
-  title?: string;
-  unit?: string;
-  memo?: string;
-  schedule_type?: ScheduleType;
+  title?: string | null;
+  unit?: string | null;
+  memo?: string | null;
+  schedule_type?: ScheduleType | null;
   amount?: number;
-  payment_method?: PaymentMethod;
+  payment_method?: PaymentMethod | null;
   is_done?: boolean;
   is_reserved?: boolean;
   is_paid?: boolean;
+  install_paid?: boolean;
   event_icon?: EventIcon | null;
+  install_type?: ScheduleType | null;
+  install_amount?: number;
   sort_order?: number;
 }
 
@@ -160,6 +166,8 @@ export const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   as: 'AS',
   agency: '대리점',
   group: '공동구매',
+  install: '외주설치',
+  daily: '일당',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -183,6 +191,57 @@ export const CLIENT_TYPE_ICONS: Record<ClientType, string> = {
   officetel: '🏬',
   house: '🏠',
   etc: '📍',
+};
+
+// ===== 차량유지관리 관련 타입 =====
+export type MaintenanceCategory = 'engine_oil' | 'tire' | 'brake' | 'battery' | 'etc';
+
+export interface VehicleMaintenance {
+  id: string;
+  user_id: string;
+  date: string;
+  category: MaintenanceCategory;
+  shop: string | null;
+  cost: number;
+  mileage: number | null;
+  memo: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VehicleMaintenanceInput {
+  date: string;
+  category: MaintenanceCategory;
+  shop?: string | null;
+  cost?: number;
+  mileage?: number | null;
+  memo?: string | null;
+}
+
+export interface FuelRecord {
+  id: string;
+  user_id: string;
+  date: string;
+  amount: number;
+  cost: number;
+  mileage: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FuelRecordInput {
+  date: string;
+  amount?: number;
+  cost?: number;
+  mileage?: number | null;
+}
+
+export const MAINTENANCE_CATEGORY_LABELS: Record<MaintenanceCategory, string> = {
+  engine_oil: '엔진오일',
+  tire: '타이어',
+  brake: '브레이크',
+  battery: '배터리',
+  etc: '기타',
 };
 
 export const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {

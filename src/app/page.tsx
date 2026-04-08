@@ -13,6 +13,7 @@ import { SearchPage } from '@/components/search';
 import { EstimateForm } from '@/components/estimate';
 import { GroupBuyPage } from '@/components/groupbuy';
 import { InstallPage } from '@/components/install';
+import { VehiclePage } from '@/components/vehicle';
 import { useUIStore } from '@/stores/uiStore';
 
 // 탭별 콘텐츠 컴포넌트
@@ -88,6 +89,14 @@ function InstallContent() {
   );
 }
 
+function VehicleContent() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
+      <VehiclePage />
+    </div>
+  );
+}
+
 export default function Home() {
   const { activeTab, setActiveTab, isSidebarOpen, toggleSidebar } = useUIStore();
 
@@ -153,6 +162,8 @@ export default function Home() {
         return <GroupBuyContent />;
       case 'install':
         return <InstallContent />;
+      case 'vehicle':
+        return <VehicleContent />;
       default:
         return <ScheduleContent />;
     }

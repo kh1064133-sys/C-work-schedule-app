@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useItems } from "@/hooks/useItems";
 import { useClients } from "@/hooks/useClients";
-import { useSupplierCompanies, useUpsertSupplier, useDeleteSupplier } from "@/hooks/useSuppliers";
 import type { Item as DbItem, Client as DbClient } from "@/types";
 
 interface Item {
@@ -24,9 +23,6 @@ interface Company {
   tel: string;
   email: string;
   stampImg: string | null;
-  bankName: string;
-  accountNo: string;
-  accountHolder: string;
 }
 
 interface Client {
@@ -44,7 +40,6 @@ const initialItems: Item[] = [
 
 const newCompany = (id: number): Company => ({
   id, name: "", ceo: "", bizNo: "", address: "", tel: "", email: "", stampImg: null,
-  bankName: "", accountNo: "", accountHolder: "",
 });
 
 const STORAGE_KEY = "estimate_form_data";
@@ -228,11 +223,6 @@ function downloadPng(dataUrl: string, filename: string) {
   document.body.removeChild(link);
 }
 
-function isValidStampImg(v: string | null | undefined): v is string {
-  if (!v) return false;
-  return v.startsWith('data:') || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('blob:');
-}
-
 function ImageUploadBox({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,34 +254,30 @@ function ImageUploadBox({ label, value, onChange }: { label: string; value: stri
       >
         {value ? (
           <>
-            {isValidStampImg(value) ? (
-              <img src={value} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-            ) : (
-              <span style={{ fontSize: "10px", color: "#aab0c0", lineHeight: 1.6, textAlign: "center" }}>
-                📎<br />{label}<br />로딩중...
-              </span>
-            )}
+            <img src={value} alt={label} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             <div
-              className="no-print"
               style={{
-                position: "absolute", bottom: 0, left: 0, right: 0,
-                background: "rgba(0,0,0,0.55)",
+                position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "10px", color: "white",
-                gap: "4px", padding: "3px 2px",
-                borderRadius: "0 0 8px 8px",
+                opacity: 0, transition: "opacity 0.2s", fontSize: "11px", color: "white",
+                gap: "6px", flexDirection: "column",
               }}
+              onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.opacity = '1'}
+              onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.opacity = '0'}
             >
-              <span style={{ opacity: 0.9 }}>변경</span>
-              <span style={{ color: "rgba(255,255,255,0.4)", margin: "0 1px" }}>|</span>
+              <span>변경</span>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
                   if (value) downloadPng(value, `${label}_투명배경.png`);
                 }}
-                style={{ cursor: "pointer", opacity: 0.9 }}
+                style={{
+                  background: "rgba(255,255,255,0.25)", borderRadius: "4px",
+                  padding: "2px 8px", fontSize: "10px", cursor: "pointer",
+                  border: "1px solid rgba(255,255,255,0.4)",
+                }}
                 title="투명 배경 PNG 다운로드"
-              >💾 저장</span>
+              >💾 PNG 저장</span>
             </div>
           </>
         ) : (
@@ -306,7 +292,7 @@ function ImageUploadBox({ label, value, onChange }: { label: string; value: stri
 }
 
 const defaultCompanies: Company[] = [
-  { id: 1, name: "(주)서통시큐리티", ceo: "홍길동", bizNo: "123-45-67890", address: "서울시 강남구 도곡동 467", tel: "02-1234-5678", email: "info@seotong.co.kr", stampImg: null, bankName: "", accountNo: "", accountHolder: "" },
+  { id: 1, name: "(주)서통시큐리티", ceo: "홍길동", bizNo: "123-45-67890", address: "서울시 강남구 도곡동 467", tel: "02-1234-5678", email: "info@seotong.co.kr", stampImg: null },
 ];
 const defaultClient: Client = { name: "(서통)타워1차_ABCD", address: "서울시 강남구 도곡동 467", contact: "김담당", tel: "010-1234-5678" };
 
@@ -320,139 +306,33 @@ export default function EstimateForm() {
   const [vatIncluded, setVatIncluded] = useState(() => loadFromStorage(`${STORAGE_KEY}_vat`, true));
   const [note, setNote] = useState(() => loadFromStorage(`${STORAGE_KEY}_note`, "• 본 견적서는 발행일로부터 30일간 유효합니다.\n• 설치비 별도 문의 바랍니다."));
 
-  // Supabase 공급자 데이터
-  const { data: dbSuppliers } = useSupplierCompanies();
-  const upsertSupplier = useUpsertSupplier();
-  const deleteSupplier = useDeleteSupplier();
-  const supabaseLoadedRef = useRef(false);
-
-  // Supabase에서 공급자 데이터 로드 (최초 1회)
-  useEffect(() => {
-    if (dbSuppliers === undefined) return; // 아직 로딩 중
-    if (!supabaseLoadedRef.current) {
-      supabaseLoadedRef.current = true;
-      if (dbSuppliers.length > 0) {
-        // Supabase에 데이터가 있으면 로드
-        const loaded: Company[] = dbSuppliers.map(s => ({
-          id: s.company_index,
-          name: s.name,
-          ceo: s.ceo,
-          bizNo: s.biz_no,
-          address: s.address,
-          tel: s.tel,
-          email: s.email,
-          stampImg: (s.stamp_img && s.stamp_img !== '__STAMP_IN_IDB__') ? s.stamp_img : null,
-          bankName: s.bank_name || '',
-          accountNo: s.account_no || '',
-          accountHolder: s.account_holder || '',
-        }));
-        // IndexedDB에서 도장 복원 후 병합 (Supabase에 도장이 없을 때 폴백)
-        const ids = loaded.map(c => c.id);
-        loadAllStampsFromDB(ids).then(stamps => {
-          setCompanies(loaded.map(c => ({
-            ...c,
-            stampImg: c.stampImg || stamps[c.id] || null,
-          })));
-          setStampsLoaded(true);
-        });
-        const active = dbSuppliers.find(s => s.is_active);
-        if (active) setActiveCompanyId(active.company_index);
-      } else {
-        // Supabase에 데이터가 없으면 현재 companies에서 플레이스홀더 정리 후 업로드
-        const ids = companies.map(c => c.id);
-        loadAllStampsFromDB(ids).then(stamps => {
-          const restored = companies.map(c => ({
-            ...c,
-            stampImg: (c.stampImg && c.stampImg !== '__STAMP_IN_IDB__') ? c.stampImg : stamps[c.id] || null,
-          }));
-          setCompanies(restored);
-          setStampsLoaded(true);
-          // Supabase에 업로드
-          restored.forEach(c => {
-            upsertSupplier.mutate({
-              company_index: c.id,
-              name: c.name,
-              ceo: c.ceo,
-              biz_no: c.bizNo,
-              address: c.address,
-              tel: c.tel,
-              email: c.email,
-              is_active: c.id === activeCompanyId,
-              stamp_img: c.stampImg,
-              bank_name: c.bankName,
-              account_no: c.accountNo,
-              account_holder: c.accountHolder,
-            });
-          });
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbSuppliers]);
-
-  // IndexedDB 로드는 Supabase 로드 useEffect에서 함께 처리함 (별도 useEffect 제거)
+  // IndexedDB에서 도장 이미지 복원
   const [stampsLoaded, setStampsLoaded] = useState(false);
+  useEffect(() => {
+    const ids = companies.map(c => c.id);
+    loadAllStampsFromDB(ids).then(stamps => {
+      setCompanies(prev => prev.map(c => ({
+        ...c,
+        stampImg: stamps[c.id] ?? c.stampImg,
+      })));
+      setStampsLoaded(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // localStorage에 자동 저장 (stampImg는 IndexedDB에 별도 저장)
   useEffect(() => {
     // localStorage에는 stampImg 제외한 데이터 저장 (용량 절약)
     const companiesForStorage = companies.map(c => ({ ...c, stampImg: c.stampImg ? "__STAMP_IN_IDB__" : null }));
     saveToStorage(`${STORAGE_KEY}_companies`, companiesForStorage);
-    // IndexedDB에 도장 이미지 개별 저장 (플레이스홀더는 저장 안 함)
+    // IndexedDB에 도장 이미지 개별 저장
     if (stampsLoaded) {
       companies.forEach(c => {
-        if (c.stampImg && c.stampImg !== '__STAMP_IN_IDB__') {
-          saveStampToDB(c.id, c.stampImg);
-        } else if (!c.stampImg) {
-          saveStampToDB(c.id, null);
-        }
+        saveStampToDB(c.id, c.stampImg);
       });
     }
-    // Supabase에 공급자 정보 자동 저장 (도장 포함, 플레이스홀더 제외)
-    if (supabaseLoadedRef.current && stampsLoaded) {
-      companies.forEach(c => {
-        const stampToSave = (c.stampImg && c.stampImg !== '__STAMP_IN_IDB__') ? c.stampImg : null;
-        upsertSupplier.mutate({
-          company_index: c.id,
-          name: c.name,
-          ceo: c.ceo,
-          biz_no: c.bizNo,
-          address: c.address,
-          tel: c.tel,
-          email: c.email,
-          is_active: c.id === activeCompanyId,
-          stamp_img: stampToSave,
-          bank_name: c.bankName,
-          account_no: c.accountNo,
-          account_holder: c.accountHolder,
-        });
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, stampsLoaded]);
-  useEffect(() => {
-    saveToStorage(`${STORAGE_KEY}_activeId`, activeCompanyId);
-    // Supabase에 is_active 상태 동기화
-    if (supabaseLoadedRef.current) {
-      companies.forEach(c => {
-        upsertSupplier.mutate({
-          company_index: c.id,
-          name: c.name,
-          ceo: c.ceo,
-          biz_no: c.bizNo,
-          address: c.address,
-          tel: c.tel,
-          email: c.email,
-          is_active: c.id === activeCompanyId,
-          stamp_img: c.stampImg,
-          bank_name: c.bankName,
-          account_no: c.accountNo,
-          account_holder: c.accountHolder,
-        });
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCompanyId]);
+  useEffect(() => { saveToStorage(`${STORAGE_KEY}_activeId`, activeCompanyId); }, [activeCompanyId]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_client`, client); }, [client]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_items`, items); }, [items]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_estimateNo`, estimateNo); }, [estimateNo]);
@@ -475,7 +355,6 @@ export default function EstimateForm() {
     const remaining = companies.filter(c => c.id !== id);
     setCompanies(remaining);
     setActiveCompanyId(remaining[0].id);
-    deleteSupplier.mutate(id);
   };
 
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
@@ -544,163 +423,6 @@ export default function EstimateForm() {
   };
   const won = (n: number) => "₩ " + n.toLocaleString();
 
-  const estimatePaperRef = useRef<HTMLDivElement>(null);
-
-  // 모바일 자동 축소: 680px 견적서를 화면 폭에 맞추기
-  const paperWrapperRef = useRef<HTMLDivElement>(null);
-  const [paperScale, setPaperScale] = useState(1);
-  const [manualZoom, setManualZoom] = useState(1);
-  const effectiveScale = paperScale * manualZoom;
-
-  const zoomIn = () => setManualZoom(prev => Math.min(Math.round((prev + 0.1) * 10) / 10, 2.0));
-  const zoomOut = () => setManualZoom(prev => Math.max(Math.round((prev - 0.1) * 10) / 10, 0.3));
-  const zoomReset = () => setManualZoom(1);
-
-  useEffect(() => {
-    const updateScale = () => {
-      const wrapper = paperWrapperRef.current;
-      if (!wrapper) return;
-      const availableWidth = wrapper.clientWidth;
-      const paperMinWidth = 680;
-      if (availableWidth < paperMinWidth) {
-        setPaperScale(availableWidth / paperMinWidth);
-      } else {
-        setPaperScale(1);
-      }
-    };
-    updateScale();
-    window.addEventListener('resize', updateScale);
-    // ResizeObserver로 컨테이너 크기 변화 감지
-    let ro: ResizeObserver | null = null;
-    if (paperWrapperRef.current && typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(updateScale);
-      ro.observe(paperWrapperRef.current);
-    }
-    return () => {
-      window.removeEventListener('resize', updateScale);
-      ro?.disconnect();
-    };
-  }, []);
-
-  // 인쇄 함수 - 새 창을 열고 견적서만 출력 (Android WebView 호환)
-  const handlePrint = useCallback(() => {
-    const paperEl = estimatePaperRef.current;
-    if (!paperEl) return;
-
-    // no-print 요소 숨기고 HTML 추출
-    const cloned = paperEl.cloneNode(true) as HTMLElement;
-    cloned.querySelectorAll('.no-print').forEach(el => el.remove());
-
-    const printHTML = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>견적서</title>
-<style>
-  * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0; padding: 0; }
-  @page { size: A4 portrait; margin: 6mm; }
-  html, body { font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; background: white; margin: 0; padding: 0; width: 100%; height: 100%; }
-  body { display: flex; align-items: flex-start; justify-content: center; }
-  .estimate-paper { width: 100%; max-width: 100%; background: white; overflow: visible; border-radius: 0 !important; box-shadow: none !important; }
-  .no-print { display: none !important; }
-  .no-print-col { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
-  input, textarea { outline: none; border: none; background: transparent; font-family: inherit; }
-  table { border-collapse: collapse; width: 100%; }
-
-  /* === 하단 요소 페이지 바닥 고정 === */
-  .est-body { display: flex; flex-direction: column; }
-  .est-spacer { flex: 1 1 auto; }
-  .est-bottom { flex-shrink: 0; }
-
-  /* === 1페이지 맞춤 축소 === */
-  .est-header { padding: 14px 24px !important; }
-  .est-header .est-title { font-size: 24px !important; letter-spacing: 6px !important; }
-  .est-header .est-subtitle { font-size: 9px !important; margin-bottom: 3px !important; }
-  .est-header input { font-size: 12px !important; }
-  .est-body { padding: 12px 22px !important; }
-  .est-parties { gap: 10px !important; margin-bottom: 8px !important; }
-  .est-parties span, .est-parties input { font-size: 10.5px !important; line-height: 1.35 !important; }
-  .est-parties div[style*="padding: 12px 14px"] { padding: 6px 10px !important; }
-  .est-parties div[style*="marginBottom: 5px"],
-  .est-parties div[style*="marginBottom: 4px"] { margin-bottom: 2px !important; }
-  .est-total-banner { padding: 8px 14px !important; margin-bottom: 8px !important; }
-  .est-total-banner .est-total-amount { font-size: 18px !important; }
-  .est-total-banner div[style*="font-size: 14px"] { font-size: 11px !important; }
-  .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
-  .est-table { margin-bottom: 6px !important; font-size: 10.5px !important; }
-  .est-table th { padding: 5px 6px !important; font-size: 10px !important; height: 25px !important; }
-  .est-table td { padding: 4px 6px !important; font-size: 10.5px !important; height: 25px !important; }
-  .est-table td input { font-size: 10.5px !important; }
-  .est-table td[style*="height: 34px"] { height: 25px !important; }
-  .est-summary-row { margin-bottom: 6px !important; }
-  .est-summary-row div[style*="padding: 10px 24px"] { padding: 6px 14px !important; min-width: 100px !important; }
-  .est-summary-row span { font-size: 10.5px !important; }
-  .est-photos { gap: 8px !important; margin-bottom: 8px !important; }
-  .est-photos > div { min-height: 250px !important; max-height: 250px !important; }
-  .est-photos img { object-fit: contain !important; }
-  .est-photos-empty { display: none !important; }
-  .est-note { margin-bottom: 6px !important; }
-  .est-note textarea { font-size: 10px !important; padding: 5px 10px !important; min-height: 24px !important; height: auto !important; }
-  .est-note .est-note-header { padding: 4px 10px !important; font-size: 10.5px !important; }
-  .est-note-empty { display: none !important; }
-  .est-signature { margin-bottom: 4px !important; gap: 10px !important; margin-top: 6px !important; }
-  .est-stamp { width: 60px !important; height: 60px !important; }
-  .est-signature div[style*="font-size: 13px"] { font-size: 11px !important; }
-  .est-signature div[style*="font-size: 12px"] { font-size: 10px !important; }
-  .est-signature div[style*="font-size: 11px"] { font-size: 9px !important; }
-  .est-footer { margin-top: 6px !important; padding-top: 6px !important; font-size: 9px !important; }
-</style>
-</head>
-<body>
-${cloned.outerHTML}
-<script>
-  window.onload = function() {
-    setTimeout(function() {
-      var paper = document.querySelector('.estimate-paper');
-      var body = document.querySelector('.est-body');
-      var bottom = document.querySelector('.est-bottom');
-      if (paper && body && bottom) {
-        // A4: 297mm - 12mm margin = 285mm ≈ 1077px @96dpi
-        var pageH = 1077;
-        var contentH = paper.scrollHeight;
-
-        // 1) 컨텐츠가 페이지보다 크면 축소
-        if (contentH > pageH) {
-          var scale = pageH / contentH;
-          paper.style.transform = 'scale(' + scale + ')';
-          paper.style.transformOrigin = 'top left';
-          paper.style.width = (100 / scale) + '%';
-        } else {
-          // 2) 페이지보다 작으면 — est-body를 페이지 높이에 맞추고 spacer로 하단 고정
-          var headerH = paper.querySelector('.est-header') ? paper.querySelector('.est-header').offsetHeight : 0;
-          var bodyTargetH = pageH - headerH;
-          body.style.minHeight = bodyTargetH + 'px';
-          // est-bottom 앞에 spacer 삽입
-          var spacer = document.createElement('div');
-          spacer.className = 'est-spacer';
-          body.insertBefore(spacer, bottom);
-        }
-      }
-      setTimeout(function() { window.print(); }, 200);
-    }, 200);
-    window.onafterprint = function() { window.close(); };
-    setTimeout(function() { window.close(); }, 10000);
-  };
-<\/script>
-</body>
-</html>`;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printHTML);
-      printWindow.document.close();
-    } else {
-      // 팝업 차단된 경우 - fallback으로 기존 window.print() 시도
-      window.print();
-    }
-  }, []);
-
   const inputStyle: React.CSSProperties = {
     outline: "none", border: "none", background: "transparent",
     fontFamily: "inherit", fontSize: "inherit", color: "inherit",
@@ -711,15 +433,13 @@ ${cloned.outerHTML}
     <div className="estimate-wrapper" style={{
       fontFamily: "'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo',sans-serif",
       background: "linear-gradient(135deg, #e8eaf6 0%, #ede7f6 100%)",
-      minHeight: "100vh", padding: "28px 8px",
-      touchAction: "pan-x pan-y pinch-zoom",
+      minHeight: "100vh", padding: "28px 16px",
     }}>
       <style>{`
         @media print {
           .no-print { display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }
-          .no-print-col { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
 
-          @page { size: A4 portrait; margin: 6mm; }
+          @page { size: A4 portrait; margin: 8mm; }
 
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box !important; }
 
@@ -773,13 +493,10 @@ ${cloned.outerHTML}
           .est-parties div[style*="margin-bottom: 4px"] { margin-bottom: 1px !important; }
 
           /* === 합계금액 배너 === */
-          .est-total-banner { padding: 6px 12px !important; margin-bottom: 6px !important; gap: 8px !important; }
+          .est-total-banner { padding: 6px 12px !important; margin-bottom: 6px !important; }
           .est-total-banner .est-total-amount { font-size: 16px !important; }
           .est-total-banner div[style*="font-size: 14px"] { font-size: 10px !important; }
           .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
-          .est-bank-row { padding: 5px 10px !important; margin-bottom: 6px !important; gap: 6px !important; }
-          .est-bank-row input { font-size: 10px !important; }
-          .est-bank-row span { font-size: 9px !important; }
 
           /* === 품목 테이블 === */
           .est-table { margin-bottom: 4px !important; font-size: 10px !important; page-break-inside: avoid !important; }
@@ -830,25 +547,23 @@ ${cloned.outerHTML}
       `}</style>
 
       {/* 툴바 */}
-      <div className="no-print" style={{ display: "flex", gap: "8px", marginBottom: "16px", justifyContent: "center", flexWrap: "wrap", maxWidth: "820px", margin: "0 auto 16px" }}>
+      <div className="no-print" style={{ display: "flex", gap: "10px", marginBottom: "20px", justifyContent: "center", flexWrap: "wrap" }}>
         {[
-          { label: "🖨️  인쇄 / PDF 저장", action: handlePrint, bg: "#1a237e" },
+          { label: "🖨️  인쇄 / PDF 저장", action: () => window.print(), bg: "#1a237e" },
           { label: "+ 품목 추가", action: addItem, bg: "#2e7d32" },
         ].map(b => (
           <button key={b.label} onClick={b.action} style={{
-            padding: "9px 18px", background: b.bg, color: "white",
+            padding: "9px 22px", background: b.bg, color: "white",
             border: "none", borderRadius: "8px", cursor: "pointer",
-            fontFamily: "inherit", fontSize: "clamp(11px, 2.8vw, 13px)", fontWeight: "bold",
+            fontFamily: "inherit", fontSize: "13px", fontWeight: "bold",
             boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-            minWidth: "120px", flex: "1 1 auto", maxWidth: "220px",
           }}>{b.label}</button>
         ))}
         <label style={{
-          padding: "9px 14px", background: vatIncluded ? "#e65100" : "#78909c",
+          padding: "9px 18px", background: vatIncluded ? "#e65100" : "#78909c",
           color: "white", borderRadius: "8px", cursor: "pointer",
-          fontSize: "clamp(11px, 2.8vw, 13px)", fontWeight: "bold",
+          fontSize: "13px", fontWeight: "bold",
           boxShadow: "0 2px 8px rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: "7px",
-          minWidth: "120px", flex: "1 1 auto", maxWidth: "180px", justifyContent: "center",
         }}>
           <input type="checkbox" checked={vatIncluded} onChange={e => setVatIncluded(e.target.checked)}
             style={{ width: "15px", height: "15px", cursor: "pointer" }} />
@@ -856,45 +571,10 @@ ${cloned.outerHTML}
         </label>
       </div>
 
-      {/* 줌 컨트롤 */}
-      <div className="no-print" style={{
-        display: "flex", gap: "6px", justifyContent: "center", alignItems: "center",
-        maxWidth: "820px", margin: "0 auto 12px",
-      }}>
-        <button onClick={zoomOut} style={{
-          width: "32px", height: "32px", borderRadius: "6px",
-          border: "1.5px solid #c5cae9", background: "white", color: "#1a237e",
-          fontSize: "18px", fontWeight: "bold", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        }}>－</button>
-        <span style={{
-          minWidth: "52px", textAlign: "center",
-          fontSize: "13px", fontWeight: "bold", color: "#1a237e",
-        }}>{Math.round(effectiveScale * 100)}%</span>
-        <button onClick={zoomIn} style={{
-          width: "32px", height: "32px", borderRadius: "6px",
-          border: "1.5px solid #c5cae9", background: "white", color: "#1a237e",
-          fontSize: "18px", fontWeight: "bold", cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        }}>＋</button>
-        <button onClick={zoomReset} style={{
-          height: "32px", borderRadius: "6px", padding: "0 12px",
-          border: "1.5px solid #c5cae9", background: "white", color: "#7986cb",
-          fontSize: "12px", fontWeight: "bold", cursor: "pointer",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-        }}>초기화</button>
-      </div>
-
-      {/* 견적서 본문 (모바일 자동 축소 래퍼) */}
-      <div ref={paperWrapperRef} style={{ width: "100%", maxWidth: "820px", margin: "0 auto", touchAction: "pan-x pan-y pinch-zoom" }}>
-        <div style={{
-          zoom: effectiveScale !== 1 ? effectiveScale : undefined,
-        }}>
-      <div ref={estimatePaperRef} className="estimate-paper" style={{
-        minWidth: "680px", maxWidth: "820px", margin: "0 auto", background: "white",
-        boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "visible",
+      {/* 견적서 본문 */}
+      <div className="estimate-paper" style={{
+        maxWidth: "820px", margin: "0 auto", background: "white",
+        boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "hidden",
       }}>
 
         {/* 헤더 */}
@@ -1099,7 +779,7 @@ ${cloned.outerHTML}
                     </div>
                   ))}
                 </div>
-                <div className="no-print" style={{ flexShrink: 0, paddingTop: "2px" }}>
+                <div style={{ flexShrink: 0, paddingTop: "2px" }}>
                   <ImageUploadBox
                     label="도장"
                     value={activeCompany.stampImg}
@@ -1209,14 +889,14 @@ ${cloned.outerHTML}
                     )}
                   </td>
                   <td style={{ padding: "8px", textAlign: "center" }}>
-                    <input type="number" value={item.qty || ""} onChange={e => { const v = e.target.value === "" ? 0 : Number(e.target.value); updateItem(item.id, "qty", isNaN(v) ? 0 : v); }} onBlur={() => { if (!item.qty) updateItem(item.id, "qty", 1); }}
+                    <input type="number" value={item.qty} onChange={e => updateItem(item.id, "qty", Math.max(1, Number(e.target.value)))}
                       style={{ ...inputStyle, width: "42px", textAlign: "center", fontSize: "12.5px" }} min="1" />
                   </td>
                   <td style={{ padding: "8px", textAlign: "right" }}>
-                    <input type="number" value={item.price || ""} onChange={e => { const v = Number(e.target.value); updateItem(item.id, "price", isNaN(v) ? 0 : v); }}
-                      style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px", color: item.price < 0 ? "#e53935" : "inherit" }} />
+                    <input type="number" value={item.price} onChange={e => updateItem(item.id, "price", Number(e.target.value))}
+                      style={{ ...inputStyle, textAlign: "right", fontSize: "12.5px" }} />
                   </td>
-                  <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: (item.qty * item.price) < 0 ? "#e53935" : "#1a237e" }}>
+                  <td style={{ padding: "8px", textAlign: "right", fontWeight: "bold", color: "#1a237e" }}>
                     {(item.qty * item.price).toLocaleString()}
                   </td>
                   <td style={{ padding: "8px" }}>
@@ -1264,9 +944,6 @@ ${cloned.outerHTML}
               ))}
             </div>
           </div>
-
-          {/* 하단 영역: 사진/비고/서명/푸터 — PDF에서 페이지 하단 고정 */}
-          <div className="est-bottom">
 
           {/* 제품 사진 박스 3개 — 품목 1,2,3의 사진 자동 표시 */}
           <div className={`est-photos ${items.slice(0,3).some(i => i?.photoUrl) ? '' : 'est-photos-empty'}`} style={{ display: "flex", gap: "12px", marginBottom: "22px" }}>
@@ -1319,37 +996,6 @@ ${cloned.outerHTML}
               rows={3} style={{ width: "100%", padding: "10px 14px", fontSize: "12.5px", color: "#555", boxSizing: "border-box", lineHeight: 1.7 }} />
           </div>
 
-          {/* 입금계좌 */}
-          <div className="est-bank-row" style={{
-            display: "flex", alignItems: "center", gap: "12px",
-            background: "linear-gradient(135deg, #fff8e1, #fff3e0)",
-            border: "1.5px solid #ff8f00",
-            borderRadius: "8px",
-            padding: "10px 16px",
-            marginBottom: "22px",
-          }}>
-            <span style={{ fontSize: "12px", fontWeight: "bold", color: "#e65100", letterSpacing: "1px", flexShrink: 0 }}>💰 입금계좌</span>
-            <input
-              value={activeCompany.bankName}
-              onChange={e => updateActiveCompany("bankName", e.target.value)}
-              placeholder="은행명"
-              style={{ ...inputStyle, fontSize: "12.5px", color: "#bf360c", fontWeight: "bold", width: "70px", flexShrink: 0 }}
-            />
-            <input
-              value={activeCompany.accountNo}
-              onChange={e => updateActiveCompany("accountNo", e.target.value)}
-              placeholder="계좌번호"
-              style={{ ...inputStyle, fontSize: "13px", color: "#333", fontWeight: "600", flex: 1 }}
-            />
-            <span style={{ fontSize: "11px", color: "#999", flexShrink: 0 }}>예금주</span>
-            <input
-              value={activeCompany.accountHolder}
-              onChange={e => updateActiveCompany("accountHolder", e.target.value)}
-              placeholder="예금주명"
-              style={{ ...inputStyle, fontSize: "12.5px", color: "#333", fontWeight: "600", width: "80px", flexShrink: 0 }}
-            />
-          </div>
-
           {/* 서명 + 도장 영역 */}
           <div className="est-signature" style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-end", gap: "16px", marginBottom: "8px" }}>
             <div style={{ textAlign: "right" }}>
@@ -1370,7 +1016,7 @@ ${cloned.outerHTML}
               display: "flex", alignItems: "center", justifyContent: "center",
               position: "relative",
             }}>
-              {isValidStampImg(activeCompany.stampImg) ? (
+              {activeCompany.stampImg ? (
                 <>
                   <img
                     src={activeCompany.stampImg}
@@ -1386,7 +1032,7 @@ ${cloned.outerHTML}
                     className="no-print"
                     onClick={() => downloadPng(activeCompany.stampImg!, `${activeCompany.name || '도장'}_투명배경.png`)}
                     style={{
-                      position: "absolute", bottom: "0px", right: "0px",
+                      position: "absolute", bottom: "-2px", right: "-2px",
                       background: "#1a237e", color: "white",
                       borderRadius: "4px", padding: "2px 6px",
                       fontSize: "9px", cursor: "pointer",
@@ -1394,6 +1040,8 @@ ${cloned.outerHTML}
                       opacity: 0.7, transition: "opacity 0.2s",
                       whiteSpace: "nowrap",
                     }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
                     title="투명 배경 PNG 파일로 저장"
                   >💾 PNG</div>
                 </>
@@ -1416,10 +1064,6 @@ ${cloned.outerHTML}
           <div className="est-footer" style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #e8eaf0", textAlign: "center", fontSize: "11px", color: "#bbb" }}>
             {activeCompany.name} &nbsp;|&nbsp; 대표: {activeCompany.ceo} &nbsp;|&nbsp; 사업자번호: {activeCompany.bizNo} &nbsp;|&nbsp; {activeCompany.tel} &nbsp;|&nbsp; {activeCompany.email}
           </div>
-
-          </div>{/* end est-bottom */}
-        </div>
-      </div>
         </div>
       </div>
     </div>

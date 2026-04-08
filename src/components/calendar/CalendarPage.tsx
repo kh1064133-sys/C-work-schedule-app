@@ -38,6 +38,7 @@ const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   as: 'AS',
   agency: '대리점',
   group: '공동구매',
+  install: '외주설치',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -262,6 +263,27 @@ export function CalendarPage() {
 
   // 해당 월의 스케줄 데이터
   const { data: schedules = [], isLoading } = useSchedulesByMonth(year, month);
+
+  // 차량 보험/세금 일정 (localStorage)
+  const vehicleEvents = useMemo(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const saved = localStorage.getItem('vehicle_insurance');
+      if (!saved) return {};
+      const info = JSON.parse(saved);
+      const events: Record<string, string[]> = {};
+      const add = (dateStr: string, label: string) => {
+        if (!dateStr) return;
+        if (!events[dateStr]) events[dateStr] = [];
+        events[dateStr].push(label);
+      };
+      add(info.insurance_expiry, '🛡보험만기');
+      add(info.car_tax_date, '🏛자동차세');
+      add(info.inspection_expiry, '🔧검사만기');
+      add(info.license_inspection_expiry, '🪪적성검사');
+      return events;
+    } catch { return {}; }
+  }, [year, month]);
 
   // 오늘 이전 모든 미결 데이터 (전체 기간)
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -555,6 +577,18 @@ export function CalendarPage() {
                     <div style={{ display: 'flex', gap: 1, flexShrink: 0, lineHeight: 1 }}>
                       {eventIcons.map(icon => (
                         <span key={icon} style={{ fontSize: 11 }}>{EVENT_ICON_EMOJI[icon]}</span>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+                {/* 차량 보험/세금 일정 */}
+                {(() => {
+                  const dateKey = format(date, 'yyyy-MM-dd');
+                  const vEvents = vehicleEvents[dateKey];
+                  return vEvents && vEvents.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0 }}>
+                      {vEvents.map((label, i) => (
+                        <span key={i} style={{ fontSize: 9, color: '#7c3aed', fontWeight: 600, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{label}</span>
                       ))}
                     </div>
                   ) : null;

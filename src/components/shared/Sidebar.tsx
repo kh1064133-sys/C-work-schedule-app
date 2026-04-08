@@ -1,6 +1,6 @@
 'use client';
 
-import { Calendar, ClipboardList, BarChart3, Building2, Package, Search, FileText, ShoppingCart, Hammer, X } from 'lucide-react';
+import { Calendar, ClipboardList, BarChart3, Building2, Package, Search, FileText, ShoppingCart, Hammer, Car, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/uiStore';
 import { useDateStore } from '@/stores/dateStore';
@@ -16,6 +16,7 @@ const tabs = [
   { id: 'estimate', label: '견적서', icon: FileText },
   { id: 'groupbuy', label: '공동구매', icon: ShoppingCart },
   { id: 'install', label: '외주설치', icon: Hammer },
+  { id: 'vehicle', label: '차량유지관리', icon: Car },
 ] as const;
 
 export function Sidebar() {

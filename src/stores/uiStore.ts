@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy' | 'install';
+type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy' | 'install' | 'vehicle';
 
 export interface CopiedScheduleData {
   title: string | null;

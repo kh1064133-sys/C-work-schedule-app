@@ -51,6 +51,7 @@ const SCHEDULE_TYPES = [
   { value: 'as', label: 'AS' },
   { value: 'agency', label: '대리점' },
   { value: 'group', label: '공동구매' },
+  { value: 'install', label: '외주설치' },
 ];
 
 const PAYMENT_METHODS = [

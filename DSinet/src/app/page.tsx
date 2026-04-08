@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/shared/Sidebar';
 import { SchedulePage } from '@/components/schedule';
 import { ClientsPage } from '@/components/clients';
 import { ItemsPage } from '@/components/items';
+import { WorkTypesPage } from '@/components/work-types';
 import { CalendarPage } from '@/components/calendar';
 import { AnalyticsPage } from '@/components/analytics';
 import { SearchPage } from '@/components/search';
@@ -35,6 +36,14 @@ function ItemsContent() {
   return (
     <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <ItemsPage />
+    </div>
+  );
+}
+
+function WorkTypesContent() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
+      <WorkTypesPage />
     </div>
   );
 }
@@ -113,6 +122,8 @@ export default function Home() {
         return <ClientsContent />;
       case 'items':
         return <ItemsContent />;
+      case 'work-types':
+        return <WorkTypesContent />;
       case 'search':
         return <SearchContent />;
       case 'estimate':

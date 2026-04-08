@@ -127,6 +127,33 @@ export interface ItemInput {
   photo_url?: string;
 }
 
+// ===== 작업종별 관련 타입 =====
+export interface WorkType {
+  id: string;
+  user_id: string;
+  name: string;
+  spec?: string | null;
+  unit?: string | null;
+  price: number;
+  category: WorkTypeCategory | null;
+  memo: string | null;
+  photo_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkTypeCategory = 'install' | 'repair' | 'inspect' | 'etc';
+
+export interface WorkTypeInput {
+  name: string;
+  spec?: string;
+  unit?: string;
+  price?: number;
+  category?: WorkTypeCategory;
+  memo?: string;
+  photo_url?: string;
+}
+
 // ===== 매출 통계 타입 =====
 export interface SalesStats {
   sale: number;

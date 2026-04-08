@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getStoredValue, setStoredValue } from '@/lib/storage';
 import { useItems } from '@/hooks/useItems';
+import { useWorkTypes } from '@/hooks/useWorkTypes';
 import type { Item } from '@/types';
 
 /* ═══════════ Column Resize Hook ═══════════ */
@@ -71,6 +72,7 @@ interface Material {
   quote3: number;       // 단가견적3
   unitPrice: number;    // 적용단가
   quantity: number;
+  matrixColId?: string; // 물량내역서 열 ID (자동 동기화용)
 }
 
 interface UnitCostRow {
@@ -145,6 +147,7 @@ interface DesignEstimateItem {
   expUnitPrice?: number;  // 경비 단가
   expAmount?: number;     // 경비 금액 (수기 입력 시 우선 적용)
   memo?: string;          // 비고
+  matrixColId?: string;   // 물량내역서 열 ID (자동 동기화용)
 }
 
 interface ProjectData {
@@ -453,7 +456,8 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
       const mat = newMats.find(m => m.id === id);
       if (mat) {
         partial.estimateItems = data.estimateItems.map(e =>
-          e.name === mat.name ? { ...e, unitPrice: Number(val), unitPriceExpr: undefined } : e
+          (mat.matrixColId && e.matrixColId === mat.matrixColId) || e.name === mat.name
+            ? { ...e, unitPrice: Number(val), unitPriceExpr: undefined } : e
         );
       }
     }
@@ -513,7 +517,7 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
             <th className="border p-2 align-middle relative" rowSpan={2}>연번<RH ci={0} sr={mtResize} /></th>
             <th className="border p-2 align-middle relative" rowSpan={2}>품명<RH ci={1} sr={mtResize} /></th>
             <th className="border p-2 align-middle relative" rowSpan={2}>규격<RH ci={2} sr={mtResize} /></th>
-            <th className="border p-2 align-middle relative" rowSpan={2}>단위<RH ci={3} sr={mtResize} /></th>
+            <th className="border p-2 align-middle relative text-center" rowSpan={2}>단위<RH ci={3} sr={mtResize} /></th>
             <th className="border p-2 text-center" colSpan={3}>비교 견적</th>
             <th className="border p-2 align-middle relative" rowSpan={2}>적용단가<RH ci={7} sr={mtResize} /></th>
             <th className="border p-2 no-print align-middle" rowSpan={2}></th>
@@ -532,39 +536,39 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                 <TextInput value={m.name} onChange={v => upd(m.id, 'name', v)} />
               </td>
               <td className="border p-1"><TextInput value={m.spec} onChange={v => upd(m.id, 'spec', v)} /></td>
-              <td className="border p-1"><TextInput value={m.unit} onChange={v => upd(m.id, 'unit', v)} /></td>
+              <td className="border p-1 text-center"><TextInput value={m.unit} onChange={v => upd(m.id, 'unit', v)} className="text-center" /></td>
               <td className="border p-1">
                 <div className="relative group">
-                  <NumInput value={m.quote1 ?? 0} onChange={v => upd(m.id, 'quote1', v)} />
+                  <NumInput value={m.quote1 ?? 0} onChange={v => upd(m.id, 'quote1', v)} className="group-hover:pr-8" />
                   {(m.quote1 ?? 0) > 0 && (
                     <button
                       title="적용단가로 설정"
                       onClick={() => upd(m.id, 'unitPrice', m.quote1 ?? 0)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] leading-none px-1 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] leading-none px-1 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
                     >적용</button>
                   )}
                 </div>
               </td>
               <td className="border p-1">
                 <div className="relative group">
-                  <NumInput value={m.quote2 ?? 0} onChange={v => upd(m.id, 'quote2', v)} />
+                  <NumInput value={m.quote2 ?? 0} onChange={v => upd(m.id, 'quote2', v)} className="group-hover:pr-8" />
                   {(m.quote2 ?? 0) > 0 && (
                     <button
                       title="적용단가로 설정"
                       onClick={() => upd(m.id, 'unitPrice', m.quote2 ?? 0)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] leading-none px-1 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] leading-none px-1 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
                     >적용</button>
                   )}
                 </div>
               </td>
               <td className="border p-1">
                 <div className="relative group">
-                  <NumInput value={m.quote3 ?? 0} onChange={v => upd(m.id, 'quote3', v)} />
+                  <NumInput value={m.quote3 ?? 0} onChange={v => upd(m.id, 'quote3', v)} className="group-hover:pr-8" />
                   {(m.quote3 ?? 0) > 0 && (
                     <button
                       title="적용단가로 설정"
                       onClick={() => upd(m.id, 'unitPrice', m.quote3 ?? 0)}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] leading-none px-1 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] leading-none px-1 py-0.5 rounded bg-blue-100 text-blue-600 hover:bg-blue-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
                     >적용</button>
                   )}
                 </div>
@@ -650,6 +654,14 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   const filteredMats = matQuery.trim()
     ? data.materials.filter(m => m.name.includes(matQuery) || m.spec.includes(matQuery))
     : data.materials;
+
+  // 작업종별 검색 팝업 상태
+  const [workTypeSearch, setWorkTypeSearch] = useState<{ ucId: string; ri?: number } | null>(null);
+  const [workTypeQuery, setWorkTypeQuery] = useState('');
+  const { data: workTypeList = [] } = useWorkTypes();
+  const filteredWorkTypes = workTypeQuery.trim()
+    ? workTypeList.filter(w => w.name.includes(workTypeQuery) || (w.memo ?? '').includes(workTypeQuery))
+    : workTypeList;
 
   const handleExcel = async (file: File) => {
     try {
@@ -762,7 +774,14 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                     제{i + 1}호표
                   </td>
                   <td className={tdStyle} colSpan={4}>
-                    <TextInput value={uc.workType} onChange={v => updUC(uc.id, { workType: v })} placeholder="공종명" className="font-bold" />
+                    <div className="flex items-center gap-1">
+                      <TextInput value={uc.workType} onChange={v => updUC(uc.id, { workType: v })} placeholder="공종명" className="font-bold" />
+                      <button
+                        className="shrink-0 text-gray-400 hover:text-purple-600"
+                        title="작업종별 검색"
+                        onClick={() => { setWorkTypeQuery(''); setWorkTypeSearch({ ucId: uc.id }); }}
+                      ><Search className="h-3.5 w-3.5" /></button>
+                    </div>
                   </td>
                   <td className={tdStyle} colSpan={4}></td>
                   <td className={tdStyle}>
@@ -786,28 +805,24 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                   <tr key={`row-${ri}`} className="hover:bg-gray-50">
                     <td className={`${tdStyle} text-center text-gray-400`}>{ri + 1}</td>
                     <td className={tdStyle}>
-                      <TextInput value={row.name} onChange={v => { const nr = [...ucRows]; nr[ri] = { ...row, name: v }; updUC(uc.id, { rows: nr }); }} placeholder="품목명/직종명" />
+                      <div className="flex items-center gap-1">
+                        <TextInput value={row.name} onChange={v => { const nr = [...ucRows]; nr[ri] = { ...row, name: v }; updUC(uc.id, { rows: nr }); }} placeholder="품목명" />
+                        <button
+                          className="shrink-0 text-gray-400 hover:text-purple-600"
+                          title="작업종별에서 검색"
+                          onClick={() => { setWorkTypeQuery(''); setWorkTypeSearch({ ucId: uc.id, ri }); }}
+                        ><Search className="h-3.5 w-3.5" /></button>
+                      </div>
                     </td>
                     <td className={tdStyle}>
-                      {isLabor ? (
-                        <div className="flex items-center gap-1">
-                          <TextInput value={row.spec} onChange={v => { const nr = [...ucRows]; nr[ri] = { ...row, spec: v }; updUC(uc.id, { rows: nr }); }} />
-                          <button
-                            className="shrink-0 text-gray-400 hover:text-blue-600"
-                            title="노임단가표에서 선택"
-                            onClick={() => { setLaborQuery(''); setLaborSearch({ ucId: uc.id, ri }); }}
-                          ><Search className="h-3.5 w-3.5" /></button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <TextInput value={row.spec} onChange={v => { const nr = [...ucRows]; nr[ri] = { ...row, spec: v }; updUC(uc.id, { rows: nr }); }} />
-                          <button
-                            className="shrink-0 text-gray-400 hover:text-green-600"
-                            title="자재단가표에서 선택"
-                            onClick={() => { setMatQuery(''); setMatSearch({ ucId: uc.id, ri }); }}
-                          ><Search className="h-3.5 w-3.5" /></button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1">
+                        <TextInput value={row.spec} onChange={v => { const nr = [...ucRows]; nr[ri] = { ...row, spec: v }; updUC(uc.id, { rows: nr }); }} />
+                        <button
+                          className="shrink-0 text-gray-400 hover:text-blue-600"
+                          title="노임단가표에서 선택"
+                          onClick={() => { setLaborQuery(''); setLaborSearch({ ucId: uc.id, ri }); }}
+                        ><Search className="h-3.5 w-3.5" /></button>
+                      </div>
                     </td>
                     <td className={`${tdStyle} text-center`}>
                       <TextInput value={row.unit} onChange={v => { const nr = [...ucRows]; nr[ri] = { ...row, unit: v }; updUC(uc.id, { rows: nr }); }} />
@@ -892,7 +907,7 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                     const uc = data.unitCosts.find(u => u.id === ucId);
                     if (!uc) return;
                     const nr = [...(uc.rows ?? [])];
-                    nr[ri] = { ...nr[ri], name: lr.type, labUnitPrice: lr.dailyRate };
+                    nr[ri] = { ...nr[ri], spec: lr.type, unit: '인', labUnitPrice: lr.dailyRate };
                     updUC(ucId, { rows: nr });
                     setLaborSearch(null);
                   }}
@@ -947,6 +962,58 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                   <span className="text-gray-500 text-xs ml-2">{mat.spec}</span>
                   <span className="text-gray-400 text-xs ml-1">({mat.unit})</span>
                   <span className="float-right text-green-700 font-bold">{mat.unitPrice.toLocaleString()}원</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 작업종별 검색 팝업 */}
+      {workTypeSearch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setWorkTypeSearch(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-96 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h4 className="font-bold text-sm">작업종별 선택</h4>
+              <button className="text-gray-400 hover:text-gray-600" onClick={() => setWorkTypeSearch(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <div className="px-3 py-2 border-b">
+              <input
+                autoFocus
+                type="text"
+                placeholder="작업종별명 검색..."
+                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                value={workTypeQuery}
+                onChange={e => setWorkTypeQuery(e.target.value)}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filteredWorkTypes.length === 0 && (
+                <p className="text-center text-gray-400 text-sm py-6">검색 결과가 없습니다.</p>
+              )}
+              {filteredWorkTypes.map(wt => (
+                <button
+                  key={wt.id}
+                  className="w-full text-left px-4 py-2.5 hover:bg-purple-50 border-b border-gray-100 text-sm"
+                  onClick={() => {
+                    const { ucId, ri } = workTypeSearch;
+                    if (ri != null) {
+                      // 행 레벨: 품목명/규격/단위/단가 반영
+                      const uc = data.unitCosts.find(u => u.id === ucId);
+                      if (!uc) return;
+                      const nr = [...(uc.rows ?? [])];
+                      nr[ri] = { ...nr[ri], name: wt.name, spec: wt.spec ?? '', unit: wt.unit ?? nr[ri].unit, matUnitPrice: wt.price > 0 ? wt.price : (nr[ri].matUnitPrice ?? 0) };
+                      updUC(ucId, { rows: nr });
+                    } else {
+                      // 공종 헤더 레벨
+                      updUC(ucId, { workType: wt.name });
+                    }
+                    setWorkTypeSearch(null);
+                  }}
+                >
+                  <span className="font-medium text-black">{wt.name}</span>
+                  {wt.spec && <span className="text-gray-500 text-xs ml-2">{wt.spec}</span>}
+                  {wt.price > 0 && <span className="float-right text-purple-700 font-bold">{wt.price.toLocaleString()}원</span>}
                 </button>
               ))}
             </div>
@@ -1195,7 +1262,7 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
             <tr className="bg-yellow-100 border">
               <th className="border p-2">합계</th>
               {cols.map(c => (
-                <th key={c.id} className="border p-1 text-xs font-semibold">
+                <th key={c.id} className="border p-1 text-xs font-semibold text-right pr-2">
                   {colTotals[c.id] ? fmt(colTotals[c.id]) : ''}
                 </th>
               ))}
@@ -1243,12 +1310,15 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
       {searchColId && (
         <ItemSelectModal
           onSelect={(item: Item) => {
-            setMatrix({
+            const price = item.price ?? 0;
+            const newMatrix = {
               ...matrix,
               cols: matrix.cols.map(col => col.id === searchColId
                 ? { ...col, name: item.name, spec: (item as any).spec ?? '', unit: (item as any).unit ?? '' }
                 : col),
-            });
+              _colPrices: { ...(matrix as any)._colPrices, [searchColId!]: price },
+            };
+            onChange({ quantityMatrix: newMatrix });
             setSearchColId(null);
           }}
           onClose={() => setSearchColId(null)}
@@ -1436,6 +1506,10 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   const upd = (id: string, field: string, val: string | number) =>
     onChange({ estimateItems: data.estimateItems.map(e => e.id === id ? { ...e, [field]: val } : e) });
 
+  // 일위대가표 검색 팝업 상태
+  const [ucSearch, setUcSearch] = useState<string | null>(null); // estimateItem id
+  const [ucQuery, setUcQuery] = useState('');
+
   const categories: { key: 'material' | 'labor' | 'expense'; label: string; bg: string; hdrBg: string }[] = [
     { key: 'material', label: '재료비',      bg: 'bg-green-50',  hdrBg: 'bg-green-100' },
     { key: 'labor',    label: '노무비(직접)', bg: 'bg-blue-50',   hdrBg: 'bg-blue-100'  },
@@ -1476,6 +1550,7 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
       const baseAmount = matBaseMap.baseMap.get(item.id) ?? 0;
       const computedUnitPrice = matBaseMap.priceMap.get(item.id) ?? item.unitPrice;
       const amount = item.quantity * computedUnitPrice;
+      const displayExpr = isPercent ? expr : (item.unitPrice > 0 ? fmt(item.unitPrice) : '');
       return (
         <>
           <td className="border p-1">
@@ -1483,8 +1558,9 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
               <input
                 type="text"
                 className={`w-full px-2 py-1 border rounded text-right text-sm focus:outline-none focus:ring-1 focus:ring-blue-300 ${isPercent ? 'bg-purple-50 text-purple-700' : ''}`}
-                defaultValue={expr}
-                key={expr}
+                defaultValue={displayExpr}
+                key={displayExpr}
+                onFocus={e => { if (!isPercent) e.target.value = String(item.unitPrice || ''); }}
                 onBlur={e => {
                   const val = e.target.value.trim();
                   if (val.endsWith('%')) {
@@ -1697,7 +1773,16 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                       <td className="border p-1 text-right pr-2 font-medium">
                         {fmt(item.quantity * (matBaseMap.priceMap.get(item.id) ?? item.unitPrice) + item.quantity * (item.labUnitPrice ?? 0) + (item.expAmount != null ? item.expAmount : item.quantity * (item.expUnitPrice ?? 0)))}
                       </td>
-                      <td className="border p-1"><TextInput value={item.memo ?? ''} onChange={v => upd(item.id, 'memo', v)} /></td>
+                      <td className="border p-1">
+                        <div className="flex items-center gap-1">
+                          <TextInput value={item.memo ?? ''} onChange={v => upd(item.id, 'memo', v)} />
+                          <button
+                            className="shrink-0 text-gray-400 hover:text-indigo-600 no-print"
+                            title="일위대가표에서 선택"
+                            onClick={() => { setUcQuery(''); setUcSearch(item.id); }}
+                          ><Search className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </td>
                       <td className="border p-1 text-center no-print">
                         <button className="text-red-400" onClick={() => del(item.id)}>✕</button>
                       </td>
@@ -1933,38 +2018,78 @@ export function DesignEstimatePage() {
       // 물량내역서 변경 시 자재단가표 + 설계내역서 자동 동기화
       if (partial.quantityMatrix && !partial.materials) {
         const matrix = partial.quantityMatrix;
+        const colIds = new Set(matrix.cols.map(c => c.id));
+
+        // ── 자재단가표 동기화 ──
+        const colPrices: Record<string, number> = (matrix as any)._colPrices ?? {};
         const matResult: Material[] = [];
-        const colNames = new Set<string>();
+        const matSeen = new Set<string>(); // col.id 중복 방지
         matrix.cols.forEach(col => {
           if (!col.name) return;
-          colNames.add(col.name);
+          if (matSeen.has(col.id)) return;
+          matSeen.add(col.id);
           const total = matrix.rows.reduce((sum, r) => sum + (r.values[col.id] ?? 0), 0);
-          const found = prev.materials.find(mm => mm.name === col.name);
+          const hintPrice = colPrices[col.id] ?? 0;
+          // matrixColId로 먼저 매칭, 없으면 name으로 폴백
+          const found = prev.materials.find(mm => mm.matrixColId === col.id)
+            ?? prev.materials.find(mm => !mm.matrixColId && mm.name === col.name);
           if (found) {
-            matResult.push({ ...found, spec: col.spec || found.spec, unit: col.unit || found.unit, quantity: total });
+            const q1 = hintPrice > 0 ? hintPrice : found.quote1;
+            const up = hintPrice > 0 ? hintPrice : found.unitPrice;
+            matResult.push({ ...found, matrixColId: col.id, name: col.name, spec: col.spec || found.spec, unit: col.unit || found.unit, quantity: total, quote1: q1, unitPrice: up });
           } else {
-            matResult.push({ id: crypto.randomUUID(), name: col.name, spec: col.spec, unit: col.unit || '개', quote1: 0, quote2: 0, quote3: 0, unitPrice: 0, quantity: total });
+            matResult.push({ id: crypto.randomUUID(), matrixColId: col.id, name: col.name, spec: col.spec, unit: col.unit || '개', quote1: hintPrice, quote2: 0, quote3: 0, unitPrice: hintPrice, quantity: total });
           }
         });
-        prev.materials.forEach(mm => { if (mm.name && !colNames.has(mm.name)) matResult.push(mm); });
+        // 매트릭스와 무관한 수동 자재는 보존, 삭제된 열의 자재는 제거
+        prev.materials.forEach(mm => {
+          if (!mm.matrixColId && !matResult.some(r => r.name === mm.name)) matResult.push(mm);
+        });
         next.materials = matResult;
 
+        // ── 설계내역서 동기화 ──
         const estResult: DesignEstimateItem[] = [];
+        const estSeen = new Set<string>();
         matrix.cols.forEach(col => {
           if (!col.name) return;
+          if (estSeen.has(col.id)) return;
+          estSeen.add(col.id);
           const total = matrix.rows.reduce((sum, r) => sum + (r.values[col.id] ?? 0), 0);
-          const mat = matResult.find(mm => mm.name === col.name);
+          const mat = matResult.find(mm => mm.matrixColId === col.id);
           const unitPrice = mat?.unitPrice ?? 0;
-          const found = prev.estimateItems.find(e => e.name === col.name);
+          const found = prev.estimateItems.find(e => e.matrixColId === col.id)
+            ?? prev.estimateItems.find(e => !e.matrixColId && e.name === col.name && e.category === 'material');
           if (found) {
-            estResult.push({ ...found, quantity: total, spec: col.spec || found.spec, unit: col.unit || found.unit, unitPrice: unitPrice > 0 ? unitPrice : found.unitPrice });
+            estResult.push({ ...found, matrixColId: col.id, name: col.name, quantity: total, spec: col.spec || found.spec, unit: col.unit || found.unit, unitPrice: unitPrice > 0 ? unitPrice : found.unitPrice });
           } else {
-            estResult.push({ id: crypto.randomUUID(), category: 'material', name: col.name, spec: col.spec, unit: col.unit || '식', quantity: total, unitPrice, labUnitPrice: 0, expUnitPrice: 0, memo: '' });
+            estResult.push({ id: crypto.randomUUID(), matrixColId: col.id, category: 'material', name: col.name, spec: col.spec, unit: col.unit || '식', quantity: total, unitPrice, labUnitPrice: 0, expUnitPrice: 0, memo: '' });
           }
         });
-        prev.estimateItems.forEach(e => { if (!colNames.has(e.name)) estResult.push(e); });
+        // 매트릭스와 무관한 수동 내역은 보존, 삭제된 열의 내역은 제거
+        prev.estimateItems.forEach(e => {
+          if (!e.matrixColId && !estResult.some(r => r.name === e.name)) estResult.push(e);
+        });
         next.estimateItems = estResult;
       }
+
+      // 일위대가표 변경 시 설계내역서 노무비 자동 동기화
+      if (partial.unitCosts) {
+        const ucs = partial.unitCosts;
+        const items = [...(next.estimateItems ?? prev.estimateItems)];
+        ucs.forEach(uc => {
+          if (!uc.workType) return;
+          const rows = uc.rows ?? [];
+          const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + (r.labAmount ?? Math.round((r.labUnitPrice ?? 0) * r.quantity)), 0);
+          const mat = rows.reduce((s, r) => s + (r.matAmount ?? Math.round((r.matUnitPrice ?? 0) * r.quantity)), 0);
+          const found = items.find(e => e.name === uc.workType);
+          if (found) {
+            found.labUnitPrice = lab;
+            if (mat > 0) found.unitPrice = mat;
+          }
+        });
+        next.estimateItems = items;
+      }
+
       return next;
     });
   }, []);

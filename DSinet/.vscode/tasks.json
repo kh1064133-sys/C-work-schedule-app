@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Dev: DSinet",
+			"type": "shell",
+			"command": "Set-Location C:\\work\\DSinet; npm run dev",
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

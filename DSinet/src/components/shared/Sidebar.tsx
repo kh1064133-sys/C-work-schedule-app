@@ -1,6 +1,6 @@
 'use client';
 
-import { Calendar, ClipboardList, BarChart3, Building2, Package, Search, FileText, Camera, Calculator, X } from 'lucide-react';
+import { Calendar, ClipboardList, BarChart3, Building2, Package, Search, FileText, Camera, Calculator, Wrench, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/uiStore';
 import { useDateStore } from '@/stores/dateStore';
@@ -12,6 +12,7 @@ const tabs = [
   { id: 'analytics', label: '매출현황표', icon: BarChart3 },
   { id: 'clients', label: '거래처 관리', icon: Building2 },
   { id: 'items', label: '품목 관리', icon: Package },
+  { id: 'work-types', label: '작업종별 관리', icon: Wrench },
   { id: 'search', label: '스케줄 검색', icon: Search },
   { id: 'estimate', label: '견적서', icon: FileText },
   { id: 'photodoc', label: '공사 사진대지', icon: Camera },

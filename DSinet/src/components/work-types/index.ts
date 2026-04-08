@@ -1,0 +1,1 @@
+export { WorkTypesPage } from './WorkTypesPage';

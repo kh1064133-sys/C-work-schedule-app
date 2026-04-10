@@ -38,6 +38,10 @@ interface UIState {
   _tabChangeGuard: ((tab: Tab) => boolean) | null;
   setTabChangeGuard: (guard: ((tab: Tab) => boolean) | null) => void;
   _forceSetActiveTab: (tab: Tab) => void;
+
+  // 탭 히스토리 (뒤로가기 지원)
+  _tabHistory: Tab[];
+  goBack: () => boolean;
   
   setActiveTab: (tab: Tab) => void;
   toggleSidebar: () => void;
@@ -70,12 +74,29 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   _tabChangeGuard: null,
   setTabChangeGuard: (guard) => set({ _tabChangeGuard: guard }),
-  _forceSetActiveTab: (tab) => set({ activeTab: tab }),
+  _forceSetActiveTab: (tab) => {
+    const current = get().activeTab;
+    if (current === tab) return;
+    const history = [...get()._tabHistory, current];
+    set({ activeTab: tab, _tabHistory: history.slice(-20) });
+  },
+
+  _tabHistory: [],
+  goBack: () => {
+    const history = [...get()._tabHistory];
+    if (history.length === 0) return false;
+    const prev = history.pop()!;
+    set({ activeTab: prev, _tabHistory: history });
+    return true;
+  },
   
   setActiveTab: (tab) => {
     const guard = get()._tabChangeGuard;
     if (guard && !guard(tab)) return;
-    set({ activeTab: tab });
+    const current = get().activeTab;
+    if (current === tab) return;
+    const history = [...get()._tabHistory, current];
+    set({ activeTab: tab, _tabHistory: history.slice(-20) });
   },
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   openAddressModal: () => set({ isAddressModalOpen: true }),

@@ -122,13 +122,12 @@ export default function Home() {
         return;
       }
 
-      // calendar가 아닌 탭이면 calendar로 이동
-      if (store.activeTab !== 'calendar') {
-        store._forceSetActiveTab('calendar');
+      // 탭 히스토리가 있으면 이전 탭으로 복귀
+      if (store.goBack()) {
         return;
       }
 
-      // calendar 탭에서 백버튼 → 앱 종료 확인
+      // calendar 탭에서 히스토리 없으면 앱 종료 확인
       if (confirm('앱을 종료하시겠습니까?')) {
         App.exitApp();
       }

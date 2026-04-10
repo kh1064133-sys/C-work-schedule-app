@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, RotateCcw, FileSpreadsheet, MessageSquare } from 'lucide-react';
+import { Search, RotateCcw, FileSpreadsheet, MessageSquare, X, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchSchedules } from '@/hooks/useSchedules';
 import { useDateStore } from '@/stores/dateStore';
@@ -35,6 +35,80 @@ const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   free: '무상',
 };
 
+function formatDateShort(dateStr: string): string {
+  if (!dateStr) return '';
+  const [, m, d] = dateStr.split('-');
+  return `${parseInt(m)}/${parseInt(d)}`;
+}
+
+function getDayOfWeek(dateStr: string): string {
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  return days[new Date(dateStr).getDay()];
+}
+
+// --- SMS 팝업 (외주설치와 동일 방식) ---
+function SmsPopup({ schedules, onClose }: { schedules: Schedule[]; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const message = useMemo(() => {
+    const lines = schedules.map(s => {
+      const date = formatDateShort(s.date);
+      const day = getDayOfWeek(s.date);
+      const title = s.title || '';
+      const unit = s.unit || '';
+      const parts = [`${date}(${day})`, title, unit].filter(Boolean);
+      return parts.join(' / ');
+    });
+    return lines.join('\n');
+  }, [schedules]);
+
+  const handleSend = () => {
+    const body = encodeURIComponent(message);
+    window.location.href = `sms:?body=${body}`;
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative w-full max-w-lg bg-white rounded-t-2xl lg:rounded-2xl shadow-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-bold text-base flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-blue-600" />
+            문자 발송 ({schedules.length}건)
+          </h3>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="text-xs text-gray-500 mb-2">메시지 내용 (날짜 / 거래처 / 동호수)</div>
+          <div className="bg-gray-50 border rounded-lg p-3 text-sm whitespace-pre-wrap leading-relaxed font-mono">
+            {message}
+          </div>
+        </div>
+        <div className="p-4 border-t flex gap-2">
+          <Button variant="outline" className="flex-1 gap-2" onClick={handleCopy}>
+            {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            {copied ? '복사됨' : '복사'}
+          </Button>
+          <Button className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700" onClick={handleSend}>
+            <MessageSquare className="h-4 w-4" />
+            문자 보내기
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SearchPage() {
   const { setSelectedDate } = useDateStore();
   const { setActiveTab } = useUIStore();
@@ -50,9 +124,7 @@ export function SearchPage() {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   // SMS 팝업
-  const [smsPopup, setSmsPopup] = useState<{ targets: Schedule[] } | null>(null);
-  const [smsText, setSmsText] = useState('');
-  const [smsSending, setSmsSending] = useState(false);
+  const [showSmsPopup, setShowSmsPopup] = useState(false);
   
   // 실제 검색에 사용할 파라미터 (검색 버튼 클릭 시 업데이트)
   const [searchParams, setSearchParams] = useState<{
@@ -113,38 +185,11 @@ export function SearchPage() {
     }
   };
 
-  // SMS 발송
-  const handleSmsOpen = () => {
-    const targets = results.filter((s: Schedule) => checkedIds.has(s.id));
-    if (targets.length === 0) { alert('문자를 보낼 항목을 선택하세요.'); return; }
-    setSmsPopup({ targets });
-    setSmsText('');
-  };
-
-  const handleSmsSend = async () => {
-    if (!smsPopup || !smsText.trim()) return;
-    const numbers = smsPopup.targets
-      .map(s => s.unit?.replace(/[^0-9]/g, ''))
-      .filter(n => n && n.length >= 10);
-    if (numbers.length === 0) { alert('유효한 전화번호가 없습니다.\n동호수 필드에 전화번호를 입력하세요.'); return; }
-    
-    setSmsSending(true);
-    try {
-      const messages = numbers.map(to => ({ to: to!, from: '01000000000', text: smsText }));
-      const res = await fetch('/api/send-sms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages }),
-      });
-      if (!res.ok) throw new Error('발송 실패');
-      alert(`${numbers.length}건 문자 발송 완료`);
-      setSmsPopup(null);
-    } catch (e) {
-      alert('문자 발송 중 오류가 발생했습니다.');
-    } finally {
-      setSmsSending(false);
-    }
-  };
+  // 선택된 스케줄 목록
+  const selectedSchedules = useMemo(() =>
+    results.filter((s: Schedule) => checkedIds.has(s.id)),
+    [results, checkedIds]
+  );
 
   // 통계 계산
   const stats = useMemo(() => {
@@ -325,7 +370,7 @@ export function SearchPage() {
         
         <div className="flex items-center gap-2">
           {checkedIds.size > 0 && (
-            <Button variant="outline" size="sm" onClick={handleSmsOpen} className="gap-1 text-blue-700 border-blue-600 hover:bg-blue-50">
+            <Button variant="outline" size="sm" onClick={() => setShowSmsPopup(true)} className="gap-1 text-blue-700 border-blue-600 hover:bg-blue-50">
               <MessageSquare className="h-4 w-4" />
               문자발송 ({checkedIds.size})
             </Button>
@@ -455,29 +500,8 @@ export function SearchPage() {
       </div>
 
       {/* SMS 팝업 */}
-      {smsPopup && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setSmsPopup(null)}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, width: '90%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📩 문자 발송 ({smsPopup.targets.length}건)</h3>
-            <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280', maxHeight: 100, overflowY: 'auto' }}>
-              {smsPopup.targets.map(s => (
-                <div key={s.id}>{s.title} - {s.unit || '번호없음'}</div>
-              ))}
-            </div>
-            <textarea
-              value={smsText}
-              onChange={e => setSmsText(e.target.value)}
-              placeholder="문자 내용을 입력하세요..."
-              style={{ width: '100%', height: 100, padding: 10, border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, resize: 'none', outline: 'none' }}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-              <Button variant="outline" size="sm" onClick={() => setSmsPopup(null)}>취소</Button>
-              <Button size="sm" onClick={handleSmsSend} disabled={smsSending || !smsText.trim()}>
-                {smsSending ? '발송중...' : '발송'}
-              </Button>
-            </div>
-          </div>
-        </div>
+      {showSmsPopup && selectedSchedules.length > 0 && (
+        <SmsPopup schedules={selectedSchedules} onClose={() => setShowSmsPopup(false)} />
       )}
     </div>
   );

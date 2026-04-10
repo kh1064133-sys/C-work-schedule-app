@@ -97,6 +97,8 @@ export function useUpsertSchedule() {
           is_paid: false,
           event_icon: null,
           sort_order: 0,
+          install_type: null,
+          install_amount: 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           ...cleanedInput,

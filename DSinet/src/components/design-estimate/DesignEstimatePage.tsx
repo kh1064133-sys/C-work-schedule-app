@@ -11,9 +11,20 @@ import { useWorkTypes } from '@/hooks/useWorkTypes';
 import type { Item } from '@/types';
 
 /* ═══════════ Column Resize Hook ═══════════ */
-function useColumnResize(initialWidths: number[]) {
-  const [colWidths, setColWidths] = useState(initialWidths);
-  const dragRef = useRef<{ colIdx: number; startX: number; startW: number; nextW: number } | null>(null);
+function useColumnResize(initialWidths: number[], storageKey?: string) {
+  const [colWidths, setColWidths] = useState(() => {
+    if (storageKey) {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length === initialWidths.length) return parsed;
+        }
+      } catch { /* ignore */ }
+    }
+    return initialWidths;
+  });
+  const dragRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -22,31 +33,37 @@ function useColumnResize(initialWidths: number[]) {
       e.preventDefault();
       const diff = e.clientX - d.startX;
       const newW = Math.max(20, d.startW + diff);
-      const newNext = Math.max(20, d.nextW - diff);
       setColWidths(prev => {
         const a = [...prev];
         a[d.colIdx] = newW;
-        if (d.colIdx + 1 < a.length) a[d.colIdx + 1] = newNext;
         return a;
       });
     };
-    const onMouseUp = () => { dragRef.current = null; document.body.style.cursor = ''; document.body.style.userSelect = ''; };
+    const onMouseUp = () => {
+      dragRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); };
   }, []);
 
+  useEffect(() => {
+    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(colWidths));
+  }, [colWidths, storageKey]);
+
   const startResize = (colIdx: number, e: React.MouseEvent) => {
     e.preventDefault();
-    dragRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx], nextW: colWidths[colIdx + 1] ?? 0 };
+    dragRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
   };
 
-  const total = colWidths.reduce((a, b) => a + b, 0);
-  const colPcts = colWidths.map(w => `${(w / total * 100).toFixed(2)}%`);
+  const colPx = colWidths.map(w => `${w}px`);
+  const totalWidth = colWidths.reduce((a, b) => a + b, 0);
 
-  return { colPcts, startResize };
+  return { colPx, totalWidth, startResize };
 }
 
 const RH = ({ ci, sr }: { ci: number; sr: (ci: number, e: React.MouseEvent) => void }) => (
@@ -160,6 +177,8 @@ interface ProjectData {
   quantityMatrix?: QtyMatrix;
   summaryItems: SummaryItem[];
   estimateItems: DesignEstimateItem[];
+  miscMatRate?: number; // 잡자재비 비율(%)
+  profitRate?: number; // 이윤 비율(%)
 }
 
 const STORAGE_KEY = 'design_estimate';
@@ -196,6 +215,8 @@ function defaultProject(): ProjectData {
     quantities: [],
     summaryItems: [],
     estimateItems: [],
+    miscMatRate: 5,
+    profitRate: 15,
   };
 }
 
@@ -209,33 +230,39 @@ function calcCost(data: ProjectData) {
     let price: number;
     if (expr.endsWith('%')) {
       const pct = parseFloat(expr.slice(0, -1));
-      price = isNaN(pct) ? 0 : Math.round(matRunning * pct / 100 / (item.quantity || 1));
+      price = isNaN(pct) ? 0 : Math.floor(matRunning * pct / 100 / (item.quantity || 1));
     } else {
       price = item.unitPrice;
     }
     materialCost += item.quantity * price;
     matRunning += item.quantity * price;
   }
+  // 잡자재비 합산
+  const miscRate = data.miscMatRate ?? 5;
+  const miscMatCost = Math.floor(materialCost * miscRate / 100);
+  materialCost += miscMatCost;
+
   const directLabor = data.estimateItems.reduce((s, i) => s + i.quantity * (i.labUnitPrice ?? 0), 0);
   const expenseDirect = data.estimateItems.reduce((s, i) => s + (i.expAmount != null ? i.expAmount : i.quantity * (i.expUnitPrice ?? 0)), 0);
 
-  const indirectLabor = Math.round(directLabor * 0.15);
+  const indirectLabor = Math.floor(directLabor * 0.15);
   const totalLabor = directLabor + indirectLabor;
-  const otherExpenses = Math.round((materialCost + totalLabor) * 0.046);
+  const otherExpenses = Math.floor((materialCost + totalLabor) * 0.046);
   const pensionInsurance = 0; // 연금보험료 (해당시)
-  const industrialAccident = Math.round(totalLabor * 0.0356);
+  const industrialAccident = Math.floor(totalLabor * 0.0356);
   const healthInsurance = 0; // 건강보험료 (해당시)
   const longTermCare = 0; // 노인장기요양보험료 (해당시)
-  const safetyManagement = Math.round((materialCost + directLabor) * 0.0207);
-  const employmentInsurance = Math.round(totalLabor * 0.0101);
-  const asbestosFund = Math.round(totalLabor * 0.00006); // 석면분담금
-  const wageClaimBurden = Math.round(totalLabor * 0.0009); // 임금채권부담금
+  const safetyManagement = Math.floor((materialCost + directLabor) * 0.0207);
+  const employmentInsurance = Math.floor(totalLabor * 0.0101);
+  const asbestosFund = Math.floor(totalLabor * 0.00006); // 석면분담금
+  const wageClaimBurden = Math.floor(totalLabor * 0.0009); // 임금채권부담금
   const totalExpenses = expenseDirect + otherExpenses + pensionInsurance + industrialAccident + healthInsurance + longTermCare + safetyManagement + employmentInsurance + asbestosFund + wageClaimBurden;
   const subtotal = materialCost + totalLabor + totalExpenses;
-  const generalAdmin = Math.round(subtotal * 0.08);
-  const profit = Math.round((totalLabor + totalExpenses + generalAdmin) * 0.15);
+  const generalAdmin = Math.floor(subtotal * 0.08);
+  const profitRate = data.profitRate ?? 15;
+  const profit = Math.floor((totalLabor + totalExpenses + generalAdmin) * profitRate / 100);
   const totalCost = subtotal + generalAdmin + profit;
-  const vat = Math.round(totalCost * 0.1);
+  const vat = Math.floor(totalCost * 0.1);
   const total = totalCost + vat;
 
   return {
@@ -403,7 +430,7 @@ function LaborSheet({ data, onChange }: { data: ProjectData; onChange: (d: Parti
     } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
   };
 
-  const { colPcts: lbPcts, startResize: lbResize } = useColumnResize([40, 150, 150, 150, 50]);
+  const { colPx: lbPcts, totalWidth: lbTotalW, startResize: lbResize } = useColumnResize([40, 150, 150, 150, 50], 'de-col-labor');
 
   return (
     <div>
@@ -415,10 +442,11 @@ function LaborSheet({ data, onChange }: { data: ProjectData; onChange: (d: Parti
         </div>
       </div>
       <p className="text-xs text-gray-400 mb-2">헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">직종분류 | 단가(원) | 단가표번호</span></p>
-      <table className="w-full border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
+      <div className="overflow-x-auto">
+      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed', width: `${lbTotalW}px`, minWidth: '100%' }}>
         <colgroup>{lbPcts.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
         <thead>
-          <tr className="bg-blue-50 border">
+          <tr className="bg-gray-100 border">
             <th className="border p-2 relative">No<RH ci={0} sr={lbResize} /></th>
             <th className="border p-2 relative">직종분류<RH ci={1} sr={lbResize} /></th>
             <th className="border p-2 relative">단가(원)<RH ci={2} sr={lbResize} /></th>
@@ -440,6 +468,7 @@ function LaborSheet({ data, onChange }: { data: ProjectData; onChange: (d: Parti
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -498,7 +527,7 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
     } catch { alert('엑셀 파일을 읽는 중 오류가 발생했습니다.'); }
   };
 
-  const { colPcts: mtPcts, startResize: mtResize } = useColumnResize([40, 150, 250, 56, 100, 100, 100, 112, 48]);
+  const { colPx: mtPcts, totalWidth: mtTotalW, startResize: mtResize } = useColumnResize([40, 150, 250, 56, 100, 100, 100, 112, 48], 'de-col-material');
 
   return (
     <div>
@@ -510,9 +539,10 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
         </div>
       </div>
       <p className="text-xs text-gray-400 mb-2">헤더 구성: <span className="font-mono bg-gray-100 px-1 rounded">품명 | 규격 | 단위 | 단가견적1 | 단가견적2 | 단가견적3 | 적용단가</span></p>
-      <table className="w-full border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
+      <div className="overflow-x-auto">
+      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed', width: `${mtTotalW}px`, minWidth: '100%' }}>
         <colgroup>{mtPcts.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
-        <thead className="bg-green-50">
+        <thead className="bg-gray-100">
           <tr>
             <th className="border p-2 align-middle relative" rowSpan={2}>연번<RH ci={0} sr={mtResize} /></th>
             <th className="border p-2 align-middle relative" rowSpan={2}>품명<RH ci={1} sr={mtResize} /></th>
@@ -522,7 +552,7 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
             <th className="border p-2 align-middle relative" rowSpan={2}>적용단가<RH ci={7} sr={mtResize} /></th>
             <th className="border p-2 no-print align-middle" rowSpan={2}></th>
           </tr>
-          <tr className="bg-green-50">
+          <tr className="bg-gray-100">
             <th className="border p-2 relative">견적1<RH ci={4} sr={mtResize} /></th>
             <th className="border p-2 relative">견적2<RH ci={5} sr={mtResize} /></th>
             <th className="border p-2 relative">견적3<RH ci={6} sr={mtResize} /></th>
@@ -581,6 +611,7 @@ function MaterialSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -703,29 +734,30 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
     // 첫 번째 비-인 행(재료 행)의 수량을 승수로 사용
     const matRow = rows.find(r => r.unit !== '인');
     const multiplier = (matRow && matRow.quantity > 0) ? matRow.quantity : 1;
-    const mat = rows.reduce((s, r) => s + (r.matAmount ?? Math.round((r.matUnitPrice ?? 0) * r.quantity)), 0);
-    const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + (r.labAmount ?? Math.round((r.labUnitPrice ?? 0) * r.quantity)), 0);
-    return { mat: mat * multiplier, lab: lab * multiplier, multiplier };
+    const mat = rows.reduce((s, r) => s + Math.floor(r.matAmount ?? (r.matUnitPrice ?? 0) * r.quantity), 0);
+    // 노무비: 행별로 (단가 × 수량 × 승수) 절삭 후 합산
+    const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + Math.floor((r.labAmount ?? (r.labUnitPrice ?? 0) * r.quantity) * multiplier), 0);
+    return { mat: mat * multiplier, lab, multiplier };
   };
   const totalMaterial = data.unitCosts.reduce((s, uc) => s + calcUcTotals(uc).mat, 0);
   const directLabor = data.unitCosts.reduce((s, uc) => s + calcUcTotals(uc).lab, 0);
-  const indirectLabor = Math.round(directLabor * 0.15);
+  const indirectLabor = Math.floor(directLabor * 0.15);
   const totalLabor = directLabor + indirectLabor;
-  const otherExp = Math.round((totalMaterial + totalLabor) * 0.046);
-  const accident = Math.round(totalLabor * 0.0356);
-  const safety = Math.round((totalMaterial + directLabor) * 0.0207);
-  const employment = Math.round(totalLabor * 0.0101);
+  const otherExp = Math.floor((totalMaterial + totalLabor) * 0.046);
+  const accident = Math.floor(totalLabor * 0.0356);
+  const safety = Math.floor((totalMaterial + directLabor) * 0.0207);
+  const employment = Math.floor(totalLabor * 0.0101);
   const totalExpense = otherExp + accident + safety + employment;
   const subtotal = totalMaterial + totalLabor + totalExpense;
-  const generalAdmin = Math.round(subtotal * 0.08);
-  const profit = Math.round((totalLabor + totalExpense + generalAdmin) * 0.15);
+  const generalAdmin = Math.floor(subtotal * 0.08);
+  const profit = Math.floor((totalLabor + totalExpense + generalAdmin) * 0.15);
   const totalCost = subtotal + generalAdmin + profit;
-  const vat = Math.round(totalCost * 0.1);
+  const vat = Math.floor(totalCost * 0.1);
   const grandTotal = totalCost + vat;
 
   const thStyle = 'border border-gray-400 p-1 text-center align-middle bg-gray-100 text-xs font-bold relative';
   const tdStyle = 'border border-gray-300 p-1 text-sm';
-  const { colPcts: ucPcts, startResize: ucResize } = useColumnResize([60, 170, 130, 48, 60, 90, 100, 90, 100, 100, 32]);
+  const { colPx: ucPcts, totalWidth: ucTotalW, startResize: ucResize } = useColumnResize([60, 170, 130, 48, 60, 90, 100, 90, 100, 100, 32], 'de-col-unitcost');
 
   return (
     <div className="pb-24">
@@ -739,7 +771,8 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
 
       {data.unitCosts.length === 0 && <p className="text-gray-400 text-center py-8">공종을 추가하세요.</p>}
 
-      <table className="w-full border-collapse text-sm" style={{ tableLayout: 'fixed', borderColor: '#999' }}>
+      <div className="overflow-x-auto">
+      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed', borderColor: '#999', width: `${ucTotalW}px`, minWidth: '100%' }}>
         <colgroup>{ucPcts.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
         {/* ── 2단 헤더 ── */}
         <thead>
@@ -749,23 +782,23 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
             <th className={thStyle} rowSpan={2}>규&nbsp;&nbsp;격<RH ci={2} sr={ucResize} /></th>
             <th className={thStyle} rowSpan={2}>단위<RH ci={3} sr={ucResize} /></th>
             <th className={thStyle} rowSpan={2}>수&nbsp;량<RH ci={4} sr={ucResize} /></th>
-            <th className={`${thStyle} bg-green-50`} colSpan={2}>재&nbsp;료&nbsp;비</th>
-            <th className={`${thStyle} bg-blue-50`} colSpan={2}>노&nbsp;무&nbsp;비</th>
+            <th className={thStyle} colSpan={2}>재&nbsp;료&nbsp;비</th>
+            <th className={thStyle} colSpan={2}>노&nbsp;무&nbsp;비</th>
             <th className={thStyle} rowSpan={2}>비&nbsp;고<RH ci={9} sr={ucResize} /></th>
             <th className={`${thStyle} no-print`} rowSpan={2}></th>
           </tr>
           <tr>
-            <th className={`${thStyle} bg-green-50`}>단&nbsp;가<RH ci={5} sr={ucResize} /></th>
-            <th className={`${thStyle} bg-green-50`}>금&nbsp;액<RH ci={6} sr={ucResize} /></th>
-            <th className={`${thStyle} bg-blue-50`}>단&nbsp;가<RH ci={7} sr={ucResize} /></th>
-            <th className={`${thStyle} bg-blue-50`}>금&nbsp;액<RH ci={8} sr={ucResize} /></th>
+            <th className={thStyle}>단&nbsp;가<RH ci={5} sr={ucResize} /></th>
+            <th className={thStyle}>금&nbsp;액<RH ci={6} sr={ucResize} /></th>
+            <th className={thStyle}>단&nbsp;가<RH ci={7} sr={ucResize} /></th>
+            <th className={thStyle}>금&nbsp;액<RH ci={8} sr={ucResize} /></th>
           </tr>
         </thead>
         <tbody>
           {data.unitCosts.map((uc, i) => {
             const { mat: matTotal, lab: laborTotal, multiplier } = calcUcTotals(uc);
-            const matUnit = (uc.rows ?? []).reduce((s, r) => s + (r.matAmount ?? Math.round((r.matUnitPrice ?? 0) * r.quantity)), 0);
-            const labUnit = (uc.rows ?? []).filter(r => r.unit === '인').reduce((s, r) => s + (r.labAmount ?? Math.round((r.labUnitPrice ?? 0) * r.quantity)), 0);
+            const matUnit = (uc.rows ?? []).reduce((s, r) => s + Math.floor(r.matAmount ?? (r.matUnitPrice ?? 0) * r.quantity), 0);
+            const labUnit = (uc.rows ?? []).filter(r => r.unit === '인').reduce((s, r) => s + Math.floor(r.labAmount ?? (r.labUnitPrice ?? 0) * r.quantity), 0);
             return (
               <React.Fragment key={uc.id}>
                 {/* ── 공종 헤더 행 ── */}
@@ -798,9 +831,10 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                   // 노무비 행이면 재료 행 수량(승수)을 금액에 반영
                   const isLabor = row.unit === '인';
                   const labAmt = isLabor
-                    ? Math.round((row.labUnitPrice ?? 0) * row.quantity * multiplier)
-                    : Math.round((row.labUnitPrice ?? 0) * row.quantity);
-                  const matAmt = Math.round((row.matUnitPrice ?? 0) * row.quantity);
+                    ? Math.floor((row.labUnitPrice ?? 0) * row.quantity * multiplier)
+                    : Math.floor((row.labUnitPrice ?? 0) * row.quantity);
+                  const matAmt = Math.floor((row.matUnitPrice ?? 0) * row.quantity);
+                  // 개별 행 표시 금액은 floor, 합계는 raw 합산 후 floor
                   return (
                   <tr key={`row-${ri}`} className="hover:bg-gray-50">
                     <td className={`${tdStyle} text-center text-gray-400`}>{ri + 1}</td>
@@ -873,6 +907,7 @@ function UnitCostSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
           })}
         </tbody>
       </table>
+      </div>
 
       {/* 하단 고정 요약바 */}
 
@@ -1224,7 +1259,7 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
           </colgroup>
           <thead>
             {/* Row 1: 품명 */}
-            <tr className="bg-yellow-50 border">
+            <tr className="bg-gray-100 border">
               <th className="border p-2" rowSpan={4}>구분</th>
               <th className="border p-2">품명</th>
               {cols.map(c => (
@@ -1241,7 +1276,7 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
               <th className="border p-2 no-print" rowSpan={4}></th>
             </tr>
             {/* Row 2: 규격 */}
-            <tr className="bg-yellow-50 border">
+            <tr className="bg-gray-100 border">
               <th className="border p-2">규격</th>
               {cols.map(c => (
                 <th key={c.id} className="border p-1">
@@ -1250,7 +1285,7 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
               ))}
             </tr>
             {/* Row 3: 단위 */}
-            <tr className="bg-yellow-50 border">
+            <tr className="bg-gray-100 border">
               <th className="border p-2">단위</th>
               {cols.map(c => (
                 <th key={c.id} className="border p-1">
@@ -1259,7 +1294,7 @@ function QuantitySheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
               ))}
             </tr>
             {/* Row 4: 합계 */}
-            <tr className="bg-yellow-100 border">
+            <tr className="bg-gray-200 border">
               <th className="border p-2">합계</th>
               {cols.map(c => (
                 <th key={c.id} className="border p-1 text-xs font-semibold text-right pr-2">
@@ -1341,7 +1376,7 @@ function SummarySheet({ data }: { data: ProjectData }) {
       .filter(item => item.name);
   }, [matrix]);
 
-  const { colPcts, startResize } = useColumnResize([36, 200, 300, 56, 80, 150]);
+  const { colPx, totalWidth: qtTotalW, startResize } = useColumnResize([36, 200, 300, 56, 80, 150], 'de-col-quantity');
 
   return (
     <div>
@@ -1349,12 +1384,13 @@ function SummarySheet({ data }: { data: ProjectData }) {
         <h3 className="font-bold text-lg">산출집계표</h3>
         <p className="text-xs text-gray-400">물량내역서 데이터를 기반으로 자동 생성됩니다.</p>
       </div>
-      <table className="w-full border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
+      <div className="overflow-x-auto">
+      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed', width: `${qtTotalW}px`, minWidth: '100%' }}>
         <colgroup>
-          {colPcts.map((w, i) => <col key={i} style={{ width: w }} />)}
+          {colPx.map((w, i) => <col key={i} style={{ width: w }} />)}
         </colgroup>
         <thead>
-          <tr className="bg-orange-50 border">
+          <tr className="bg-gray-100 border">
             <th className="border p-2 relative">No<RH ci={0} sr={startResize} /></th>
             <th className="border p-2 relative">품명<RH ci={1} sr={startResize} /></th>
             <th className="border p-2 relative">규격<RH ci={2} sr={startResize} /></th>
@@ -1376,6 +1412,7 @@ function SummarySheet({ data }: { data: ProjectData }) {
           ))}
         </tbody>
       </table>
+      </div>
       {items.length === 0 && <p className="text-gray-400 text-center py-8 text-sm">물량내역서에 품목을 추가하면 자동으로 표시됩니다.</p>}
     </div>
   );
@@ -1489,7 +1526,7 @@ function computeEstimateAmounts(items: DesignEstimateItem[]): Map<string, number
     const expr = item.quantityExpr?.trim() ?? '';
     if (expr.endsWith('%')) {
       const pct = parseFloat(expr.slice(0, -1));
-      amount = isNaN(pct) ? 0 : Math.round(runningTotal * pct / 100);
+      amount = isNaN(pct) ? 0 : Math.floor(runningTotal * pct / 100);
     } else {
       amount = item.quantity * item.unitPrice;
     }
@@ -1509,6 +1546,9 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
   // 일위대가표 검색 팝업 상태
   const [ucSearch, setUcSearch] = useState<string | null>(null); // estimateItem id
   const [ucQuery, setUcQuery] = useState('');
+  const filteredUCs = ucQuery.trim()
+    ? data.unitCosts.filter(uc => uc.workType.includes(ucQuery) || (uc.ref ?? '').includes(ucQuery))
+    : data.unitCosts;
 
   const categories: { key: 'material' | 'labor' | 'expense'; label: string; bg: string; hdrBg: string }[] = [
     { key: 'material', label: '재료비',      bg: 'bg-green-50',  hdrBg: 'bg-green-100' },
@@ -1529,7 +1569,7 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
       let price: number;
       if (expr.endsWith('%')) {
         const pct = parseFloat(expr.slice(0, -1));
-        price = isNaN(pct) ? 0 : Math.round(runningMatTotal * pct / 100 / (item.quantity || 1));
+        price = isNaN(pct) ? 0 : Math.floor(runningMatTotal * pct / 100 / (item.quantity || 1));
       } else {
         price = item.unitPrice;
       }
@@ -1565,7 +1605,7 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
                   const val = e.target.value.trim();
                   if (val.endsWith('%')) {
                     const pct = parseFloat(val.slice(0, -1));
-                    const computed = isNaN(pct) ? 0 : Math.round(baseAmount * pct / 100 / (item.quantity || 1));
+                    const computed = isNaN(pct) ? 0 : Math.floor(baseAmount * pct / 100 / (item.quantity || 1));
                     onChange({ estimateItems: data.estimateItems.map(ei => ei.id === item.id ? { ...ei, unitPriceExpr: val, unitPrice: computed } : ei) });
                   } else {
                     const num = parseInt(val.replace(/[^0-9]/g, ''), 10) || 0;
@@ -1606,7 +1646,7 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
           <NumInput
             value={expAmt}
             onChange={v => {
-              const newUnitPrice = item.quantity > 0 ? Math.round(v / item.quantity) : 0;
+              const newUnitPrice = item.quantity > 0 ? Math.floor(v / item.quantity) : 0;
               onChange({ estimateItems: data.estimateItems.map(ei =>
                 ei.id === item.id ? { ...ei, expAmount: v, expUnitPrice: newUnitPrice } : ei
               )});
@@ -1624,9 +1664,9 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
     const rows = uc.rows ?? [];
     const matRow = rows.find(r => r.unit !== '인');
     const multiplier = (matRow && matRow.quantity > 0) ? matRow.quantity : 1;
-    const mat = rows.reduce((s, r) => s + (r.matAmount ?? Math.round((r.matUnitPrice ?? 0) * r.quantity)), 0);
-    const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + (r.labAmount ?? Math.round((r.labUnitPrice ?? 0) * r.quantity)), 0);
-    return { mat, lab, multiplier };
+    const mat = rows.reduce((s, r) => s + Math.floor(r.matAmount ?? (r.matUnitPrice ?? 0) * r.quantity), 0);
+    const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + Math.floor((r.labAmount ?? (r.labUnitPrice ?? 0) * r.quantity) * multiplier), 0);
+    return { mat: mat * multiplier, lab, multiplier };
   };
 
   // 일위대가 → 설계내역서 자동 반영
@@ -1684,7 +1724,7 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
     alert(`설계내역서에 ${msg.join(', ')}되었습니다.\n(재료비·노무비 단가 = 일위대가표 합계)`);
   };
 
-  const { colPcts: esPcts, startResize: esResize } = useColumnResize([40, 160, 180, 50, 56, 88, 104, 88, 104, 88, 104, 104, 72, 40]);
+  const { colPx: esPcts, totalWidth: esTotalW, startResize: esResize } = useColumnResize([40, 160, 180, 50, 56, 88, 104, 88, 104, 88, 104, 104, 72, 40], 'de-col-estimate');
 
   return (
     <div>
@@ -1699,8 +1739,9 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
           </Button>
         </div>
       </div>
-      <table className="w-full border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
-        <colgroup>{esPcts.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+      <div className="overflow-x-auto">
+      <table className="border-collapse text-sm" style={{ tableLayout: 'fixed', width: `${esTotalW}px`, minWidth: '100%' }}>
+        <colgroup>{esPcts.map((w: string, i: number) => <col key={i} style={{ width: w }} />)}</colgroup>
         <thead>
           <tr className="bg-gray-100">
             <th className="border p-1 align-middle relative" rowSpan={2}>연번<RH ci={0} sr={esResize} /></th>
@@ -1708,27 +1749,31 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
             <th className="border p-1 align-middle relative" rowSpan={2}>규격<RH ci={2} sr={esResize} /></th>
             <th className="border p-1 align-middle relative" rowSpan={2}>단위<RH ci={3} sr={esResize} /></th>
             <th className="border p-1 align-middle relative" rowSpan={2}>수량<RH ci={4} sr={esResize} /></th>
-            <th className="border p-1 text-center bg-green-50" colSpan={2}>재료비</th>
-            <th className="border p-1 text-center bg-blue-50" colSpan={2}>노무비</th>
-            <th className="border p-1 text-center bg-orange-50" colSpan={2}>경비</th>
+            <th className="border p-1 text-center" colSpan={2}>재료비</th>
+            <th className="border p-1 text-center" colSpan={2}>노무비</th>
+            <th className="border p-1 text-center" colSpan={2}>경비</th>
             <th className="border p-1 align-middle relative" rowSpan={2}>계<RH ci={11} sr={esResize} /></th>
             <th className="border p-1 align-middle relative" rowSpan={2}>비고<RH ci={12} sr={esResize} /></th>
             <th className="border p-1 align-middle no-print" rowSpan={2}></th>
           </tr>
           <tr className="bg-gray-100">
-            <th className="border p-1 bg-green-50 relative">단가<RH ci={5} sr={esResize} /></th>
-            <th className="border p-1 bg-green-50 relative">금액<RH ci={6} sr={esResize} /></th>
-            <th className="border p-1 bg-blue-50 relative">단가<RH ci={7} sr={esResize} /></th>
-            <th className="border p-1 bg-blue-50 relative">금액<RH ci={8} sr={esResize} /></th>
-            <th className="border p-1 bg-orange-50 relative">단가<RH ci={9} sr={esResize} /></th>
-            <th className="border p-1 bg-orange-50 relative">금액<RH ci={10} sr={esResize} /></th>
+            <th className="border p-1 relative">단가<RH ci={5} sr={esResize} /></th>
+            <th className="border p-1 relative">금액<RH ci={6} sr={esResize} /></th>
+            <th className="border p-1 relative">단가<RH ci={7} sr={esResize} /></th>
+            <th className="border p-1 relative">금액<RH ci={8} sr={esResize} /></th>
+            <th className="border p-1 relative">단가<RH ci={9} sr={esResize} /></th>
+            <th className="border p-1 relative">금액<RH ci={10} sr={esResize} /></th>
           </tr>
         </thead>
         <tbody>
           <tr className="font-bold bg-gray-200 text-sm">
             <td colSpan={5} className="border p-1 text-center">합 계</td>
             <td colSpan={2} className="border p-1 text-right pr-2 bg-green-100">
-              {fmt(data.estimateItems.reduce((s, e) => s + e.quantity * (matBaseMap.priceMap.get(e.id) ?? e.unitPrice), 0))}
+              {(() => {
+                const miscRate = data.miscMatRate ?? 5;
+                const matSum = data.estimateItems.reduce((s, e) => s + e.quantity * (matBaseMap.priceMap.get(e.id) ?? e.unitPrice), 0);
+                return fmt(matSum + Math.floor(matSum * miscRate / 100));
+              })()}
             </td>
             <td colSpan={2} className="border p-1 text-right pr-2 bg-blue-100">
               {fmt(data.estimateItems.reduce((s, e) => s + e.quantity * (e.labUnitPrice ?? 0), 0))}
@@ -1737,7 +1782,14 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
               {fmt(data.estimateItems.reduce((s, e) => s + (e.expAmount != null ? e.expAmount : e.quantity * (e.expUnitPrice ?? 0)), 0))}
             </td>
             <td className="border p-1 text-right pr-2">
-              {fmt(data.estimateItems.reduce((s, e) => s + e.quantity * ((matBaseMap.priceMap.get(e.id) ?? e.unitPrice) + (e.labUnitPrice ?? 0)) + (e.expAmount != null ? e.expAmount : e.quantity * (e.expUnitPrice ?? 0)), 0))}
+              {(() => {
+                const miscRate = data.miscMatRate ?? 5;
+                const matSum = data.estimateItems.reduce((s, e) => s + e.quantity * (matBaseMap.priceMap.get(e.id) ?? e.unitPrice), 0);
+                const miscAmount = Math.floor(matSum * miscRate / 100);
+                const labSum = data.estimateItems.reduce((s, e) => s + e.quantity * (e.labUnitPrice ?? 0), 0);
+                const expSum = data.estimateItems.reduce((s, e) => s + (e.expAmount != null ? e.expAmount : e.quantity * (e.expUnitPrice ?? 0)), 0);
+                return fmt(matSum + miscAmount + labSum + expSum);
+              })()}
             </td>
             <td className="border p-1"></td>
             <td className="border no-print"></td>
@@ -1792,14 +1844,96 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
               </React.Fragment>
             );
           })}
+          {/* ── 잡자재비 고정행 ── */}
+          {(() => {
+            const miscRate = data.miscMatRate ?? 5;
+            const totalMat = data.estimateItems.reduce((s, e) => s + e.quantity * (matBaseMap.priceMap.get(e.id) ?? e.unitPrice), 0);
+            const miscAmount = Math.floor(totalMat * miscRate / 100);
+            return (
+              <tr className="border bg-yellow-50 font-medium">
+                <td className="border p-1 text-center text-gray-400">{data.estimateItems.length + 1}</td>
+                <td className="border p-1" colSpan={3}>잡자재비</td>
+                <td className="border p-1 text-center">1</td>
+                <td className="border p-1">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      className="w-14 px-1 py-0.5 border rounded text-right text-sm focus:outline-none focus:ring-1 focus:ring-blue-300"
+                      value={miscRate}
+                      onChange={e => onChange({ miscMatRate: Math.max(0, Number(e.target.value) || 0) })}
+                    />
+                    <span className="text-xs text-gray-500">%</span>
+                  </div>
+                </td>
+                <td className="border p-1 text-right pr-2">{fmt(miscAmount)}</td>
+                <td className="border p-1"></td>
+                <td className="border p-1"></td>
+                <td className="border p-1"></td>
+                <td className="border p-1"></td>
+                <td className="border p-1 text-right pr-2 font-bold">{fmt(miscAmount)}</td>
+                <td className="border p-1 text-xs text-gray-500">재료비×{miscRate}%</td>
+                <td className="border p-1 no-print"></td>
+              </tr>
+            );
+          })()}
         </tbody>
       </table>
+      </div>
+
+      {/* 일위대가표 선택 팝업 */}
+      {ucSearch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setUcSearch(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-[32rem] max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h4 className="font-bold text-sm">일위대가표에서 선택</h4>
+              <button className="text-gray-400 hover:text-gray-600" onClick={() => setUcSearch(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <div className="px-3 py-2 border-b">
+              <input
+                autoFocus
+                type="text"
+                placeholder="작업종별 또는 참조번호 검색..."
+                className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                value={ucQuery}
+                onChange={e => setUcQuery(e.target.value)}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filteredUCs.length === 0 && (
+                <p className="text-center text-gray-400 text-sm py-6">검색 결과가 없습니다.</p>
+              )}
+              {filteredUCs.map(uc => {
+                const { lab } = calcUcTotals(uc);
+                const ucIdx = data.unitCosts.indexOf(uc);
+                const label = `제${ucIdx + 1}호표`;
+                return (
+                  <button
+                    key={uc.id}
+                    className="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b border-gray-100 text-sm"
+                    onClick={() => {
+                      onChange({
+                        estimateItems: data.estimateItems.map(e =>
+                          e.id === ucSearch ? { ...e, labUnitPrice: lab, memo: label } : e
+                        ),
+                      });
+                      setUcSearch(null);
+                    }}
+                  >
+                    <span className="font-medium text-indigo-600">{label}</span>
+                    <span className="float-right text-black font-bold">{lab.toLocaleString()}원</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ════════════════════ Sheet: 원가계산서 ════════════════════ */
-function CostCalcSheet({ data }: { data: ProjectData }) {
+function CostCalcSheet({ data, onChange }: { data: ProjectData; onChange: (d: Partial<ProjectData>) => void }) {
   const c = useMemo(() => calcCost(data), [data]);
 
   return (
@@ -1927,7 +2061,16 @@ function CostCalcSheet({ data }: { data: ProjectData }) {
           <tr className="border">
             <td className="border p-2 font-medium" colSpan={3}>이 윤</td>
             <td className="border p-2 text-right pr-3">{fmt(c.profit)}</td>
-            <td className="border p-2 text-xs text-gray-500">(노무비+경비+일반관리비) × 15%</td>
+            <td className="border p-2 text-xs text-gray-500">
+              <span>(노무비+경비+일반관리비) × </span>
+              <input
+                type="number"
+                className="w-12 px-1 py-0.5 border rounded text-right text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 no-print"
+                value={data.profitRate ?? 15}
+                onChange={e => onChange({ profitRate: Math.max(0, Number(e.target.value) || 0) })}
+              />
+              <span>%</span>
+            </td>
           </tr>
           {/* ── 총원가 ── */}
           <tr className="border bg-yellow-50">
@@ -1986,6 +2129,9 @@ export function DesignEstimatePage() {
           if (e.unitPriceExpr) o.unitPriceExpr = e.unitPriceExpr;
           if (e.labUnitPrice) o.labUnitPrice = e.labUnitPrice;
           if (e.expUnitPrice) o.expUnitPrice = e.expUnitPrice;
+          if (e.expAmount != null) o.expAmount = e.expAmount;
+          if (e.memo) o.memo = e.memo;
+          if (e.matrixColId) o.matrixColId = e.matrixColId;
           return o as unknown as DesignEstimateItem;
         }),
         materials: data.materials.filter(m => m.name).map(m => {
@@ -2079,8 +2225,10 @@ export function DesignEstimatePage() {
         ucs.forEach(uc => {
           if (!uc.workType) return;
           const rows = uc.rows ?? [];
-          const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + (r.labAmount ?? Math.round((r.labUnitPrice ?? 0) * r.quantity)), 0);
-          const mat = rows.reduce((s, r) => s + (r.matAmount ?? Math.round((r.matUnitPrice ?? 0) * r.quantity)), 0);
+          const matRow = rows.find(r => r.unit !== '인');
+          const multiplier = (matRow && matRow.quantity > 0) ? matRow.quantity : 1;
+          const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + Math.floor((r.labAmount ?? (r.labUnitPrice ?? 0) * r.quantity) * multiplier), 0);
+          const mat = rows.reduce((s, r) => s + Math.floor(r.matAmount ?? (r.matUnitPrice ?? 0) * r.quantity), 0) * multiplier;
           const found = items.find(e => e.name === uc.workType);
           if (found) {
             found.labUnitPrice = lab;
@@ -2125,7 +2273,7 @@ export function DesignEstimatePage() {
           <h2 className="text-lg font-bold flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-blue-600" /> 설계내역서
           </h2>
-          <input className="border rounded px-2 py-1 text-sm font-medium" value={data.projectName}
+          <input className="border rounded px-2 py-1 text-sm font-medium flex-1 min-w-[400px]" value={data.projectName}
             onChange={e => updateData({ projectName: e.target.value })} />
           <input type="number" className="border rounded px-2 py-1 text-sm w-20" value={data.year}
             onChange={e => updateData({ year: parseInt(e.target.value) || new Date().getFullYear() })} />
@@ -2159,7 +2307,7 @@ export function DesignEstimatePage() {
         {activeSheet === 'unit-cost' && <UnitCostSheet data={data} onChange={updateData} />}
         {activeSheet === 'quantity' && <QuantitySheet data={data} onChange={updateData} />}
         {activeSheet === 'estimate' && <EstimateSheet data={data} onChange={updateData} />}
-        {activeSheet === 'cost-calc' && <CostCalcSheet data={data} />}
+        {activeSheet === 'cost-calc' && <CostCalcSheet data={data} onChange={updateData} />}
         {activeSheet === 'summary' && <SummarySheet data={data} />}
         {activeSheet === 'diagram' && (
           <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">

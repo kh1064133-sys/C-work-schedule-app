@@ -30,12 +30,15 @@ const EVENT_ICON_EMOJI: Record<EventIcon, string> = {
   golf: '⛳',
   birthday: '🎂',
   meeting: '🤝',
+  install: '🔧',
 };
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   sale: '판매',
   as: 'AS',
   agency: '대리점',
+  group: '공동구매',
+  install: '외주설치',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

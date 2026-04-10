@@ -9,19 +9,7 @@ import { useSchedulesByMonth, useSchedulesByYear } from '@/hooks/useSchedules';
 import { cn } from '@/lib/utils';
 import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
-
-const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
-  sale: '판매',
-  as: 'AS',
-  agency: '대리점',
-};
-
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  cash: '현금',
-  card: '카드',
-  vat: 'VAT',
-  free: '무상',
-};
+import { SCHEDULE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from '@/types';
 
 export function AnalyticsPage() {
   const { chartYear, setChartYear } = useDateStore();
@@ -62,11 +50,12 @@ export function AnalyticsPage() {
 
   // 연간 유형별 통계
   const yearTypeStats = useMemo(() => {
-    const stats: Record<string, { count: number; amount: number }> = {
+    const stats: Record<ScheduleType, { count: number; amount: number }> = {
       sale: { count: 0, amount: 0 },
       as: { count: 0, amount: 0 },
       agency: { count: 0, amount: 0 },
       group: { count: 0, amount: 0 },
+      install: { count: 0, amount: 0 },
     };
     yearCompletedSchedules.forEach((s: Schedule) => {
       if (s.schedule_type && stats[s.schedule_type]) {
@@ -114,11 +103,12 @@ export function AnalyticsPage() {
 
   // 유형별 통계
   const typeStats = useMemo(() => {
-    const stats: Record<string, { count: number; amount: number }> = {
+    const stats: Record<ScheduleType, { count: number; amount: number }> = {
       sale: { count: 0, amount: 0 },
       as: { count: 0, amount: 0 },
       agency: { count: 0, amount: 0 },
       group: { count: 0, amount: 0 },
+      install: { count: 0, amount: 0 },
     };
     completedSchedules.forEach((s: Schedule) => {
       if (s.schedule_type && stats[s.schedule_type]) {

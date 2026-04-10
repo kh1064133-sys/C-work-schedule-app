@@ -16,12 +16,16 @@ const SCHEDULE_TYPES = [
   { value: 'sale', label: '판매' },
   { value: 'as', label: 'AS' },
   { value: 'agency', label: '대리점' },
+  { value: 'group', label: '공동구매' },
+  { value: 'install', label: '외주설치' },
 ];
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   sale: '판매',
   as: 'AS',
   agency: '대리점',
+  group: '공동구매',
+  install: '외주설치',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

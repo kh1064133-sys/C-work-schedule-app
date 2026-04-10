@@ -28,6 +28,18 @@
 			"command": "Set-Location C:\\work\\DSinet; npm run dev",
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "Dev: DSinet",
+			"type": "shell",
+			"command": "cd C:\\work\\DSinet && npm run dev",
+			"isBackground": true
+		},
+		{
+			"label": "Dev: DSinet",
+			"type": "shell",
+			"command": "Set-Location C:\\work\\DSinet; npm run dev",
+			"isBackground": true
 		}
 	]
 }

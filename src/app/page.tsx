@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Header } from '@/components/shared/Header';
 import { Sidebar } from '@/components/shared/Sidebar';
@@ -109,36 +110,69 @@ export default function Home() {
     }
   }, []);
 
-  // Android 백버튼 핸들러
+  // ── 뒤로가기 통합 핸들러 (Android 백버튼 + 키보드 Backspace + 브라우저 뒤로가기) ──
   useEffect(() => {
-    let listener: { remove: () => void } | null = null;
-    
-    App.addListener('backButton', ({ canGoBack }) => {
-      // 최신 상태를 직접 참조 (클로저 문제 방지)
+    // 공통 뒤로가기 로직
+    const handleBack = () => {
       const store = useUIStore.getState();
-      
+
       // 사이드바가 열려있으면 닫기
       if (store.isSidebarOpen) {
         store.toggleSidebar();
         return;
       }
-      
-      // 현재 탭이 calendar가 아니면 calendar로 이동 (guard 거침)
+
+      // calendar가 아닌 탭이면 calendar로 이동
       if (store.activeTab !== 'calendar') {
-        store.setActiveTab('calendar');
+        store._forceSetActiveTab('calendar');
         return;
       }
-      
-      // calendar 탭에서 백버튼 누르면 앱 종료 확인
+
+      // calendar 탭에서 백버튼 → 앱 종료 확인
       if (confirm('앱을 종료하시겠습니까?')) {
         App.exitApp();
       }
-    }).then(handle => {
-      listener = handle;
-    });
+    };
+
+    // ★ 1) 키보드 Backspace — 가장 먼저 등록 (Capacitor 무관하게 항상 동작)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Backspace') {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if ((document.activeElement as HTMLElement)?.isContentEditable) return;
+        e.preventDefault();
+        handleBack();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    // ★ 2) 환경 감지 후 뒤로가기 분기
+    let capListener: { remove: () => void } | null = null;
+    let popstateHandler: (() => void) | null = null;
+
+    let isNative = false;
+    try { isNative = Capacitor.isNativePlatform(); } catch { /* web */ }
+
+    if (isNative) {
+      // Android 하드웨어 백버튼 (Capacitor 네이티브)
+      try {
+        App.addListener('backButton', () => handleBack())
+          .then(h => { capListener = h; });
+      } catch { /* 플러그인 초기화 실패 무시 */ }
+    } else {
+      // 웹 브라우저: popstate로 뒤로가기 처리
+      window.history.pushState({ app: true }, '');
+      popstateHandler = () => {
+        handleBack();
+        window.history.pushState({ app: true }, '');
+      };
+      window.addEventListener('popstate', popstateHandler);
+    }
 
     return () => {
-      listener?.remove();
+      window.removeEventListener('keydown', handleKeyDown);
+      capListener?.remove();
+      if (popstateHandler) window.removeEventListener('popstate', popstateHandler);
     };
   }, []);
 

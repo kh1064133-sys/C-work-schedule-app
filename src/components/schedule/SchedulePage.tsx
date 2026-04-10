@@ -59,7 +59,7 @@ export function SchedulePage() {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const { copiedSchedule, setCopiedSchedule } = useUIStore();
 
-  const { _forceSetActiveTab, setInstallTargetDate } = useUIStore();
+  const { setInstallTargetDate } = useUIStore();
 
   // 드래그 상태
   const [dragSourceSlot, setDragSourceSlot] = useState<string | null>(null);
@@ -357,38 +357,11 @@ export function SchedulePage() {
       if (e.key === 'Escape') {
         setSelectedSlot(null);
       }
-
-      // Backspace: input 포커스 아닐 때 뒤로가기
-      if (e.key === 'Backspace') {
-        const el = document.activeElement;
-        const isInput = el && (
-          el.tagName === 'INPUT' ||
-          el.tagName === 'TEXTAREA' ||
-          el.tagName === 'SELECT' ||
-          (el as HTMLElement).isContentEditable
-        );
-        if (!isInput) {
-          e.preventDefault();
-          useUIStore.getState()._forceSetActiveTab('calendar');
-        }
-      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setCopiedSchedule]);
-
-  // ── 브라우저 뒤로가기 감지 (popstate) ──
-  useEffect(() => {
-    window.history.pushState({ schedulePage: true }, '');
-
-    const handlePopState = () => {
-      _forceSetActiveTab('calendar');
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [_forceSetActiveTab]);
 
   const handleGoToToday = useCallback(() => {
     goToToday();

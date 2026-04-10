@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, RotateCcw, FileSpreadsheet, Calendar, Clock, MapPin } from 'lucide-react';
+import { Search, RotateCcw, FileSpreadsheet, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchSchedules } from '@/hooks/useSchedules';
 import { useDateStore } from '@/stores/dateStore';
@@ -44,6 +44,15 @@ export function SearchPage() {
   const [fromDate, setFromDate] = useState(() => format(subMonths(new Date(), 3), 'yyyy-MM-dd'));
   const [toDate, setToDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [scheduleType, setScheduleType] = useState('');
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
+  
+  // 체크박스 선택
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+
+  // SMS 팝업
+  const [smsPopup, setSmsPopup] = useState<{ targets: Schedule[] } | null>(null);
+  const [smsText, setSmsText] = useState('');
+  const [smsSending, setSmsSending] = useState(false);
   
   // 실제 검색에 사용할 파라미터 (검색 버튼 클릭 시 업데이트)
   const [searchParams, setSearchParams] = useState<{
@@ -51,6 +60,7 @@ export function SearchPage() {
     fromDate?: string;
     toDate?: string;
     type?: string;
+    unpaidOnly?: boolean;
   }>({});
 
   // 검색 실행
@@ -58,11 +68,13 @@ export function SearchPage() {
 
   // 검색 실행
   const handleSearch = () => {
+    setCheckedIds(new Set());
     setSearchParams({
       query: searchQuery || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
       type: scheduleType || undefined,
+      unpaidOnly: unpaidOnly || undefined,
     });
   };
 
@@ -72,6 +84,8 @@ export function SearchPage() {
     setFromDate(format(subMonths(new Date(), 3), 'yyyy-MM-dd'));
     setToDate(format(new Date(), 'yyyy-MM-dd'));
     setScheduleType('');
+    setUnpaidOnly(false);
+    setCheckedIds(new Set());
     setSearchParams({});
   };
 
@@ -82,6 +96,56 @@ export function SearchPage() {
     }
   };
 
+  // 체크박스 토글
+  const toggleCheck = (id: string) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (checkedIds.size === results.length) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(results.map((s: Schedule) => s.id)));
+    }
+  };
+
+  // SMS 발송
+  const handleSmsOpen = () => {
+    const targets = results.filter((s: Schedule) => checkedIds.has(s.id));
+    if (targets.length === 0) { alert('문자를 보낼 항목을 선택하세요.'); return; }
+    setSmsPopup({ targets });
+    setSmsText('');
+  };
+
+  const handleSmsSend = async () => {
+    if (!smsPopup || !smsText.trim()) return;
+    const numbers = smsPopup.targets
+      .map(s => s.unit?.replace(/[^0-9]/g, ''))
+      .filter(n => n && n.length >= 10);
+    if (numbers.length === 0) { alert('유효한 전화번호가 없습니다.\n동호수 필드에 전화번호를 입력하세요.'); return; }
+    
+    setSmsSending(true);
+    try {
+      const messages = numbers.map(to => ({ to: to!, from: '01000000000', text: smsText }));
+      const res = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+      });
+      if (!res.ok) throw new Error('발송 실패');
+      alert(`${numbers.length}건 문자 발송 완료`);
+      setSmsPopup(null);
+    } catch (e) {
+      alert('문자 발송 중 오류가 발생했습니다.');
+    } finally {
+      setSmsSending(false);
+    }
+  };
+
   // 통계 계산
   const stats = useMemo(() => {
     const totalAmount = results
@@ -89,16 +153,16 @@ export function SearchPage() {
       .reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
     const doneCount = results.filter((s: Schedule) => s.is_done).length;
     const pendingCount = results.filter((s: Schedule) => !s.is_done && s.title).length;
+    const unpaidCount = results.filter((s: Schedule) => s.is_done && !s.is_paid).length;
     
-    return { totalAmount, doneCount, pendingCount, totalCount: results.length };
+    return { totalAmount, doneCount, pendingCount, unpaidCount, totalCount: results.length };
   }, [results]);
 
   // 엑셀 다운로드
   const handleExcelExport = () => {
     if (results.length === 0) return;
 
-    // 데이터 준비
-    const headers = ['날짜', '시간', '거래처명', '동호수', '내용', '유형', '금액', '결제방법', '완료', '예약'];
+    const headers = ['날짜', '시간', '거래처명', '동호수', '내용', '유형', '금액', '결제방법', '입금', '완료', '예약'];
     const rows = results.map((s: Schedule) => ({
       '날짜': s.date,
       '시간': s.time_slot,
@@ -108,19 +172,15 @@ export function SearchPage() {
       '유형': s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '',
       '금액': s.amount || 0,
       '결제방법': s.payment_method ? PAYMENT_METHOD_LABELS[s.payment_method] : '',
+      '입금': s.is_paid ? 'O' : '',
       '완료': s.is_done ? 'O' : '',
       '예약': s.is_reserved ? 'O' : '',
     }));
 
-    // xlsx 파일 생성
     const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '검색결과');
-    
-    // 열 너비 자동 조정
     worksheet['!cols'] = headers.map(() => ({ wch: 15 }));
-    
-    // 다운로드
     XLSX.writeFile(workbook, `스케줄_검색결과_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
   };
 
@@ -223,6 +283,16 @@ export function SearchPage() {
           </select>
         </div>
 
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: '#4b5563', cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox"
+            checked={unpaidOnly}
+            onChange={(e) => setUnpaidOnly(e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: '#ef4444' }}
+          />
+          <span style={{ fontWeight: unpaidOnly ? 700 : 400, color: unpaidOnly ? '#dc2626' : '#4b5563' }}>미입금</span>
+        </label>
+
         <Button variant="outline" size="sm" onClick={handleReset} className="gap-1">
           <RotateCcw className="h-3 w-3" />
           초기화
@@ -244,53 +314,68 @@ export function SearchPage() {
                 미결: <span className="font-bold text-red-500">{stats.pendingCount}건</span>
               </span>
               <span className="text-gray-600 whitespace-nowrap">
+                미입금: <span className="font-bold text-orange-500">{stats.unpaidCount}건</span>
+              </span>
+              <span className="text-gray-600 whitespace-nowrap">
                 매출합계: <span className="font-bold text-emerald-600">{stats.totalAmount.toLocaleString()}원</span>
               </span>
             </>
           )}
         </div>
         
-        {results.length > 0 && (
-          <Button variant="outline" size="sm" onClick={handleExcelExport} className="gap-1 text-green-700 border-green-600 hover:bg-green-50">
-            <FileSpreadsheet className="h-4 w-4" />
-            엑셀 다운로드
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {checkedIds.size > 0 && (
+            <Button variant="outline" size="sm" onClick={handleSmsOpen} className="gap-1 text-blue-700 border-blue-600 hover:bg-blue-50">
+              <MessageSquare className="h-4 w-4" />
+              문자발송 ({checkedIds.size})
+            </Button>
+          )}
+          {results.length > 0 && (
+            <Button variant="outline" size="sm" onClick={handleExcelExport} className="gap-1 text-green-700 border-green-600 hover:bg-green-50">
+              <FileSpreadsheet className="h-4 w-4" />
+              엑셀
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 결과 테이블 */}
       <div className="bg-white rounded-lg border overflow-hidden">
         <div style={{ overflowX: 'auto', maxHeight: '60vh', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-          <table style={{ width: '100%', minWidth: 600, borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 'clamp(9px, 2vw, 13px)' }}>
+          <table style={{ width: '100%', minWidth: 650, borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 'clamp(9px, 2vw, 13px)' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 10 }}>
-                <th style={{ width: '11%', minWidth: 55, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>날짜</th>
-                <th style={{ width: '9%', minWidth: 42, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>시간</th>
-                <th style={{ width: '20%', minWidth: 70, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>거래처명</th>
-                <th style={{ width: '11%', minWidth: 50, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>동호수</th>
-                <th style={{ width: '15%', minWidth: 55, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>내용</th>
-                <th style={{ width: '8%', minWidth: 35, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>유형</th>
-                <th style={{ width: '13%', minWidth: 55, padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>금액</th>
-                <th style={{ width: '7%', minWidth: 30, padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>결제</th>
+                <th style={{ width: '4%', minWidth: 28, padding: '4px 2px', textAlign: 'center' }}>
+                  <input type="checkbox" checked={results.length > 0 && checkedIds.size === results.length} onChange={toggleAll} style={{ width: 15, height: 15 }} />
+                </th>
+                <th style={{ width: '10%', minWidth: 50, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>날짜</th>
+                <th style={{ width: '8%', minWidth: 38, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>시간</th>
+                <th style={{ width: '18%', minWidth: 65, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>거래처명</th>
+                <th style={{ width: '10%', minWidth: 45, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>동호수</th>
+                <th style={{ width: '13%', minWidth: 50, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>내용</th>
+                <th style={{ width: '7%', minWidth: 32, padding: '4px 3px', textAlign: 'left', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>유형</th>
+                <th style={{ width: '11%', minWidth: 50, padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>금액</th>
+                <th style={{ width: '6%', minWidth: 28, padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>결제</th>
+                <th style={{ width: '6%', minWidth: 28, padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>입금</th>
                 <th style={{ width: '6%', minWidth: 28, padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 'clamp(9px, 2vw, 13px)' }}>상태</th>
               </tr>
             </thead>
             <tbody>
               {isLoading || isFetching ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={11} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
                     검색 중...
                   </td>
                 </tr>
               ) : Object.keys(searchParams).length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={11} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
                     검색어를 입력하거나 필터를 설정한 후 검색 버튼을 클릭하세요.
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan={11} style={{ padding: '48px 16px', textAlign: 'center', color: '#6b7280' }}>
                     검색 결과가 없습니다.
                   </td>
                 </tr>
@@ -301,10 +386,13 @@ export function SearchPage() {
                     style={{
                       borderBottom: '1px solid #f3f4f6',
                       cursor: 'pointer',
-                      backgroundColor: schedule.is_done ? 'rgba(240,253,244,0.5)' : undefined,
+                      backgroundColor: checkedIds.has(schedule.id) ? 'rgba(219,234,254,0.5)' : schedule.is_done ? 'rgba(240,253,244,0.5)' : undefined,
                     }}
                     onClick={() => handleDateClick(schedule.date)}
                   >
+                    <td style={{ padding: '4px 2px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={checkedIds.has(schedule.id)} onChange={() => toggleCheck(schedule.id)} style={{ width: 15, height: 15 }} />
+                    </td>
                     <td style={{ padding: '4px 3px', whiteSpace: 'nowrap', color: '#4f46e5', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {schedule.date.slice(5)}
                     </td>
@@ -344,6 +432,15 @@ export function SearchPage() {
                     </td>
                     <td style={{ padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {schedule.is_done ? (
+                        schedule.is_paid ? (
+                          <span style={{ padding: '1px 4px', borderRadius: 4, backgroundColor: '#dcfce7', color: '#15803d', fontSize: 'clamp(8px, 1.8vw, 12px)', fontWeight: 700 }}>완료</span>
+                        ) : (
+                          <span style={{ padding: '1px 4px', borderRadius: 4, backgroundColor: '#fef3c7', color: '#d97706', fontSize: 'clamp(8px, 1.8vw, 12px)', fontWeight: 700 }}>미입금</span>
+                        )
+                      ) : null}
+                    </td>
+                    <td style={{ padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      {schedule.is_done ? (
                         <span style={{ padding: '1px 4px', borderRadius: 4, backgroundColor: '#dcfce7', color: '#15803d', fontSize: 'clamp(8px, 1.8vw, 12px)', fontWeight: 700 }}>완료</span>
                       ) : schedule.title ? (
                         <span style={{ padding: '1px 4px', borderRadius: 4, backgroundColor: '#fee2e2', color: '#dc2626', fontSize: 'clamp(8px, 1.8vw, 12px)', fontWeight: 700 }}>미결</span>
@@ -356,6 +453,32 @@ export function SearchPage() {
           </table>
         </div>
       </div>
+
+      {/* SMS 팝업 */}
+      {smsPopup && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setSmsPopup(null)}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, width: '90%', maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📩 문자 발송 ({smsPopup.targets.length}건)</h3>
+            <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280', maxHeight: 100, overflowY: 'auto' }}>
+              {smsPopup.targets.map(s => (
+                <div key={s.id}>{s.title} - {s.unit || '번호없음'}</div>
+              ))}
+            </div>
+            <textarea
+              value={smsText}
+              onChange={e => setSmsText(e.target.value)}
+              placeholder="문자 내용을 입력하세요..."
+              style={{ width: '100%', height: 100, padding: 10, border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, resize: 'none', outline: 'none' }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <Button variant="outline" size="sm" onClick={() => setSmsPopup(null)}>취소</Button>
+              <Button size="sm" onClick={handleSmsSend} disabled={smsSending || !smsText.trim()}>
+                {smsSending ? '발송중...' : '발송'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

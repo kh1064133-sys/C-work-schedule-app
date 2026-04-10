@@ -274,6 +274,7 @@ export function useSearchSchedules(params: {
   fromDate?: string;
   toDate?: string;
   type?: string;
+  unpaidOnly?: boolean;
 }) {
   const supabase = createClient();
 
@@ -291,25 +292,35 @@ export function useSearchSchedules(params: {
       if (params.type) {
         query = query.eq('schedule_type', params.type);
       }
-      if (params.query) {
-        query = query.or(
-          `title.ilike.%${params.query}%,unit.ilike.%${params.query}%,memo.ilike.%${params.query}%`
-        );
+      if (params.unpaidOnly) {
+        query = query.eq('is_done', true).eq('is_paid', false);
       }
 
       const { data, error } = await query.order('date', { ascending: false }).order('time_slot');
 
       if (error) throw error;
 
-      // 데이터가 입력되지 않은 빈 시간대 제외 (이벤트 아이콘만 있는 것도 제외)
-      return (data as Schedule[]).filter(s =>
+      // 빈 시간대 제외
+      let results = (data as Schedule[]).filter(s =>
         (s.title && s.title.trim() !== '') ||
         (s.memo && s.memo.trim() !== '') ||
         (s.amount && s.amount > 0) ||
         s.schedule_type
       );
+
+      // 텍스트 검색: 클라이언트 사이드 필터링 (PostgREST .or() 한글 파싱 이슈 방지)
+      if (params.query) {
+        const q = params.query.toLowerCase();
+        results = results.filter(s =>
+          (s.title && s.title.toLowerCase().includes(q)) ||
+          (s.unit && s.unit.toLowerCase().includes(q)) ||
+          (s.memo && s.memo.toLowerCase().includes(q))
+        );
+      }
+
+      return results;
     },
-    enabled: Boolean(params.query || params.fromDate || params.toDate || params.type),
+    enabled: Boolean(params.query || params.fromDate || params.toDate || params.type || params.unpaidOnly),
   });
 }
 

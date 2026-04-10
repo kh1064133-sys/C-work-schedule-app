@@ -423,6 +423,151 @@ export default function EstimateForm() {
   };
   const won = (n: number) => "₩ " + n.toLocaleString();
 
+  const estimatePaperRef = useRef<HTMLDivElement>(null);
+
+  // 모바일 자동 축소: 680px 견적서를 화면 폭에 맞추기
+  const paperWrapperRef = useRef<HTMLDivElement>(null);
+  const [paperScale, setPaperScale] = useState(1);
+  const [manualZoom, setManualZoom] = useState(1);
+  const effectiveScale = paperScale * manualZoom;
+
+  const zoomIn = () => setManualZoom(prev => Math.min(Math.round((prev + 0.1) * 10) / 10, 2.0));
+  const zoomOut = () => setManualZoom(prev => Math.max(Math.round((prev - 0.1) * 10) / 10, 0.3));
+  const zoomReset = () => setManualZoom(1);
+
+  useEffect(() => {
+    const updateScale = () => {
+      const wrapper = paperWrapperRef.current;
+      if (!wrapper) return;
+      const availableWidth = wrapper.clientWidth;
+      const paperMinWidth = 680;
+      if (availableWidth < paperMinWidth) {
+        setPaperScale(availableWidth / paperMinWidth);
+      } else {
+        setPaperScale(1);
+      }
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    let ro: ResizeObserver | null = null;
+    if (paperWrapperRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateScale);
+      ro.observe(paperWrapperRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', updateScale);
+      ro?.disconnect();
+    };
+  }, []);
+
+  // 인쇄 함수 - 새 창을 열고 견적서만 출력 (Android WebView 호환)
+  const handlePrint = useCallback(() => {
+    const paperEl = estimatePaperRef.current;
+    if (!paperEl) return;
+
+    const cloned = paperEl.cloneNode(true) as HTMLElement;
+    cloned.querySelectorAll('.no-print').forEach(el => el.remove());
+
+    const printHTML = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>견적서</title>
+<style>
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0; padding: 0; }
+  @page { size: A4 portrait; margin: 6mm; }
+  html, body { font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif; background: white; margin: 0; padding: 0; width: 100%; height: 100%; }
+  body { display: flex; align-items: flex-start; justify-content: center; }
+  .estimate-paper { width: 100%; max-width: 100%; background: white; overflow: visible; border-radius: 0 !important; box-shadow: none !important; }
+  .no-print { display: none !important; }
+  .no-print-col { width: 0 !important; padding: 0 !important; overflow: hidden !important; }
+  input, textarea { outline: none; border: none; background: transparent; font-family: inherit; }
+  table { border-collapse: collapse; width: 100%; }
+  .est-body { display: flex; flex-direction: column; }
+  .est-spacer { flex: 1 1 auto; }
+  .est-bottom { flex-shrink: 0; }
+  .est-header { padding: 14px 24px !important; }
+  .est-header .est-title { font-size: 24px !important; letter-spacing: 6px !important; }
+  .est-header .est-subtitle { font-size: 9px !important; margin-bottom: 3px !important; }
+  .est-header input { font-size: 12px !important; }
+  .est-body { padding: 12px 22px !important; }
+  .est-parties { gap: 10px !important; margin-bottom: 8px !important; }
+  .est-parties span, .est-parties input { font-size: 10.5px !important; line-height: 1.35 !important; }
+  .est-parties div[style*="padding: 12px 14px"] { padding: 6px 10px !important; }
+  .est-parties div[style*="marginBottom: 5px"],
+  .est-parties div[style*="marginBottom: 4px"] { margin-bottom: 2px !important; }
+  .est-total-banner { padding: 8px 14px !important; margin-bottom: 8px !important; }
+  .est-total-banner .est-total-amount { font-size: 18px !important; }
+  .est-total-banner div[style*="font-size: 14px"] { font-size: 11px !important; }
+  .est-total-banner div[style*="font-size: 11px"] { font-size: 9px !important; }
+  .est-table { margin-bottom: 6px !important; font-size: 10.5px !important; }
+  .est-table th { padding: 5px 6px !important; font-size: 10px !important; height: 25px !important; }
+  .est-table td { padding: 4px 6px !important; font-size: 10.5px !important; height: 25px !important; }
+  .est-table td input { font-size: 10.5px !important; }
+  .est-table td[style*="height: 34px"] { height: 25px !important; }
+  .est-summary-row { margin-bottom: 6px !important; }
+  .est-summary-row div[style*="padding: 10px 24px"] { padding: 6px 14px !important; min-width: 100px !important; }
+  .est-summary-row span { font-size: 10.5px !important; }
+  .est-photos { gap: 8px !important; margin-bottom: 8px !important; }
+  .est-photos > div { min-height: 250px !important; max-height: 250px !important; }
+  .est-photos img { object-fit: contain !important; }
+  .est-photos-empty { display: none !important; }
+  .est-note { margin-bottom: 6px !important; }
+  .est-note textarea { font-size: 10px !important; padding: 5px 10px !important; min-height: 24px !important; height: auto !important; }
+  .est-note .est-note-header { padding: 4px 10px !important; font-size: 10.5px !important; }
+  .est-note-empty { display: none !important; }
+  .est-signature { margin-bottom: 4px !important; gap: 10px !important; margin-top: 6px !important; }
+  .est-stamp { width: 60px !important; height: 60px !important; }
+  .est-signature div[style*="font-size: 13px"] { font-size: 11px !important; }
+  .est-signature div[style*="font-size: 12px"] { font-size: 10px !important; }
+  .est-signature div[style*="font-size: 11px"] { font-size: 9px !important; }
+  .est-footer { margin-top: 6px !important; padding-top: 6px !important; font-size: 9px !important; }
+</style>
+</head>
+<body>
+${cloned.outerHTML}
+<script>
+  window.onload = function() {
+    setTimeout(function() {
+      var paper = document.querySelector('.estimate-paper');
+      var body = document.querySelector('.est-body');
+      var bottom = document.querySelector('.est-bottom');
+      if (paper && body && bottom) {
+        var pageH = 1077;
+        var contentH = paper.scrollHeight;
+        if (contentH > pageH) {
+          var scale = pageH / contentH;
+          paper.style.transform = 'scale(' + scale + ')';
+          paper.style.transformOrigin = 'top left';
+          paper.style.width = (100 / scale) + '%';
+        } else {
+          var headerH = paper.querySelector('.est-header') ? paper.querySelector('.est-header').offsetHeight : 0;
+          var bodyTargetH = pageH - headerH;
+          body.style.minHeight = bodyTargetH + 'px';
+          var spacer = document.createElement('div');
+          spacer.className = 'est-spacer';
+          body.insertBefore(spacer, bottom);
+        }
+      }
+      setTimeout(function() { window.print(); }, 200);
+    }, 200);
+    window.onafterprint = function() { window.close(); };
+    setTimeout(function() { window.close(); }, 10000);
+  };
+<\/script>
+</body>
+</html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printHTML);
+      printWindow.document.close();
+    } else {
+      window.print();
+    }
+  }, []);
+
   const inputStyle: React.CSSProperties = {
     outline: "none", border: "none", background: "transparent",
     fontFamily: "inherit", fontSize: "inherit", color: "inherit",
@@ -433,7 +578,8 @@ export default function EstimateForm() {
     <div className="estimate-wrapper" style={{
       fontFamily: "'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo',sans-serif",
       background: "linear-gradient(135deg, #e8eaf6 0%, #ede7f6 100%)",
-      minHeight: "100vh", padding: "28px 16px",
+      minHeight: "100vh", padding: "28px 8px",
+      touchAction: "pan-x pan-y pinch-zoom",
     }}>
       <style>{`
         @media print {
@@ -547,23 +693,25 @@ export default function EstimateForm() {
       `}</style>
 
       {/* 툴바 */}
-      <div className="no-print" style={{ display: "flex", gap: "10px", marginBottom: "20px", justifyContent: "center", flexWrap: "wrap" }}>
+      <div className="no-print" style={{ display: "flex", gap: "8px", marginBottom: "16px", justifyContent: "center", flexWrap: "wrap", maxWidth: "820px", margin: "0 auto 16px" }}>
         {[
-          { label: "🖨️  인쇄 / PDF 저장", action: () => window.print(), bg: "#1a237e" },
+          { label: "🖨️  인쇄 / PDF 저장", action: handlePrint, bg: "#1a237e" },
           { label: "+ 품목 추가", action: addItem, bg: "#2e7d32" },
         ].map(b => (
           <button key={b.label} onClick={b.action} style={{
-            padding: "9px 22px", background: b.bg, color: "white",
+            padding: "9px 18px", background: b.bg, color: "white",
             border: "none", borderRadius: "8px", cursor: "pointer",
-            fontFamily: "inherit", fontSize: "13px", fontWeight: "bold",
+            fontFamily: "inherit", fontSize: "clamp(11px, 2.8vw, 13px)", fontWeight: "bold",
             boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+            minWidth: "120px", flex: "1 1 auto", maxWidth: "220px",
           }}>{b.label}</button>
         ))}
         <label style={{
-          padding: "9px 18px", background: vatIncluded ? "#e65100" : "#78909c",
+          padding: "9px 14px", background: vatIncluded ? "#e65100" : "#78909c",
           color: "white", borderRadius: "8px", cursor: "pointer",
-          fontSize: "13px", fontWeight: "bold",
+          fontSize: "clamp(11px, 2.8vw, 13px)", fontWeight: "bold",
           boxShadow: "0 2px 8px rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: "7px",
+          minWidth: "120px", flex: "1 1 auto", maxWidth: "180px", justifyContent: "center",
         }}>
           <input type="checkbox" checked={vatIncluded} onChange={e => setVatIncluded(e.target.checked)}
             style={{ width: "15px", height: "15px", cursor: "pointer" }} />
@@ -571,10 +719,45 @@ export default function EstimateForm() {
         </label>
       </div>
 
-      {/* 견적서 본문 */}
-      <div className="estimate-paper" style={{
-        maxWidth: "820px", margin: "0 auto", background: "white",
-        boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "hidden",
+      {/* 줌 컨트롤 */}
+      <div className="no-print" style={{
+        display: "flex", gap: "6px", justifyContent: "center", alignItems: "center",
+        maxWidth: "820px", margin: "0 auto 12px",
+      }}>
+        <button onClick={zoomOut} style={{
+          width: "32px", height: "32px", borderRadius: "6px",
+          border: "1.5px solid #c5cae9", background: "white", color: "#1a237e",
+          fontSize: "18px", fontWeight: "bold", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+        }}>−</button>
+        <span style={{
+          minWidth: "52px", textAlign: "center",
+          fontSize: "13px", fontWeight: "bold", color: "#1a237e",
+        }}>{Math.round(effectiveScale * 100)}%</span>
+        <button onClick={zoomIn} style={{
+          width: "32px", height: "32px", borderRadius: "6px",
+          border: "1.5px solid #c5cae9", background: "white", color: "#1a237e",
+          fontSize: "18px", fontWeight: "bold", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+        }}>+</button>
+        <button onClick={zoomReset} style={{
+          height: "32px", borderRadius: "6px", padding: "0 12px",
+          border: "1.5px solid #c5cae9", background: "white", color: "#7986cb",
+          fontSize: "12px", fontWeight: "bold", cursor: "pointer",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+        }}>초기화</button>
+      </div>
+
+      {/* 견적서 본문 (모바일 자동 축소 래퍼) */}
+      <div ref={paperWrapperRef} style={{ width: "100%", maxWidth: "820px", margin: "0 auto", touchAction: "pan-x pan-y pinch-zoom" }}>
+        <div style={{
+          zoom: effectiveScale !== 1 ? effectiveScale : undefined,
+        }}>
+      <div ref={estimatePaperRef} className="estimate-paper" style={{
+        minWidth: "680px", maxWidth: "820px", margin: "0 auto", background: "white",
+        boxShadow: "0 8px 40px rgba(26,35,126,0.18)", borderRadius: "10px", overflow: "visible",
       }}>
 
         {/* 헤더 */}
@@ -1066,6 +1249,8 @@ export default function EstimateForm() {
           </div>
         </div>
       </div>
+      </div>{/* zoom div */}
+      </div>{/* paperWrapperRef div */}
     </div>
   );
 }

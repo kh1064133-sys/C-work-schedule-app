@@ -39,6 +39,7 @@ const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   agency: '대리점',
   group: '공동구매',
   install: '외주설치',
+  daily: '일당',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -264,12 +265,12 @@ export function CalendarPage() {
   // 해당 월의 스케줄 데이터
   const { data: schedules = [], isLoading } = useSchedulesByMonth(year, month);
 
-  // 차량 보험/세금 일정 (localStorage)
-  const vehicleEvents = useMemo(() => {
-    if (typeof window === 'undefined') return {};
+  // 차량 보험/세금 일정 (localStorage) - useEffect로 hydration mismatch 방지
+  const [vehicleEvents, setVehicleEvents] = useState<Record<string, string[]>>({});
+  useEffect(() => {
     try {
       const saved = localStorage.getItem('vehicle_insurance');
-      if (!saved) return {};
+      if (!saved) { setVehicleEvents({}); return; }
       const info = JSON.parse(saved);
       const events: Record<string, string[]> = {};
       const add = (dateStr: string, label: string) => {
@@ -281,8 +282,8 @@ export function CalendarPage() {
       add(info.car_tax_date, '🏛자동차세');
       add(info.inspection_expiry, '🔧검사만기');
       add(info.license_inspection_expiry, '🪪적성검사');
-      return events;
-    } catch { return {}; }
+      setVehicleEvents(events);
+    } catch { setVehicleEvents({}); }
   }, [year, month]);
 
   // 오늘 이전 모든 미결 데이터 (전체 기간)

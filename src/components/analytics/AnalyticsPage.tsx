@@ -16,6 +16,7 @@ const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   agency: '대리점',
   group: '공동구매',
   install: '외주설치',
+  daily: '일당',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

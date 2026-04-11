@@ -13,19 +13,19 @@ import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
 
 const SCHEDULE_TYPES = [
   { value: '', label: '전체' },
-  { value: 'sale', label: '판매' },
+  { value: 'estimate', label: '견적' },
+  { value: 'delivery', label: '납품' },
+  { value: 'construction', label: '시공' },
+  { value: 'document', label: '서류제출' },
   { value: 'as', label: 'AS' },
-  { value: 'agency', label: '대리점' },
-  { value: 'group', label: '공동구매' },
-  { value: 'install', label: '외주설치' },
 ];
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
-  sale: '판매',
+  estimate: '견적',
+  delivery: '납품',
+  construction: '시공',
+  document: '서류제출',
   as: 'AS',
-  agency: '대리점',
-  group: '공동구매',
-  install: '외주설치',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -318,9 +318,9 @@ export function SearchPage() {
                       {schedule.schedule_type && (
                         <span className={cn(
                           'px-1 py-0.5 rounded-full font-bold',
-                          schedule.schedule_type === 'sale' && 'bg-green-100 text-green-700',
+                          schedule.schedule_type === 'estimate' && 'bg-green-100 text-green-700',
                           schedule.schedule_type === 'as' && 'bg-orange-100 text-orange-700',
-                          schedule.schedule_type === 'agency' && 'bg-indigo-100 text-indigo-700',
+                          schedule.schedule_type === 'delivery' && 'bg-indigo-100 text-indigo-700',
                         )} style={{ fontSize: 'clamp(8px, 1.8vw, 12px)' }}>
                           {SCHEDULE_TYPE_LABELS[schedule.schedule_type]}
                         </span>

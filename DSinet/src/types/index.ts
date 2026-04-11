@@ -21,7 +21,7 @@ export interface Schedule {
   updated_at: string;
 }
 
-export type ScheduleType = 'sale' | 'as' | 'agency' | 'group' | 'install';
+export type ScheduleType = 'estimate' | 'delivery' | 'construction' | 'document' | 'as';
 export type PaymentMethod = 'cash' | 'card' | 'vat' | 'free';
 export type EventIcon = 'golf' | 'birthday' | 'meeting' | 'install';
 
@@ -48,23 +48,25 @@ export interface Client {
   id: string;
   user_id: string;
   name: string;
-  type: ClientType | null;
+  contact_person: string | null;
+  phone: string | null;
+  mobile: string | null;
+  fax: string | null;
   address: string | null;
-  bunji: string | null;
-  households: string | null;
+  homepage: string | null;
   memo: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type ClientType = 'apt' | 'villa' | 'officetel' | 'house' | 'etc';
-
 export interface ClientInput {
   name: string;
-  type?: ClientType;
+  contact_person?: string;
+  phone?: string;
+  mobile?: string;
+  fax?: string;
   address?: string;
-  bunji?: string;
-  households?: string;
+  homepage?: string;
   memo?: string;
 }
 
@@ -156,9 +158,11 @@ export interface WorkTypeInput {
 
 // ===== 매출 통계 타입 =====
 export interface SalesStats {
-  sale: number;
+  estimate: number;
+  delivery: number;
+  construction: number;
+  document: number;
   as: number;
-  agency: number;
   total: number;
 }
 
@@ -191,11 +195,11 @@ export interface TabItem {
 
 // ===== 상수 =====
 export const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
-  sale: '판매',
+  estimate: '견적',
+  delivery: '납품',
+  construction: '시공',
+  document: '서류제출',
   as: 'AS',
-  agency: '대리점',
-  group: '공동구매',
-  install: '외주설치',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -205,21 +209,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   free: '무상',
 };
 
-export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
-  apt: '아파트',
-  villa: '빌라',
-  officetel: '오피스텔',
-  house: '단독주택',
-  etc: '기타',
-};
 
-export const CLIENT_TYPE_ICONS: Record<ClientType, string> = {
-  apt: '🏢',
-  villa: '🏘️',
-  officetel: '🏬',
-  house: '🏠',
-  etc: '📍',
-};
 
 export const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
   product: '제품',

@@ -154,7 +154,7 @@ function DraggableLogo({ src, pos, size, onChangePos, onChangeSize, onChangeSrc 
   };
 
   return (
-    <div ref={containerRef} className="no-print-edit" style={{ position: 'absolute', left: pos.x, top: pos.y, width: size.w, height: size.h, cursor: 'move', border: '1px dashed #93c5fd', borderRadius: 4 }}
+    <div ref={containerRef} className="no-print-edit" style={{ position: 'absolute', left: pos.x, top: pos.y, width: size.w, height: size.h, cursor: 'move', border: '1px dashed #93c5fd', borderRadius: 4, overflow: 'hidden' }}
       onMouseDown={handleMouseDown} onDoubleClick={() => fileRef.current?.click()}>
       {src ? (
         <img src={src} alt="로고" style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
@@ -310,8 +310,8 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
     <div className="photo-page" style={{ width: 720, height: 960, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '80px 32px 40px' }}>
       {/* 헤더 */}
       <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px', border: '2px solid #333', marginBottom: 6 }}>
-        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5, height: 80 }}>
-          {doc.logo ? <img src={doc.logo} alt="로고" style={{ maxHeight: 70, maxWidth: 143, objectFit: 'contain' }} /> : <span style={{ fontSize: 10, color: '#aaa' }}>로고</span>}
+        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5, height: 80, overflow: 'hidden' }}>
+          {doc.logo ? <img src={doc.logo} alt="로고" style={{ maxHeight: 60, maxWidth: 108, objectFit: 'contain' }} /> : <span style={{ fontSize: 10, color: '#aaa' }}>로고</span>}
         </div>
         <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
           <span style={{ fontWeight: 700, fontSize: 18 }}>{doc.projectName}</span>
@@ -357,7 +357,7 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
                         onClick={() => removePhoto(idx)}>✕</button>
                     </>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#9ca3af', fontSize: 12, cursor: 'pointer' }}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 12, cursor: 'pointer', position: 'absolute', inset: 0 }}
                       onClick={() => fileRefs.current[idx]?.click()}>
                       <Image style={{ width: 24, height: 24, marginBottom: 4, opacity: 0.4 }} />
                       사진 클릭
@@ -404,7 +404,7 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
                         onClick={() => removePhoto(idx)}>✕</button>
                     </>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#9ca3af', fontSize: 12, cursor: 'pointer' }}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 12, cursor: 'pointer', position: 'absolute', inset: 0 }}
                       onClick={() => fileRefs.current[idx]?.click()}>
                       <Image style={{ width: 24, height: 24, marginBottom: 4, opacity: 0.4 }} />
                       사진 클릭

@@ -47,9 +47,11 @@ interface TimeSlotRowProps {
 
 const SCHEDULE_TYPES = [
   { value: '', label: '유형 선택' },
-  { value: 'sale', label: '판매' },
+  { value: 'estimate', label: '견적' },
+  { value: 'delivery', label: '납품' },
+  { value: 'construction', label: '시공' },
+  { value: 'document', label: '서류제출' },
   { value: 'as', label: 'AS' },
-  { value: 'agency', label: '대리점' },
 ];
 
 const PAYMENT_METHODS = [
@@ -410,7 +412,7 @@ export function TimeSlotRow({
       <div
         data-timeslot={timeSlot}
         className={cn(
-          'hidden lg:grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px_60px] gap-2 px-3 py-2 border-b border-l-4 items-center transition-colors',
+          'hidden lg:grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_40px_60px_70px] gap-2 px-3 py-2 border-b border-l-4 items-center transition-colors',
           isPending && 'bg-red-50 border-l-red-500',
           isDone && 'bg-green-50 border-l-green-500',
           !isPending && !isDone && 'border-l-transparent hover:bg-gray-50',
@@ -547,7 +549,7 @@ export function TimeSlotRow({
                     <span>🏢</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</div>
-                      <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address} {client.bunji}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address}</div>
                     </div>
                   </div>
                 ))
@@ -556,11 +558,11 @@ export function TimeSlotRow({
           )}
         </div>
 
-        {/* 동호수 */}
+        {/* 담당자 */}
         <input
           type="text"
           className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          placeholder="동호수"
+          placeholder="담당자"
           value={unitValue}
           onChange={(e) => setUnitValue(e.target.value)}
           onBlur={(e) => { if (!blockSaveRef?.current) onUpdate({ unit: e.target.value }); }}
@@ -664,28 +666,6 @@ export function TimeSlotRow({
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">원</span>
         </div>
 
-        {/* 결제방법 */}
-        <select
-          className={cn(
-            'w-full px-2 py-2 border rounded-md text-sm font-medium focus:outline-none cursor-pointer',
-            paymentStyles[paymentMethodValue]
-          )}
-          value={paymentMethodValue}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPaymentMethodValue(v);
-            if (v === 'free') {
-              onUpdate({ payment_method: v as PaymentMethod, amount: 0 });
-            } else {
-              onUpdate({ payment_method: v as PaymentMethod });
-            }
-          }}
-        >
-          {PAYMENT_METHODS.map((method) => (
-            <option key={method.value} value={method.value}>{method.label}</option>
-          ))}
-        </select>
-
         {/* 이벤트 아이콘 */}
         <div className="relative flex justify-center" ref={eventPickerRef}>
           <button
@@ -747,7 +727,7 @@ export function TimeSlotRow({
           )}
           onClick={onToggleReserved}
         >
-          {isReserved ? '📋' : ''} 예약
+          {isReserved ? '✅ 예약' : '예약'}
         </Button>
 
         {/* 완료 버튼 */}
@@ -758,23 +738,11 @@ export function TimeSlotRow({
             'text-xs font-bold',
             isDone ? 'bg-green-600 hover:bg-green-700' : 'border-yellow-400 text-yellow-600 hover:bg-yellow-50'
           )}
-          onClick={() => setShowCompletionPopup(true)}
+          onClick={onToggleDone}
         >
-          {isDone ? '✅' : ''} 완료
+          {isDone ? '✅ 완료' : '완료'}
         </Button>
 
-        {/* 입금 버튼 */}
-        <Button
-          variant={isPaid ? 'default' : 'outline'}
-          size="sm"
-          className={cn(
-            'text-xs font-bold',
-            isPaid ? 'bg-amber-500 hover:bg-amber-600' : 'border-amber-400 text-amber-600 hover:bg-amber-50'
-          )}
-          onClick={() => setShowDepositPopup(true)}
-        >
-          {isPaid ? '💰' : '입금'}
-        </Button>
       </div>
 
       {/* 모바일 카드 레이아웃 */}
@@ -1026,7 +994,7 @@ export function TimeSlotRow({
                           <span>🏢</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</div>
-                            <div style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address} {client.bunji}</div>
+                            <div style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.address}</div>
                           </div>
                         </div>
                       ))

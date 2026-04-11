@@ -34,11 +34,11 @@ const EVENT_ICON_EMOJI: Record<EventIcon, string> = {
 };
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
-  sale: '판매',
+  estimate: '견적',
+  delivery: '납품',
+  construction: '시공',
+  document: '서류제출',
   as: 'AS',
-  agency: '대리점',
-  group: '공동구매',
-  install: '외주설치',
 };
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -433,9 +433,11 @@ export function CalendarPage() {
   const monthlySalesStats = useMemo(() => {
     const doneSchedules = schedules.filter((s: Schedule) => s.is_done);
     const byType = {
-      sale: doneSchedules.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + (s.amount || 0), 0),
+      estimate: doneSchedules.filter(s => s.schedule_type === 'estimate').reduce((sum, s) => sum + (s.amount || 0), 0),
+      delivery: doneSchedules.filter(s => s.schedule_type === 'delivery').reduce((sum, s) => sum + (s.amount || 0), 0),
+      construction: doneSchedules.filter(s => s.schedule_type === 'construction').reduce((sum, s) => sum + (s.amount || 0), 0),
+      document: doneSchedules.filter(s => s.schedule_type === 'document').reduce((sum, s) => sum + (s.amount || 0), 0),
       as: doneSchedules.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + (s.amount || 0), 0),
-      agency: doneSchedules.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + (s.amount || 0), 0),
       total: doneSchedules.reduce((sum, s) => sum + (s.amount || 0), 0),
     };
     const byPayment = {
@@ -737,16 +739,24 @@ export function CalendarPage() {
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
             <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
-              <span className="font-semibold">{monthlySalesStats.byType.sale.toLocaleString()}원</span>
+              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">견적</span>
+              <span className="font-semibold">{monthlySalesStats.byType.estimate.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">납품</span>
+              <span className="font-semibold">{monthlySalesStats.byType.delivery.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-purple-600 px-2 py-0.5 rounded-full text-xs font-bold">시공</span>
+              <span className="font-semibold">{monthlySalesStats.byType.construction.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-teal-600 px-2 py-0.5 rounded-full text-xs font-bold">서류제출</span>
+              <span className="font-semibold">{monthlySalesStats.byType.document.toLocaleString()}원</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
               <span className="font-semibold">{monthlySalesStats.byType.as.toLocaleString()}원</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
-              <span className="font-semibold">{monthlySalesStats.byType.agency.toLocaleString()}원</span>
             </div>
 
             <div className="border-t border-white/20 my-2" />

@@ -4,9 +4,11 @@ import { useDateStore } from '@/stores/dateStore';
 import { formatCurrency } from '@/lib/utils/format';
 
 interface SalesData {
-  sale: number;
+  estimate: number;
+  delivery: number;
+  construction: number;
+  document: number;
   as: number;
-  agency: number;
   total: number;
   cash: number;
   card: number;
@@ -35,16 +37,24 @@ function SalesCard({
       <div className="space-y-2 text-sm">
         {/* 유형별 매출 */}
         <div className="flex justify-between items-center">
-          <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
-          <span className="font-semibold">{formatCurrency(data.sale)}</span>
+          <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">견적</span>
+          <span className="font-semibold">{formatCurrency(data.estimate)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">납품</span>
+          <span className="font-semibold">{formatCurrency(data.delivery)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="bg-white/90 text-purple-600 px-2 py-0.5 rounded-full text-xs font-bold">시공</span>
+          <span className="font-semibold">{formatCurrency(data.construction)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="bg-white/90 text-teal-600 px-2 py-0.5 rounded-full text-xs font-bold">서류제출</span>
+          <span className="font-semibold">{formatCurrency(data.document)}</span>
         </div>
         <div className="flex justify-between items-center">
           <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
           <span className="font-semibold">{formatCurrency(data.as)}</span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
-          <span className="font-semibold">{formatCurrency(data.agency)}</span>
         </div>
         
         <div className="border-t border-white/20 my-2" />
@@ -105,9 +115,11 @@ export function SalesSummary({ daily, monthly, yearly }: SalesSummaryProps) {
 
 // 빈 데이터용 기본값
 export const emptySalesData: SalesData = {
-  sale: 0,
+  estimate: 0,
+  delivery: 0,
+  construction: 0,
+  document: 0,
   as: 0,
-  agency: 0,
   total: 0,
   cash: 0,
   card: 0,

@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { getStoredValue, setStoredValue } from '@/lib/storage';
 import { useItems } from '@/hooks/useItems';
 import { useWorkTypes } from '@/hooks/useWorkTypes';
+import { DiagramSheet, type DiagramData } from './DiagramSheet';
 import type { Item } from '@/types';
 
 /* ═══════════ Column Resize Hook ═══════════ */
@@ -179,13 +180,16 @@ interface ProjectData {
   estimateItems: DesignEstimateItem[];
   miscMatRate?: number; // 잡자재비 비율(%)
   profitRate?: number; // 이윤 비율(%)
+  coverLogo?: string; // 표지: 로고 이미지 (data URL)
+  diagramData?: DiagramData; // 구성도 데이터
 }
 
 const STORAGE_KEY = 'design_estimate';
 
-type SheetTab = 'estimate' | 'cost-calc' | 'labor' | 'material' | 'unit-cost' | 'quantity' | 'summary' | 'diagram';
+type SheetTab = 'cover' | 'estimate' | 'cost-calc' | 'labor' | 'material' | 'unit-cost' | 'quantity' | 'summary' | 'diagram';
 
 const SHEET_TABS: { id: SheetTab; label: string }[] = [
+  { id: 'cover', label: '표지' },
   { id: 'cost-calc', label: '원가계산서' },
   { id: 'estimate', label: '설계내역서' },
   { id: 'unit-cost', label: '일위대가표' },
@@ -1731,9 +1735,6 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg">설계내역서</h3>
         <div className="flex gap-2 no-print">
-          <Button variant="outline" size="sm" className="gap-1" onClick={applyFromUnitCosts}>
-            <FileSpreadsheet className="h-3.5 w-3.5" /> 일위대가 반영
-          </Button>
           <Button variant="outline" size="sm" className="gap-1" onClick={() => add('material')}>
             <Plus className="h-3.5 w-3.5" /> 추가
           </Button>
@@ -1928,6 +1929,135 @@ function EstimateSheet({ data, onChange }: { data: ProjectData; onChange: (d: Pa
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ════════════════════ 숫자 → 한글 금액 변환 ════════════════════ */
+function numberToKorean(n: number): string {
+  if (n === 0) return '영';
+  const digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+  const smallUnits = ['', '십', '백', '천'];
+  const bigUnits = ['', '만', '억', '조'];
+  let result = '';
+  let groupIdx = 0;
+  while (n > 0) {
+    const group = n % 10000;
+    if (group > 0) {
+      let groupStr = '';
+      let g = group;
+      for (let i = 0; i < 4 && g > 0; i++) {
+        const d = g % 10;
+        if (d > 0) {
+          groupStr = digits[d] + smallUnits[i] + groupStr;
+        }
+        g = Math.floor(g / 10);
+      }
+      result = groupStr + bigUnits[groupIdx] + result;
+    }
+    n = Math.floor(n / 10000);
+    groupIdx++;
+  }
+  return result;
+}
+
+/* ════════════════════ Sheet: 표지 ════════════════════ */
+function CoverSheet({ data, onChange }: { data: ProjectData; onChange: (d: Partial<ProjectData>) => void }) {
+  const c = useMemo(() => calcCost(data), [data]);
+
+  // 물량내역서 위치 자동 연동
+  const locationText = useMemo(() => {
+    const rows = data.quantityMatrix?.rows ?? [];
+    const locs = [...new Set(rows.map(r => r.location.trim()).filter(Boolean))];
+    return locs.join(', ');
+  }, [data.quantityMatrix]);
+
+  return (
+    <div className="flex flex-col items-center py-8">
+      {/* 제목 */}
+      <div className="text-center mb-10">
+        <h3 className="text-2xl font-bold leading-relaxed tracking-widest">
+          {data.projectName}
+        </h3>
+        <h3 className="text-2xl font-bold tracking-[0.3em] mt-1">설 계 내 역 서</h3>
+      </div>
+
+      {/* 금액 테이블 */}
+      <table className="border-collapse w-full max-w-[700px] mb-8">
+        <thead>
+          <tr className="bg-red-50">
+            <th className="border border-gray-400 px-4 py-3 text-center font-bold w-[140px]">구 분</th>
+            <th className="border border-gray-400 px-4 py-3 text-center font-bold" colSpan={2}>금 액</th>
+            <th className="border border-gray-400 px-4 py-3 text-center font-bold w-[80px]">비 고</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="border border-gray-400 px-4 py-3 text-center font-medium">합 계</td>
+            <td className="border border-gray-400 px-4 py-3 whitespace-nowrap">
+              <span className="text-sm">一金 {numberToKorean(c.total)}원 整</span>
+            </td>
+            <td className="border border-gray-400 px-4 py-3 text-right font-mono whitespace-nowrap">
+              ( ₩ <span className="inline-block min-w-[100px] text-right">{fmt(c.total)}</span> )
+            </td>
+            <td className="border border-gray-400 px-4 py-3"></td>
+          </tr>
+          <tr>
+            <td className="border border-gray-400 px-4 py-3 text-center font-medium">공사비</td>
+            <td className="border border-gray-400 px-4 py-3 whitespace-nowrap">
+              <span className="text-sm">一金 {numberToKorean(c.totalCost)}원 整</span>
+            </td>
+            <td className="border border-gray-400 px-4 py-3 text-right font-mono whitespace-nowrap">
+              ( ₩ <span className="inline-block min-w-[100px] text-right">{fmt(c.totalCost)}</span> )
+            </td>
+            <td className="border border-gray-400 px-4 py-3"></td>
+          </tr>
+          <tr>
+            <td className="border border-gray-400 px-4 py-3 text-center font-medium">부가가치세</td>
+            <td className="border border-gray-400 px-4 py-3 whitespace-nowrap">
+              <span className="text-sm">一金 {numberToKorean(c.vat)}원 整</span>
+            </td>
+            <td className="border border-gray-400 px-4 py-3 text-right font-mono whitespace-nowrap">
+              ( ₩ <span className="inline-block min-w-[100px] text-right">{fmt(c.vat)}</span> )
+            </td>
+            <td className="border border-gray-400 px-4 py-3"></td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 위치 (물량내역서 연동) */}
+      <div className="w-full max-w-[700px] mb-12">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">▣ 위치: {locationText || <span className="text-gray-400">물량내역서에 위치를 입력하면 자동 표시됩니다</span>}</span>
+        </div>
+      </div>
+
+      {/* 발주처 로고 */}
+      <div className="mt-8 flex flex-col items-center gap-3">
+        {data.coverLogo && (
+          <div className="relative group">
+            <img src={data.coverLogo} alt="로고" className="max-h-[100px] object-contain" />
+            <button
+              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => onChange({ coverLogo: undefined })}
+            >×</button>
+          </div>
+        )}
+        <label className="cursor-pointer border rounded px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 whitespace-nowrap">
+          {data.coverLogo ? '로고 변경' : '로고 업로드'}
+          <input type="file" accept="image/*" className="hidden" onChange={e => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+              const result = ev.target?.result as string;
+              if (result) onChange({ coverLogo: result });
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+          }} />
+        </label>
+      </div>
     </div>
   );
 }
@@ -2242,27 +2372,348 @@ export function DesignEstimatePage() {
     });
   }, []);
 
-  const handleExportCSV = () => {
+  // 일위대가표 합계 계산 (엑셀용)
+  const calcUcTotalsForExport = (uc: UnitCost) => {
+    const rows = uc.rows ?? [];
+    const matRow = rows.find(r => r.unit !== '인');
+    const multiplier = (matRow && matRow.quantity > 0) ? matRow.quantity : 1;
+    const mat = rows.reduce((s, r) => s + Math.floor(r.matAmount ?? (r.matUnitPrice ?? 0) * r.quantity), 0);
+    const lab = rows.filter(r => r.unit === '인').reduce((s, r) => s + Math.floor((r.labAmount ?? (r.labUnitPrice ?? 0) * r.quantity) * multiplier), 0);
+    return { mat: mat * multiplier, lab, multiplier };
+  };
+
+  /* ═══════════ 엑셀 내보내기 (템플릿 기반) ═══════════ */
+  const handleExportExcel = async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const { saveAs } = await import('file-saver');
+
+    // 1) 템플릿 파일 로드
+    const resp = await fetch('/template.xlsx');
+    const arrBuf = await resp.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(arrBuf);
+
     const cost = calcCost(data);
-    const lines = [
-      ['항목', '금액'],
-      ['재료비', cost.materialCost],
-      ['직접노무비', cost.directLabor],
-      ['간접노무비', cost.indirectLabor],
-      ['노무비합계', cost.totalLabor],
-      ['경비합계', cost.totalExpenses],
-      ['일반관리비', cost.generalAdmin],
-      ['이윤', cost.profit],
-      ['총원가', cost.totalCost],
-      ['부가가치세', cost.vat],
-      ['도급공사비', cost.total],
-    ];
-    const csv = '\uFEFF' + lines.map(l => l.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${data.projectName}_원가계산서.csv`; a.click();
-    URL.revokeObjectURL(url);
+    const matrix = data.quantityMatrix ?? { cols: [], rows: [] };
+    const coverLocations = [...new Set(matrix.rows.map(r => r.location.trim()).filter(Boolean))].join(', ');
+
+    /* ── helper: 셀에 값 쓰기 (서식 유지, 수식 제거) ── */
+    const setCell = (ws: import('exceljs').Worksheet, row: number, col: number, value: string | number) => {
+      const cell = ws.getCell(row, col);
+      // 수식(공유 수식 포함) 완전 제거 후 값 설정
+      if ((cell as any).formula || (cell as any).sharedFormula) {
+        (cell as any).formula = undefined;
+        (cell as any).sharedFormula = undefined;
+        (cell as any).formulaType = undefined;
+      }
+      cell.value = value === '' ? null : value;
+    };
+    const setNumCell = (ws: import('exceljs').Worksheet, row: number, col: number, value: number) => {
+      const cell = ws.getCell(row, col);
+      if ((cell as any).formula || (cell as any).sharedFormula) {
+        (cell as any).formula = undefined;
+        (cell as any).sharedFormula = undefined;
+        (cell as any).formulaType = undefined;
+      }
+      cell.value = value || null;
+    };
+    /* helper: 시트의 모든 수식을 값(result)으로 교체 — 시트간 참조 깨짐 방지 */
+    const flattenFormulas = (ws: import('exceljs').Worksheet) => {
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          const v = cell.value as any;
+          if (v && (v.formula || v.sharedFormula)) {
+            const result = v.result;
+            cell.value = (result != null && typeof result !== 'object') ? result : null;
+          }
+        });
+      });
+    };
+    /* helper: 데이터 이후 남은 템플릿 행 정리 */
+    const clearRows = (ws: import('exceljs').Worksheet, fromRow: number) => {
+      const lastRow = ws.rowCount;
+      for (let r = fromRow; r <= lastRow; r++) {
+        const row = ws.getRow(r);
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.value = null;
+        });
+      }
+    };
+
+    /* ── 모든 시트의 수식을 값으로 플래튼 (시트간 참조/공유수식 깨짐 방지) ── */
+    wb.eachSheet((ws) => { flattenFormulas(ws); });
+
+    /* ── 설계예산서 (Sheet 1) ── */
+    const wsBudget = wb.getWorksheet('설계예산서');
+    if (wsBudget) {
+      // R6: 사업명 (D7)
+      setCell(wsBudget, 7, 5, data.projectName);
+      // R7: 위치 (D8)
+      setCell(wsBudget, 8, 5, coverLocations);
+      // R8-R9: 공사개요 (E9)
+      setCell(wsBudget, 9, 5, `${data.projectName} - 1식`);
+      // R2: 설계년월일 (J3)
+      setCell(wsBudget, 3, 10, `${data.year}.01`);
+    }
+
+    /* ── 표지 (Sheet 2) ── */
+    const wsCover = wb.getWorksheet('표지');
+    if (wsCover) {
+      // R1: 공사명 (A2, merged)
+      setCell(wsCover, 2, 1, data.projectName);
+      // R5: 합계 금액 한글 (N6)
+      setCell(wsCover, 6, 14, `${numberToKorean(cost.total)}원 整 `);
+      // R5: 합계 금액 숫자 (X6)
+      setNumCell(wsCover, 6, 24, cost.total);
+      // R6: 공사비 한글 (N7)
+      setCell(wsCover, 7, 14, `${numberToKorean(cost.totalCost)}원 整 `);
+      setNumCell(wsCover, 7, 24, cost.totalCost);
+      // R7: 부가가치세 한글 (N8)
+      setCell(wsCover, 8, 14, `${numberToKorean(cost.vat)}원 整 `);
+      setNumCell(wsCover, 8, 24, cost.vat);
+      // R9: 위치 (C10)
+      setCell(wsCover, 10, 3, `▣ 위치: ${coverLocations}`);
+    }
+
+    /* ── 원가계산서 (Sheet 3) ── */
+    const wsCostCalc = wb.getWorksheet('원가계산서');
+    if (wsCostCalc) {
+      // 템플릿 행 매핑 (1-indexed): Row 1=제목, Row 3=헤더, Row 4~
+      setNumCell(wsCostCalc, 4, 4, cost.materialCost);   // 재료비
+      setCell(wsCostCalc, 4, 6, '잡자재비 포함');
+      setNumCell(wsCostCalc, 5, 4, cost.materialCost);   // 소계
+      setNumCell(wsCostCalc, 6, 4, cost.directLabor);    // 직접노무비
+      setNumCell(wsCostCalc, 7, 4, cost.indirectLabor);  // 간접노무비
+      setCell(wsCostCalc, 7, 6, '직접노무비 * 15%');
+      setNumCell(wsCostCalc, 8, 4, cost.totalLabor);     // 노무비 소계
+      setNumCell(wsCostCalc, 9, 4, cost.otherExpenses);  // 기타경비
+      setCell(wsCostCalc, 9, 6, '(재료비 + 노무비) * 4.6%');
+      setNumCell(wsCostCalc, 10, 4, cost.pensionInsurance); // 연금보험료
+      setNumCell(wsCostCalc, 11, 4, cost.industrialAccident); // 산재보험료
+      setCell(wsCostCalc, 11, 6, '(노무비) * 3.56%');
+      setNumCell(wsCostCalc, 12, 4, cost.healthInsurance);  // 건강보험료
+      setNumCell(wsCostCalc, 13, 4, cost.longTermCare);     // 노인장기요양보험료
+      setNumCell(wsCostCalc, 14, 4, cost.safetyManagement); // 산업안전보건관리비
+      setCell(wsCostCalc, 14, 6, '(재료비+직접노무비) * 2.07%');
+      setNumCell(wsCostCalc, 15, 4, cost.employmentInsurance); // 고용보험료
+      setCell(wsCostCalc, 15, 6, '(노무비) * 1.01%');
+      setNumCell(wsCostCalc, 16, 4, cost.asbestosFund);     // 석면분담금
+      setCell(wsCostCalc, 16, 6, '(노무비) * 0.006%');
+      setNumCell(wsCostCalc, 17, 4, cost.wageClaimBurden);  // 임금채권부담금
+      setCell(wsCostCalc, 17, 6, '(노무비) * 0.09%');
+      setNumCell(wsCostCalc, 18, 4, cost.totalExpenses);    // 경비 소계
+      setNumCell(wsCostCalc, 19, 4, cost.subtotal);         // 순공사비계
+      setNumCell(wsCostCalc, 20, 4, cost.generalAdmin);     // 일반관리비
+      setCell(wsCostCalc, 20, 6, '(재료비+노무비+경비) * 8%');
+      setNumCell(wsCostCalc, 21, 4, cost.profit);           // 이윤
+      setCell(wsCostCalc, 21, 6, `(노무비+경비+일반관리비) * ${data.profitRate ?? 15}%`);
+      setNumCell(wsCostCalc, 22, 4, cost.totalCost);        // 총원가
+      setNumCell(wsCostCalc, 23, 4, cost.vat);              // 부가가치세
+      setCell(wsCostCalc, 23, 6, '10%');
+      setNumCell(wsCostCalc, 24, 4, cost.total);            // 도급공사비
+    }
+
+    /* ── 설계내역서 (Sheet 4) ── */
+    const wsEstimate = wb.getWorksheet('설계내역서');
+    if (wsEstimate) {
+      // 헤더: Row 1=제목, Row 3=헤더1, Row 4=헤더2 (단가/금액)
+      // 데이터: Row 5부터 (합계행은 Row 5, 데이터는 Row 6~)
+      // 템플릿 구조: A=연번, B=품명, C=규격, D=단위, E=수량, F=재료비단가, G=재료비금액, H=노무비단가, I=노무비금액, J=경비단가, K=경비금액, L=계, M=비고
+      const startRow = 5; // 합계행
+      const dataStartRow = 6; // 실제 데이터 시작
+      
+      // 먼저 기존 데이터 행 제거 (템플릿 샘플 데이터), 합계행+기존행 개수
+      const templateDataRows = wsEstimate.rowCount - dataStartRow + 1;
+      // 새 데이터 행 삽입
+      const items = data.estimateItems;
+      const miscRate = data.miscMatRate ?? 5;
+      const matSum = items.reduce((s, e) => s + e.quantity * e.unitPrice, 0);
+      const miscAmt = Math.floor(matSum * miscRate / 100);
+      const totalMat = matSum + miscAmt;
+      const totalLab = items.reduce((s, e) => s + e.quantity * (e.labUnitPrice ?? 0), 0);
+      const totalExp = items.reduce((s, e) => s + (e.expAmount != null ? e.expAmount : e.quantity * (e.expUnitPrice ?? 0)), 0);
+
+      // 합계행 (Row 5)
+      setNumCell(wsEstimate, startRow, 7, totalMat);        // G: 재료비 합
+      setNumCell(wsEstimate, startRow, 9, totalLab);        // I: 노무비 합
+      setNumCell(wsEstimate, startRow, 11, totalExp);       // K: 경비 합
+      setNumCell(wsEstimate, startRow, 12, totalMat + totalLab + totalExp); // L: 계
+
+      // 데이터 행 쓰기
+      items.forEach((e, i) => {
+        const r = dataStartRow + i;
+        const matAmt = e.quantity * e.unitPrice;
+        const labAmt = e.quantity * (e.labUnitPrice ?? 0);
+        const expAmt = e.expAmount != null ? e.expAmount : e.quantity * (e.expUnitPrice ?? 0);
+        setCell(wsEstimate, r, 1, i + 1);          // A: 연번
+        setCell(wsEstimate, r, 2, e.name);          // B: 품명
+        setCell(wsEstimate, r, 3, e.spec);          // C: 규격
+        setCell(wsEstimate, r, 4, e.unit);          // D: 단위
+        setNumCell(wsEstimate, r, 5, e.quantity);   // E: 수량
+        setNumCell(wsEstimate, r, 6, e.unitPrice);  // F: 재료비단가
+        setNumCell(wsEstimate, r, 7, matAmt);       // G: 재료비금액
+        setNumCell(wsEstimate, r, 8, e.labUnitPrice ?? 0); // H: 노무비단가
+        setNumCell(wsEstimate, r, 9, labAmt);       // I: 노무비금액
+        setNumCell(wsEstimate, r, 10, e.expUnitPrice ?? 0); // J: 경비단가
+        setNumCell(wsEstimate, r, 11, expAmt);      // K: 경비금액
+        setNumCell(wsEstimate, r, 12, matAmt + labAmt + expAmt); // L: 계
+        setCell(wsEstimate, r, 13, e.memo ?? '');   // M: 비고
+      });
+      // 잡자재비 행
+      const miscRow = dataStartRow + items.length;
+      setCell(wsEstimate, miscRow, 1, items.length + 1);
+      setCell(wsEstimate, miscRow, 2, '잡자재비');
+      setCell(wsEstimate, miscRow, 3, `재료비의 ${miscRate}%`);
+      setCell(wsEstimate, miscRow, 4, '식');
+      setNumCell(wsEstimate, miscRow, 5, 1);
+      setNumCell(wsEstimate, miscRow, 7, miscAmt);
+      setNumCell(wsEstimate, miscRow, 12, miscAmt);
+      clearRows(wsEstimate, miscRow + 1);
+    }
+
+    /* ── 일위대가표 (Sheet 5) ── */
+    const wsUnitCost = wb.getWorksheet('일위대가표');
+    if (wsUnitCost) {
+      // 템플릿: Row 1=제목, Row 3=헤더1(연번,작업종별,...), Row 4=헤더2(단가,금액), Row 5~=데이터
+      // A=연번, B=작업종별, C=규격, D=단위, E=수량, F=재료비단가, G=재료비금액, H=노무비단가, I=노무비금액, J=비고
+      let r = 5;
+      data.unitCosts.forEach((uc, i) => {
+        const ucCalc = calcUcTotalsForExport(uc);
+        // 제목행
+        setCell(wsUnitCost, r, 1, i + 1);
+        setCell(wsUnitCost, r, 2, uc.workType);
+        setCell(wsUnitCost, r, 10, uc.ref ?? '');
+        r++;
+        // 상세행
+        (uc.rows ?? []).forEach(row => {
+          setCell(wsUnitCost, r, 2, row.name);
+          setCell(wsUnitCost, r, 3, row.spec);
+          setCell(wsUnitCost, r, 4, row.unit);
+          setNumCell(wsUnitCost, r, 5, row.quantity);
+          setNumCell(wsUnitCost, r, 6, row.matUnitPrice ?? 0);
+          setNumCell(wsUnitCost, r, 7, row.matAmount ?? Math.floor((row.matUnitPrice ?? 0) * row.quantity));
+          setNumCell(wsUnitCost, r, 8, row.labUnitPrice ?? 0);
+          const isLabor = row.unit === '인';
+          const labAmt = isLabor
+            ? Math.floor((row.labUnitPrice ?? 0) * row.quantity * ucCalc.multiplier)
+            : Math.floor((row.labUnitPrice ?? 0) * row.quantity);
+          setNumCell(wsUnitCost, r, 9, row.labAmount ?? labAmt);
+          setCell(wsUnitCost, r, 10, row.memo ?? '');
+          r++;
+        });
+        // 합계행
+        setCell(wsUnitCost, r, 2, '계');
+        setNumCell(wsUnitCost, r, 9, ucCalc.lab);
+        r++;
+        // 빈 행
+        r++;
+      });
+      clearRows(wsUnitCost, r);
+    }
+
+    /* ── 자재단가표 (Sheet 6) ── */
+    const wsMaterial = wb.getWorksheet('자재단가표');
+    if (wsMaterial) {
+      // Row 1=제목, Row 3=헤더1, Row 4=헤더2, Row 5~=데이터
+      // A=연번, B=품명, C=규격, D=단위, E=견적1, F=견적2, G=견적3, H=적용단가, I=비고
+      data.materials.forEach((m, i) => {
+        const r = 5 + i;
+        setCell(wsMaterial, r, 1, i + 1);
+        setCell(wsMaterial, r, 2, m.name);
+        setCell(wsMaterial, r, 3, m.spec);
+        setCell(wsMaterial, r, 4, m.unit);
+        setNumCell(wsMaterial, r, 5, m.quote1);
+        setNumCell(wsMaterial, r, 6, m.quote2);
+        setNumCell(wsMaterial, r, 7, m.quote3);
+        setNumCell(wsMaterial, r, 8, m.unitPrice);
+      });
+      clearRows(wsMaterial, 5 + data.materials.length);
+    }
+
+    /* ── 노임단가표 (Sheet 7) ── */
+    const wsLabor = wb.getWorksheet('노임단가표');
+    if (wsLabor) {
+      // Row 1=제목 (연도 포함), Row 3=헤더, Row 4~=데이터
+      // A=연번, B=직종분류, C=단가, D=단가표번호
+      setCell(wsLabor, 1, 1, `노임단가표(${data.year}년 상반기)`);
+      data.laborRates.forEach((lr, i) => {
+        const r = 4 + i;
+        setCell(wsLabor, r, 1, i + 1);
+        setCell(wsLabor, r, 2, lr.category ?? lr.type);
+        setNumCell(wsLabor, r, 3, lr.dailyRate);
+        setCell(wsLabor, r, 4, lr.refCode ?? '');
+      });
+      clearRows(wsLabor, 4 + data.laborRates.length);
+    }
+
+    /* ── 산출집계표 (Sheet 8) ── */
+    const wsSummary = wb.getWorksheet('산출집계표');
+    if (wsSummary) {
+      // Row 1=제목, Row 3=헤더, Row 4~=데이터
+      // A=연번, B=품명, C=규격, D=단위, E=수량, F=비고
+      const summaryItems = matrix.cols
+        .map(col => {
+          const total = matrix.rows.reduce((sum, r) => sum + (r.values[col.id] ?? 0), 0);
+          return { name: col.name, spec: col.spec, unit: col.unit, quantity: total };
+        })
+        .filter(item => item.name);
+      summaryItems.forEach((item, i) => {
+        const r = 4 + i;
+        setCell(wsSummary, r, 1, i + 1);
+        setCell(wsSummary, r, 2, item.name);
+        setCell(wsSummary, r, 3, item.spec);
+        setCell(wsSummary, r, 4, item.unit);
+        setNumCell(wsSummary, r, 5, item.quantity);
+      });
+      clearRows(wsSummary, 4 + summaryItems.length);
+    }
+
+    /* ── 물량내역서 (Sheet 9) ── */
+    const wsQuantity = wb.getWorksheet('물량내역서');
+    if (wsQuantity) {
+      // Row 1=제목, Row 2=위치, Row 3=헤더(구분,품명,...), Row 4=규격, Row 5=단위, Row 6=합계, Row 7~=데이터
+      // A=구분, B=위치, C~=각 자재
+      const qmCols = matrix.cols;
+      // 위치 행
+      setCell(wsQuantity, 2, 1, `▣ 위치: ${coverLocations}`);
+      // 헤더행 (품명)
+      qmCols.forEach((col, ci) => {
+        setCell(wsQuantity, 3, 3 + ci, col.name);
+        setCell(wsQuantity, 4, 3 + ci, col.spec);
+        setCell(wsQuantity, 5, 3 + ci, col.unit);
+        // 합계
+        const total = matrix.rows.reduce((s, r) => s + (r.values[col.id] ?? 0), 0);
+        setNumCell(wsQuantity, 6, 3 + ci, total);
+      });
+      // 데이터행
+      matrix.rows.forEach((row, ri) => {
+        const r = 7 + ri;
+        setCell(wsQuantity, r, 1, row.group);
+        setCell(wsQuantity, r, 2, row.location);
+        qmCols.forEach((col, ci) => {
+          const v = row.values[col.id] ?? 0;
+          if (v) setNumCell(wsQuantity, r, 3 + ci, v);
+        });
+      });
+      clearRows(wsQuantity, 7 + matrix.rows.length);
+    }
+
+    /* ── 구성도 (Sheet 10) ── */
+    const wsDiagram = wb.getWorksheet('구성도');
+    if (wsDiagram) {
+      // 구성도는 이미지로 내보내기 - Fabric.js 캔버스를 PNG로 변환하여 삽입
+      setCell(wsDiagram, 1, 1, '구성도');
+    }
+
+    // 정의된 이름(Named Ranges) 제거 — 행 수 변경으로 참조 깨짐 방지
+    if ((wb as any).definedNames) {
+      (wb as any).definedNames.model = [];
+    }
+
+    // 파일 저장
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, `${data.projectName}_설계내역.xlsx`);
   };
 
   return (
@@ -2280,9 +2731,11 @@ export function DesignEstimatePage() {
           <span className="text-sm text-gray-500">년</span>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-1" onClick={handleExportCSV}>
-            <Download className="h-3.5 w-3.5" /> CSV 내보내기
-          </Button>
+          {activeSheet === 'cover' && (
+            <Button variant="outline" size="sm" className="gap-1" onClick={handleExportExcel}>
+              <Download className="h-3.5 w-3.5" /> 엑셀 내보내기
+            </Button>
+          )}
         </div>
       </div>
 
@@ -2302,6 +2755,7 @@ export function DesignEstimatePage() {
 
       {/* 시트 내용 */}
       <div className="bg-white p-4 rounded-lg border min-h-[400px]">
+        {activeSheet === 'cover' && <CoverSheet data={data} onChange={updateData} />}
         {activeSheet === 'labor' && <LaborSheet data={data} onChange={updateData} />}
         {activeSheet === 'material' && <MaterialSheet data={data} onChange={updateData} />}
         {activeSheet === 'unit-cost' && <UnitCostSheet data={data} onChange={updateData} />}
@@ -2310,10 +2764,7 @@ export function DesignEstimatePage() {
         {activeSheet === 'cost-calc' && <CostCalcSheet data={data} onChange={updateData} />}
         {activeSheet === 'summary' && <SummarySheet data={data} />}
         {activeSheet === 'diagram' && (
-          <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">
-            <p className="text-lg font-semibold">구성도</p>
-            <p className="text-sm mt-2">준비 중입니다.</p>
-          </div>
+          <DiagramSheet value={data.diagramData} onChange={d => updateData({ diagramData: d })} />
         )}
       </div>
 

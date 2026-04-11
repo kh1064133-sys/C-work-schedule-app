@@ -556,11 +556,13 @@ export function SchedulePage() {
   const handleConfirmDone = async () => {
     if (!confirmDoneTarget) return;
     const { schedule } = confirmDoneTarget;
+    const newDone = !schedule.is_done;
     await upsertSchedule.mutateAsync({
       id: schedule.id,
       date: dateStr,
       time_slot: schedule.time_slot,
-      is_done: !schedule.is_done,
+      is_done: newDone,
+      ...(newDone ? { is_reserved: false } : {}),
     });
     setConfirmDoneTarget(null);
   };
@@ -680,9 +682,11 @@ export function SchedulePage() {
   const salesByType = useMemo(() => {
     const done = schedules.filter((s: Schedule) => s.is_done);
     return {
-      sale: done.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + (s.amount || 0), 0),
+      estimate: done.filter(s => s.schedule_type === 'estimate').reduce((sum, s) => sum + (s.amount || 0), 0),
+      delivery: done.filter(s => s.schedule_type === 'delivery').reduce((sum, s) => sum + (s.amount || 0), 0),
+      construction: done.filter(s => s.schedule_type === 'construction').reduce((sum, s) => sum + (s.amount || 0), 0),
+      document: done.filter(s => s.schedule_type === 'document').reduce((sum, s) => sum + (s.amount || 0), 0),
       as: done.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + (s.amount || 0), 0),
-      agency: done.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + (s.amount || 0), 0),
     };
   }, [schedules]);
 
@@ -777,19 +781,17 @@ export function SchedulePage() {
       >
         {/* 테이블 헤더 - 데스크탑만 (sticky: 스크롤 시에도 고정, 너비 일치) */}
         <div className="hidden lg:block bg-gray-100 border-b sticky top-0 z-10 rounded-t-lg">
-          <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_100px_40px_60px_70px_60px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700 border-l-4 border-l-transparent">
+          <div className="grid grid-cols-[28px_80px_1fr_100px_1fr_100px_120px_40px_60px_70px] gap-2 px-3 py-2 text-sm font-semibold text-gray-700 border-l-4 border-l-transparent">
             <div></div>
             <div className="text-center">시간</div>
             <div className="text-center">거래처명</div>
-            <div className="text-center">동호수</div>
+            <div className="text-center">담당자</div>
             <div className="text-center">내용</div>
             <div className="text-center">유형</div>
             <div className="text-center">금액</div>
-            <div className="text-center">결제방법</div>
             <div className="text-center">🏷️</div>
             <div className="text-center">예약</div>
             <div className="text-center">완료</div>
-            <div className="text-center">입금</div>
           </div>
         </div>
         {schedulesLoading ? (
@@ -908,16 +910,24 @@ export function SchedulePage() {
           <div className="bg-white/15 rounded-xl mx-3 mb-3 p-3 backdrop-blur-sm">
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between items-center">
-                <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
-                <span className="font-semibold">{salesByType.sale.toLocaleString()}원</span>
+                <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">견적</span>
+                <span className="font-semibold">{salesByType.estimate.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">납품</span>
+                <span className="font-semibold">{salesByType.delivery.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-purple-600 px-2 py-0.5 rounded-full text-xs font-bold">시공</span>
+                <span className="font-semibold">{salesByType.construction.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="bg-white/90 text-teal-600 px-2 py-0.5 rounded-full text-xs font-bold">서류제출</span>
+                <span className="font-semibold">{salesByType.document.toLocaleString()}원</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
                 <span className="font-semibold">{salesByType.as.toLocaleString()}원</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
-                <span className="font-semibold">{salesByType.agency.toLocaleString()}원</span>
               </div>
               <div className="border-t border-white/20 my-1" />
               <div className="flex justify-between items-center">

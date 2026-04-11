@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DSinet 바로가기 설치</title>
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #6366f1 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 24px;
+      padding: 48px 40px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+      text-align: center;
+    }
+    .icon-preview {
+      width: 128px;
+      height: 128px;
+      margin: 0 auto 24px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(30,64,175,0.3);
+    }
+    .icon-preview img { width: 100%; height: 100%; }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    .section {
+      text-align: left;
+      margin-bottom: 24px;
+    }
+    .section h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section h3 .emoji { font-size: 20px; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+      transition: all 0.2s;
+      margin-bottom: 10px;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-primary:hover { background: #2563eb; transform: translateY(-1px); }
+    .btn-outline {
+      background: white;
+      color: #3b82f6;
+      border: 2px solid #3b82f6;
+    }
+    .btn-outline:hover { background: #eff6ff; }
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+    .btn-success:hover { background: #059669; }
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .icon-item {
+      text-align: center;
+      padding: 10px 4px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .icon-item:hover { background: #f8fafc; }
+    .icon-item img {
+      max-width: 48px;
+      max-height: 48px;
+      margin-bottom: 4px;
+      border-radius: 6px;
+    }
+    .icon-item .size { font-size: 11px; color: #94a3b8; }
+    .icon-item a {
+      display: block;
+      font-size: 12px;
+      color: #3b82f6;
+      text-decoration: none;
+      margin-top: 4px;
+    }
+    .steps {
+      list-style: none;
+      padding: 0;
+    }
+    .steps li {
+      padding: 8px 0;
+      color: #475569;
+      font-size: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .steps li .num {
+      background: #eff6ff;
+      color: #3b82f6;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .divider {
+      height: 1px;
+      background: #e2e8f0;
+      margin: 24px 0;
+    }
+    .footer {
+      margin-top: 20px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    #installBtn { display: none; }
+    @media (max-width: 480px) {
+      .card { padding: 32px 24px; }
+      h1 { font-size: 24px; }
+      .icon-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-preview">
+      <img src="/app-icon-256.png" alt="DSinet Icon">
+    </div>
+    <h1>DSinet</h1>
+    <p class="subtitle">일정 및 매출 관리 시스템</p>
+
+    <!-- PWA 설치 버튼 -->
+    <button id="installBtn" class="btn btn-success" onclick="installPWA()">
+      📲 앱으로 설치하기
+    </button>
+
+    <!-- 바로가기 열기 -->
+    <a href="/" class="btn btn-primary">🚀 DSinet 열기</a>
+
+    <div class="divider"></div>
+
+    <!-- 바탕화면 바로가기 안내 -->
+    <div class="section">
+      <h3><span class="emoji">🖥️</span> PC 바탕화면 바로가기</h3>
+      <ol class="steps">
+        <li><span class="num">1</span>Chrome에서 DSinet 웹앱을 엽니다</li>
+        <li><span class="num">2</span>주소창 오른쪽 ⋮ 메뉴 → "앱 설치" 클릭</li>
+        <li><span class="num">3</span>또는 주소창의 📥 설치 아이콘 클릭</li>
+      </ol>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 아이콘 다운로드 -->
+    <div class="section">
+      <h3><span class="emoji">📥</span> 아이콘 파일 다운로드</h3>
+      <div class="icon-grid">
+        <div class="icon-item">
+          <img src="/app-icon-48.png" alt="48px">
+          <div class="size">48×48</div>
+          <a href="/app-icon-48.png" download="DSinet-48.png">다운로드</a>
+        </div>
+        <div class="icon-item">
+          <img src="/app-icon-128.png" alt="128px">
+          <div class="size">128×128</div>
+          <a href="/app-icon-128.png" download="DSinet-128.png">다운로드</a>
+        </div>
+        <div class="icon-item">
+          <img src="/app-icon-192.png" alt="192px">
+          <div class="size">192×192</div>
+          <a href="/app-icon-192.png" download="DSinet-192.png">다운로드</a>
+        </div>
+        <div class="icon-item">
+          <img src="/app-icon-256.png" alt="256px">
+          <div class="size">256×256</div>
+          <a href="/app-icon-256.png" download="DSinet-256.png">다운로드</a>
+        </div>
+        <div class="icon-item">
+          <img src="/app-icon-512.png" alt="512px">
+          <div class="size">512×512</div>
+          <a href="/app-icon-512.png" download="DSinet-512.png">다운로드</a>
+        </div>
+        <div class="icon-item">
+          <img src="/dsinet-icon.svg" alt="SVG" style="border-radius:6px;">
+          <div class="size">SVG</div>
+          <a href="/dsinet-icon.svg" download="DSinet.svg">다운로드</a>
+        </div>
+      </div>
+    </div>
+
+    <p class="footer">이 페이지 링크를 이메일로 공유하여<br>다른 컴퓨터에서도 설치할 수 있습니다.</p>
+  </div>
+
+  <script>
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'block';
+    });
+
+    function installPWA() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((result) => {
+          if (result.outcome === 'accepted') {
+            installBtn.textContent = '✅ 설치 완료!';
+            installBtn.disabled = true;
+          }
+          deferredPrompt = null;
+        });
+      }
+    }
+
+    window.addEventListener('appinstalled', () => {
+      installBtn.textContent = '✅ 설치 완료!';
+      installBtn.disabled = true;
+      deferredPrompt = null;
+    });
+  </script>
+</body>
+</html>

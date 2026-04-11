@@ -51,11 +51,11 @@ export function AnalyticsPage() {
   // 연간 유형별 통계
   const yearTypeStats = useMemo(() => {
     const stats: Record<ScheduleType, { count: number; amount: number }> = {
-      sale: { count: 0, amount: 0 },
+      estimate: { count: 0, amount: 0 },
+      delivery: { count: 0, amount: 0 },
+      construction: { count: 0, amount: 0 },
+      document: { count: 0, amount: 0 },
       as: { count: 0, amount: 0 },
-      agency: { count: 0, amount: 0 },
-      group: { count: 0, amount: 0 },
-      install: { count: 0, amount: 0 },
     };
     yearCompletedSchedules.forEach((s: Schedule) => {
       if (s.schedule_type && stats[s.schedule_type]) {
@@ -104,11 +104,11 @@ export function AnalyticsPage() {
   // 유형별 통계
   const typeStats = useMemo(() => {
     const stats: Record<ScheduleType, { count: number; amount: number }> = {
-      sale: { count: 0, amount: 0 },
+      estimate: { count: 0, amount: 0 },
+      delivery: { count: 0, amount: 0 },
+      construction: { count: 0, amount: 0 },
+      document: { count: 0, amount: 0 },
       as: { count: 0, amount: 0 },
-      agency: { count: 0, amount: 0 },
-      group: { count: 0, amount: 0 },
-      install: { count: 0, amount: 0 },
     };
     completedSchedules.forEach((s: Schedule) => {
       if (s.schedule_type && stats[s.schedule_type]) {
@@ -355,9 +355,9 @@ export function AnalyticsPage() {
                     <div
                       className={cn(
                         'h-full rounded-full transition-all',
-                        key === 'sale' && 'bg-emerald-500',
+                        key === 'estimate' && 'bg-emerald-500',
                         key === 'as' && 'bg-yellow-500',
-                        key === 'agency' && 'bg-purple-500'
+                        key === 'delivery' && 'bg-purple-500'
                       )}
                       style={{ width: `${pct}%` }}
                     />
@@ -409,9 +409,9 @@ export function AnalyticsPage() {
                       {schedule.schedule_type && (
                         <span className={cn(
                           'px-2 py-0.5 text-xs font-medium rounded-full',
-                          schedule.schedule_type === 'sale' && 'bg-emerald-100 text-emerald-700',
+                          schedule.schedule_type === 'estimate' && 'bg-emerald-100 text-emerald-700',
                           schedule.schedule_type === 'as' && 'bg-yellow-100 text-yellow-700',
-                          schedule.schedule_type === 'agency' && 'bg-purple-100 text-purple-700'
+                          schedule.schedule_type === 'delivery' && 'bg-purple-100 text-purple-700'
                         )}>
                           {SCHEDULE_TYPE_LABELS[schedule.schedule_type]}
                         </span>
@@ -465,16 +465,24 @@ export function AnalyticsPage() {
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
             <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
-              <span className="font-semibold">{yearTypeStats.sale.amount.toLocaleString()}원</span>
+              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">견적</span>
+              <span className="font-semibold">{yearTypeStats.estimate.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-blue-600 px-2 py-0.5 rounded-full text-xs font-bold">납품</span>
+              <span className="font-semibold">{yearTypeStats.delivery.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-purple-600 px-2 py-0.5 rounded-full text-xs font-bold">시공</span>
+              <span className="font-semibold">{yearTypeStats.construction.amount.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="bg-white/90 text-teal-600 px-2 py-0.5 rounded-full text-xs font-bold">서류제출</span>
+              <span className="font-semibold">{yearTypeStats.document.amount.toLocaleString()}원</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
               <span className="font-semibold">{yearTypeStats.as.amount.toLocaleString()}원</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
-              <span className="font-semibold">{yearTypeStats.agency.amount.toLocaleString()}원</span>
             </div>
             
             <div className="border-t border-white/20 my-2" />

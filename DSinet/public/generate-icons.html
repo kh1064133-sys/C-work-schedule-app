@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head><title>DSinet Icon Generator</title></head>
+<body>
+<h2>DSinet 아이콘 PNG 생성기</h2>
+<p>아래 버튼을 클릭하여 각 사이즈의 PNG를 다운로드하세요.</p>
+<div id="previews"></div>
+<button id="downloadAll" style="margin:20px;padding:12px 24px;font-size:16px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">모든 아이콘 다운로드</button>
+<script>
+const sizes = [32,48,64,128,192,256,512];
+const svgData = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" width=\"512\" height=\"512\">\r\n  <defs>\r\n    <linearGradient id=\"bg\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\r\n      <stop offset=\"0%\" style=\"stop-color:#1e40af\"/>\r\n      <stop offset=\"50%\" style=\"stop-color:#3b82f6\"/>\r\n      <stop offset=\"100%\" style=\"stop-color:#6366f1\"/>\r\n    </linearGradient>\r\n    <linearGradient id=\"shine\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\">\r\n      <stop offset=\"0%\" style=\"stop-color:#ffffff;stop-opacity:0.25\"/>\r\n      <stop offset=\"50%\" style=\"stop-color:#ffffff;stop-opacity:0.05\"/>\r\n      <stop offset=\"100%\" style=\"stop-color:#ffffff;stop-opacity:0\"/>\r\n    </linearGradient>\r\n    <filter id=\"textShadow\">\r\n      <feDropShadow dx=\"0\" dy=\"3\" stdDeviation=\"4\" flood-color=\"#000\" flood-opacity=\"0.3\"/>\r\n    </filter>\r\n    <filter id=\"innerGlow\">\r\n      <feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"8\" result=\"blur\"/>\r\n      <feFlood flood-color=\"#60a5fa\" flood-opacity=\"0.4\"/>\r\n      <feComposite in2=\"blur\" operator=\"in\"/>\r\n      <feComposite in=\"SourceGraphic\"/>\r\n    </filter>\r\n  </defs>\r\n  \r\n  <!-- 배경 라운드 사각형 -->\r\n  <rect x=\"0\" y=\"0\" width=\"512\" height=\"512\" rx=\"96\" ry=\"96\" fill=\"url(#bg)\"/>\r\n  \r\n  <!-- 빛나는 효과 -->\r\n  <rect x=\"0\" y=\"0\" width=\"512\" height=\"512\" rx=\"96\" ry=\"96\" fill=\"url(#shine)\"/>\r\n  \r\n  <!-- 하단 장식 라인 -->\r\n  <rect x=\"60\" y=\"400\" width=\"392\" height=\"4\" rx=\"2\" fill=\"#ffffff\" opacity=\"0.2\"/>\r\n  <rect x=\"100\" y=\"416\" width=\"312\" height=\"3\" rx=\"1.5\" fill=\"#ffffff\" opacity=\"0.12\"/>\r\n  \r\n  <!-- 상단 장식 도트 -->\r\n  <circle cx=\"80\" cy=\"80\" r=\"6\" fill=\"#ffffff\" opacity=\"0.15\"/>\r\n  <circle cx=\"432\" cy=\"80\" r=\"6\" fill=\"#ffffff\" opacity=\"0.15\"/>\r\n  <circle cx=\"80\" cy=\"432\" r=\"6\" fill=\"#ffffff\" opacity=\"0.15\"/>\r\n  <circle cx=\"432\" cy=\"432\" r=\"6\" fill=\"#ffffff\" opacity=\"0.15\"/>\r\n  \r\n  <!-- 메인 텍스트: DSi -->\r\n  <text x=\"256\" y=\"260\" font-family=\"'Segoe UI', 'Arial Black', Arial, sans-serif\" font-size=\"168\" font-weight=\"900\" fill=\"white\" text-anchor=\"middle\" dominant-baseline=\"central\" filter=\"url(#textShadow)\" letter-spacing=\"-6\">DSi</text>\r\n  \r\n  <!-- 하단 텍스트: net -->\r\n  <text x=\"256\" y=\"360\" font-family=\"'Segoe UI', Arial, sans-serif\" font-size=\"72\" font-weight=\"300\" fill=\"#bfdbfe\" text-anchor=\"middle\" dominant-baseline=\"central\" letter-spacing=\"12\">net</text>\r\n  \r\n  <!-- 미세한 테두리 -->\r\n  <rect x=\"4\" y=\"4\" width=\"504\" height=\"504\" rx=\"94\" ry=\"94\" fill=\"none\" stroke=\"white\" stroke-width=\"2\" opacity=\"0.15\"/>\r\n</svg>\r\n";
+
+function generatePNG(size) {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    const blob = new Blob([svgData], {type: 'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.src = url;
+  });
+}
+
+async function init() {
+  const container = document.getElementById('previews');
+  for (const size of sizes) {
+    const dataUrl = await generatePNG(size);
+    const div = document.createElement('div');
+    div.style.cssText = 'display:inline-block;margin:10px;text-align:center;';
+    div.innerHTML = '<img src="' + dataUrl + '" style="border:1px solid #ccc;border-radius:8px;"><br>' +
+      '<span>' + size + 'x' + size + '</span><br>' +
+      '<a href="' + dataUrl + '" download="app-icon-' + size + '.png" style="color:#3b82f6;">다운로드</a>';
+    container.appendChild(div);
+  }
+}
+
+document.getElementById('downloadAll').onclick = async function() {
+  for (const size of sizes) {
+    const dataUrl = await generatePNG(size);
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'app-icon-' + size + '.png';
+    a.click();
+    await new Promise(r => setTimeout(r, 300));
+  }
+};
+
+init();
+</script>
+</body>
+</html>

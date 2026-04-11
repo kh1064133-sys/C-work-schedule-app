@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Building2, MapPin, X, FileText } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Building2, MapPin, X, FileText, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
 import { cn } from '@/lib/utils';
-import type { Client, ClientType, ClientInput } from '@/types';
+import type { Client, ClientInput } from '@/types';
 import "@/app/clients-compat.css";
 
 // Daum Postcode 타입 선언
@@ -31,23 +31,6 @@ declare global {
   }
 }
 
-const CLIENT_TYPES: { value: ClientType | ''; label: string }[] = [
-  { value: '', label: '전체' },
-  { value: 'apt', label: '아파트' },
-  { value: 'villa', label: '빌라' },
-  { value: 'officetel', label: '오피스텔' },
-  { value: 'house', label: '주택' },
-  { value: 'etc', label: '기타' },
-];
-
-const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
-  apt: '아파트',
-  villa: '빌라',
-  officetel: '오피스텔',
-  house: '주택',
-  etc: '기타',
-};
-
 export function ClientsPage() {
   const { data: clients = [], isLoading } = useClients();
   const createClient = useCreateClient();
@@ -56,7 +39,6 @@ export function ClientsPage() {
 
   // 상태
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<ClientType | ''>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -65,10 +47,12 @@ export function ClientsPage() {
   // 폼 상태
   const [formData, setFormData] = useState<ClientInput>({
     name: '',
-    type: undefined,
+    contact_person: '',
+    phone: '',
+    mobile: '',
+    fax: '',
     address: '',
-    bunji: '',
-    households: '',
+    homepage: '',
     memo: '',
   });
 
@@ -76,9 +60,9 @@ export function ClientsPage() {
   const filteredClients = clients.filter((client: Client) => {
     const matchesSearch = 
       client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.contact_person || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (client.address || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === '' || client.type === filterType;
-    return matchesSearch && matchesType;
+    return matchesSearch;
   });
 
   // 모달 열기 (등록)
@@ -86,10 +70,12 @@ export function ClientsPage() {
     setEditingClient(null);
     setFormData({
       name: '',
-      type: undefined,
+      contact_person: '',
+      phone: '',
+      mobile: '',
+      fax: '',
       address: '',
-      bunji: '',
-      households: '',
+      homepage: '',
       memo: '',
     });
     setIsModalOpen(true);
@@ -100,10 +86,12 @@ export function ClientsPage() {
     setEditingClient(client);
     setFormData({
       name: client.name,
-      type: client.type || undefined,
+      contact_person: client.contact_person || '',
+      phone: client.phone || '',
+      mobile: client.mobile || '',
+      fax: client.fax || '',
       address: client.address || '',
-      bunji: client.bunji || '',
-      households: client.households || '',
+      homepage: client.homepage || '',
       memo: client.memo || '',
     });
     setIsModalOpen(true);
@@ -194,13 +182,13 @@ export function ClientsPage() {
         </Button>
       </div>
 
-      {/* 검색 및 필터 */}
-      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+      {/* 검색 */}
+      <div className="flex gap-2 sm:gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="거래처명, 주소 검색..."
+            placeholder="거래처명, 담당자, 주소 검색..."
             className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm"
             value={searchTerm}
             onChange={(e) => {
@@ -208,17 +196,6 @@ export function ClientsPage() {
             }}
           />
         </div>
-        <select
-          className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white text-sm"
-          value={filterType}
-          onChange={(e) => {
-            setFilterType(e.target.value as ClientType | '');
-          }}
-        >
-          {CLIENT_TYPES.map((type) => (
-            <option key={type.value} value={type.value}>{type.label}</option>
-          ))}
-        </select>
       </div>
 
       {/* 통계 */}
@@ -237,7 +214,7 @@ export function ClientsPage() {
           <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>로딩 중...</div>
         ) : filteredClients.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#888', padding: '32px 0' }}>
-            {searchTerm || filterType ? '검색 결과가 없습니다.' : '등록된 거래처가 없습니다.'}
+            {searchTerm ? '검색 결과가 없습니다.' : '등록된 거래처가 없습니다.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -273,41 +250,63 @@ export function ClientsPage() {
                     maxWidth: '180px',
                     display: 'inline-block',
                   }}>{client.name}</span>
-                  <span style={{
+                  {client.contact_person && (
+                    <span style={{
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      fontSize: '13px',
+                      background: '#e0e7ff',
+                      color: '#3730a3',
+                      borderRadius: '6px',
+                      padding: '2px 8px',
+                      fontWeight: 500,
+                      display: 'inline-block',
+                    }}>담당: {client.contact_person}</span>
+                  )}
+                </div>
+                {(client.phone || client.mobile || client.fax) && (
+                  <div style={{
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
+                    color: '#555',
                     fontSize: '13px',
-                    background: '#e0e7ff',
-                    color: '#3730a3',
-                    borderRadius: '6px',
-                    padding: '2px 8px',
-                    fontWeight: 500,
-                    display: 'inline-block',
-                  }}>{client.type ? CLIENT_TYPE_LABELS[client.type] : '기타'}</span>
-                </div>
-                <div style={{
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  color: '#555',
-                  fontSize: '14px',
-                  marginBottom: '4px',
-                  display: 'block',
-                }}>
-                  {client.address} {client.bunji}
-                </div>
-                <div style={{
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  color: '#888',
-                  fontSize: '13px',
-                  marginBottom: '4px',
-                  display: 'block',
-                }}>
-                  세대수: {client.households}
-                </div>
+                    marginBottom: '4px',
+                    display: 'flex',
+                    gap: '8px',
+                  }}>
+                    {client.phone && <span>📞 {client.phone}</span>}
+                    {client.mobile && <span>📱 {client.mobile}</span>}
+                    {client.fax && <span>📠 {client.fax}</span>}
+                  </div>
+                )}
+                {client.address && (
+                  <div style={{
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    color: '#555',
+                    fontSize: '14px',
+                    marginBottom: '4px',
+                    display: 'block',
+                  }}>
+                    📍 {client.address}
+                  </div>
+                )}
+                {client.homepage && (
+                  <div style={{
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    color: '#3b82f6',
+                    fontSize: '13px',
+                    marginBottom: '4px',
+                    display: 'block',
+                  }}>
+                    🌐 {client.homepage}
+                  </div>
+                )}
                 {client.memo && (
                   <div style={{
                     whiteSpace: 'nowrap',
@@ -361,7 +360,7 @@ export function ClientsPage() {
               {editingClient ? '거래처 수정' : '거래처 등록'}
             </h3>
             
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   거래처명 <span className="text-red-500">*</span>
@@ -377,20 +376,54 @@ export function ClientsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  유형
+                  담당자
                 </label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-                  value={formData.type || ''}
-                  onChange={(e) => setFormData({ ...formData, type: (e.target.value || undefined) as ClientType | undefined })}
-                >
-                  <option value="">선택안함</option>
-                  <option value="apt">아파트</option>
-                  <option value="villa">빌라</option>
-                  <option value="officetel">오피스텔</option>
-                  <option value="house">주택</option>
-                  <option value="etc">기타</option>
-                </select>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  value={formData.contact_person}
+                  onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
+                  placeholder="담당자명 입력"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  전화번호 (국번)
+                </label>
+                <input
+                  type="tel"
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="예: 02-1234-5678"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  핸드폰
+                </label>
+                <input
+                  type="tel"
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                  placeholder="예: 010-1234-5678"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  팩스
+                </label>
+                <input
+                  type="tel"
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  value={formData.fax}
+                  onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
+                  placeholder="예: 02-1234-5679"
+                />
               </div>
 
               <div>
@@ -420,27 +453,14 @@ export function ClientsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  번지
+                  홈페이지
                 </label>
                 <input
-                  type="text"
+                  type="url"
                   className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  value={formData.bunji}
-                  onChange={(e) => setFormData({ ...formData, bunji: e.target.value })}
-                  placeholder="번지 입력"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  세대수
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  value={formData.households}
-                  onChange={(e) => setFormData({ ...formData, households: e.target.value })}
-                  placeholder="세대수 입력"
+                  value={formData.homepage}
+                  onChange={(e) => setFormData({ ...formData, homepage: e.target.value })}
+                  placeholder="예: https://www.example.com"
                 />
               </div>
 

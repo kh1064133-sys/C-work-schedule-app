@@ -215,7 +215,7 @@ export default function Home() {
         
         <main className="flex-1 p-1 md:p-6 max-w-7xl mx-auto w-full print-area">
           {/* 탭 콘텐츠 */}
-          <div className="mb-6 animate-fade-in print-area">
+          <div className="mb-6 animate-fade-in print-area" style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom, 24px))' }}>
             {renderContent()}
           </div>
         </main>

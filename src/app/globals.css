@@ -123,6 +123,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 

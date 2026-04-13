@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { getStoredValue, setStoredValue } from '@/lib/storage';
 import { useItems } from '@/hooks/useItems';
 import { useWorkTypes } from '@/hooks/useWorkTypes';
-import { DiagramSheet, type DiagramData } from './DiagramSheet';
+import { DiagramSheet, diagramToBase64, type DiagramData } from './DiagramSheet';
 import type { Item } from '@/types';
 
 /* ═══════════ Column Resize Hook ═══════════ */
@@ -2586,14 +2586,20 @@ export function DesignEstimatePage() {
         r++;
         // 상세행
         (uc.rows ?? []).forEach(row => {
-          setCell(wsUnitCost, r, 2, row.name);
-          setCell(wsUnitCost, r, 3, row.spec);
+          const isLabor = row.unit === '인';
+          if (isLabor) {
+            // 노무비 행: 이름은 C열(규격), B열(작업종별)은 비움 — 원본 형식
+            setCell(wsUnitCost, r, 3, row.name);
+          } else {
+            // 품목/재료 행: 이름은 B열(작업종별), 규격은 C열
+            setCell(wsUnitCost, r, 2, row.name);
+            setCell(wsUnitCost, r, 3, row.spec);
+          }
           setCell(wsUnitCost, r, 4, row.unit);
           setNumCell(wsUnitCost, r, 5, row.quantity);
           setNumCell(wsUnitCost, r, 6, row.matUnitPrice ?? 0);
           setNumCell(wsUnitCost, r, 7, row.matAmount ?? Math.floor((row.matUnitPrice ?? 0) * row.quantity));
           setNumCell(wsUnitCost, r, 8, row.labUnitPrice ?? 0);
-          const isLabor = row.unit === '인';
           const labAmt = isLabor
             ? Math.floor((row.labUnitPrice ?? 0) * row.quantity * ucCalc.multiplier)
             : Math.floor((row.labUnitPrice ?? 0) * row.quantity);
@@ -2603,6 +2609,7 @@ export function DesignEstimatePage() {
         });
         // 합계행
         setCell(wsUnitCost, r, 2, '계');
+        setNumCell(wsUnitCost, r, 7, ucCalc.mat);
         setNumCell(wsUnitCost, r, 9, ucCalc.lab);
         r++;
         // 빈 행
@@ -2701,8 +2708,18 @@ export function DesignEstimatePage() {
     /* ── 구성도 (Sheet 10) ── */
     const wsDiagram = wb.getWorksheet('구성도');
     if (wsDiagram) {
-      // 구성도는 이미지로 내보내기 - Fabric.js 캔버스를 PNG로 변환하여 삽입
+      // 기존 이미지/드로잉 참조 초기화 (getImages/removeImage는 XML 손상 유발)
+      (wsDiagram as any)._media = [];
+
       setCell(wsDiagram, 1, 1, '구성도');
+      const pngBase64 = await diagramToBase64(data.diagramData);
+      if (pngBase64) {
+        const imgId = wb.addImage({ base64: pngBase64, extension: 'png' });
+        wsDiagram.addImage(imgId, {
+          tl: { col: 0, row: 1 },
+          ext: { width: 720, height: 480 },
+        });
+      }
     }
 
     // 정의된 이름(Named Ranges) 제거 — 행 수 변경으로 참조 깨짐 방지

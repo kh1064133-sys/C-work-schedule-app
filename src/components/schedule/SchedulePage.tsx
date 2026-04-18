@@ -191,11 +191,21 @@ export function SchedulePage() {
   const swipeValid = useRef(false);
 
   const handleTouchStart = (e: TouchEvent) => {
-    // 팝업, 캔버스, 모달 내부 터치는 스와이프 무시
+    // 팝업, 캔버스, 모달, 입력 필드 내부 터치는 스와이프 무시
     const target = e.target as HTMLElement;
-    if (target.closest('canvas, [role="dialog"], .fixed')) {
+    if (target.closest('canvas, [role="dialog"], .fixed, select, input, textarea')) {
       swipeValid.current = false;
       return;
+    }
+    // 스크롤 가능한 드롭다운(거래처/품목 목록) 내부 터치도 무시
+    let el: HTMLElement | null = target;
+    while (el) {
+      const style = el.style;
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+        swipeValid.current = false;
+        return;
+      }
+      el = el.parentElement;
     }
     swipeValid.current = true;
     touchStartX.current = e.touches[0].clientX;
@@ -429,6 +439,7 @@ export function SchedulePage() {
       // 기존 스케줄 업데이트 — 변경된 필드만 전송
       const updateData: Record<string, unknown> = {
         id: existing.id,
+        user_id: existing.user_id,
         date: dateStr,
         time_slot: timeSlot,
       };

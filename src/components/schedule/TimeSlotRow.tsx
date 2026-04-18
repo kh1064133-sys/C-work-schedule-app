@@ -112,6 +112,12 @@ export function TimeSlotRow({
   const [scheduleTypeValue, setScheduleTypeValue] = useState(schedule?.schedule_type || '');
   const [paymentMethodValue, setPaymentMethodValue] = useState(schedule?.payment_method || '');
   const isComposingRef = useRef(false);
+
+  // 최신 로컬 값 ref (언마운트 시 flush용)
+  const latestValuesRef = useRef({ title: titleValue, memo: memoValue, unit: unitValue });
+  const scheduleRef = useRef(schedule);
+  latestValuesRef.current = { title: titleValue, memo: memoValue, unit: unitValue };
+  scheduleRef.current = schedule;
   
   const clientInputRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
@@ -175,9 +181,18 @@ export function TimeSlotRow({
     }
   }, [titleValue, memoValue, unitValue, schedule?.title, schedule?.memo, schedule?.unit, timeSlot]);
 
-  // 컴포넌트 언마운트 시 pending 상태 클리어
+  // 컴포넌트 언마운트 시 미저장 데이터 flush (탭 이동 시 값 유실 방지)
   useEffect(() => {
     return () => {
+      const { title, memo, unit } = latestValuesRef.current;
+      const s = scheduleRef.current;
+      const pendingData: Record<string, string> = {};
+      if (title !== (s?.title || '')) pendingData.title = title;
+      if (memo !== (s?.memo || '')) pendingData.memo = memo;
+      if (unit !== (s?.unit || '')) pendingData.unit = unit;
+      if (Object.keys(pendingData).length > 0) {
+        onUpdateRef.current(pendingData as Partial<Schedule>);
+      }
       onPendingChangeRef.current?.(timeSlot, null);
     };
   }, [timeSlot]);

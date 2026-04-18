@@ -7,6 +7,8 @@ import { useUIStore } from '@/stores/uiStore';
 import { useDateStore } from '@/stores/dateStore';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
 
 const tabs = [
   { id: 'schedule', label: '일별 스케줄', icon: ClipboardList },
@@ -17,6 +19,8 @@ const tabs = [
   { id: 'search', label: '스케줄 검색', icon: Search },
 ] as const;
 
+const isMobile = () => Capacitor.isNativePlatform();
+
 export function Header() {
   const { activeTab, setActiveTab, toggleSidebar } = useUIStore();
   const { setSelectedDate, setCalendarDate } = useDateStore();
@@ -24,6 +28,8 @@ export function Header() {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string>('');
+  const [backupFiles, setBackupFiles] = useState<string[]>([]);
+  const [showFileList, setShowFileList] = useState(false);
 
   // 데이터 내보내기
   const handleExport = async () => {
@@ -48,28 +54,157 @@ export function Header() {
         items: itemsRes.data || [],
       };
 
-      // JSON 파일 다운로드
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `일정관리_백업_${format(new Date(), 'yyyyMMdd_HHmm')}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
+      const fileName = `일정관리_백업_${format(new Date(), 'yyyyMMdd_HHmm')}.json`;
+      const jsonString = JSON.stringify(exportData, null, 2);
 
-      setSaveStatus('저장 완료!');
+      if (isMobile()) {
+        // 모바일: Capacitor Filesystem으로 Documents에 저장
+        await Filesystem.writeFile({
+          path: fileName,
+          data: jsonString,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+        });
+        alert(`저장 완료!\n\n📁 Documents/${fileName}\n\n스케줄: ${exportData.schedules.length}건\n거래처: ${exportData.clients.length}건\n품목: ${exportData.items.length}건`);
+        setSaveStatus('저장 완료!');
+      } else {
+        // 웹: 브라우저 다운로드
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+        setSaveStatus('저장 완료!');
+      }
+
       setTimeout(() => setSaveStatus(''), 3000);
     } catch (error) {
       console.error('Export failed:', error);
       setSaveStatus('저장 실패');
+      alert('저장에 실패했습니다.\n' + (error instanceof Error ? error.message : ''));
       setTimeout(() => setSaveStatus(''), 3000);
     } finally {
       setIsExporting(false);
     }
   };
 
-  // 데이터 가져오기
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // 백업 데이터 복원 처리 (공통)
+  const restoreFromJson = async (text: string, sourceName: string) => {
+    const data = JSON.parse(text);
+
+    if (!data.schedules || !data.clients || !data.items) {
+      throw new Error('올바른 백업 파일이 아닙니다');
+    }
+
+    const supabase = createClient();
+
+    const confirmReplace = window.confirm(
+      `백업 파일: ${sourceName}\n\n` +
+      `- 스케줄: ${data.schedules.length}건\n` +
+      `- 거래처: ${data.clients.length}건\n` +
+      `- 품목: ${data.items.length}건\n\n` +
+      `기존 데이터를 모두 삭제하고 가져올까요?\n` +
+      `(취소하면 기존 데이터에 추가됩니다)`
+    );
+
+    if (confirmReplace) {
+      await Promise.all([
+        supabase.from('schedules').delete().neq('id', ''),
+        supabase.from('clients').delete().neq('id', ''),
+        supabase.from('items').delete().neq('id', ''),
+      ]);
+    }
+
+    const insertPromises = [];
+    if (data.schedules.length > 0) {
+      insertPromises.push(supabase.from('schedules').upsert(data.schedules));
+    }
+    if (data.clients.length > 0) {
+      insertPromises.push(supabase.from('clients').upsert(data.clients));
+    }
+    if (data.items.length > 0) {
+      insertPromises.push(supabase.from('items').upsert(data.items));
+    }
+
+    await Promise.all(insertPromises);
+  };
+
+  // 모바일: Documents에서 백업 파일 검색 후 목록 표시
+  const handleMobileImport = async () => {
+    setIsImporting(true);
+    setSaveStatus('파일 검색 중...');
+
+    try {
+      const result = await Filesystem.readdir({
+        path: '',
+        directory: Directory.Documents,
+      });
+
+      const jsonFiles = result.files
+        .filter(f => f.name.startsWith('일정관리_백업_') && f.name.endsWith('.json'))
+        .map(f => f.name)
+        .sort()
+        .reverse(); // 최신순
+
+      if (jsonFiles.length === 0) {
+        alert('Documents 폴더에 백업 파일이 없습니다.\n\n먼저 "저장" 버튼으로 백업을 생성해주세요.');
+        setSaveStatus('');
+        setIsImporting(false);
+        return;
+      }
+
+      if (jsonFiles.length === 1) {
+        // 파일 1개면 바로 복원
+        await loadMobileBackup(jsonFiles[0]);
+      } else {
+        // 여러 개면 목록 표시
+        setBackupFiles(jsonFiles);
+        setShowFileList(true);
+        setSaveStatus('');
+        setIsImporting(false);
+      }
+    } catch (error) {
+      console.error('File search failed:', error);
+      alert('파일 검색에 실패했습니다.\n' + (error instanceof Error ? error.message : ''));
+      setSaveStatus('');
+      setIsImporting(false);
+    }
+  };
+
+  // 모바일: 선택한 백업 파일 로드
+  const loadMobileBackup = async (fileName: string) => {
+    setIsImporting(true);
+    setShowFileList(false);
+    setSaveStatus('불러오는 중...');
+
+    try {
+      const fileData = await Filesystem.readFile({
+        path: fileName,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+
+      await restoreFromJson(fileData.data as string, fileName);
+
+      setSaveStatus('불러오기 완료!');
+      setTimeout(() => {
+        setSaveStatus('');
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      console.error('Import failed:', error);
+      setSaveStatus('불러오기 실패');
+      alert('불러오기에 실패했습니다.\n' + (error instanceof Error ? error.message : ''));
+      setTimeout(() => setSaveStatus(''), 3000);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // 웹: 파일 선택 다이얼로그로 가져오기
+  const handleWebImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -78,52 +213,12 @@ export function Header() {
 
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-
-      if (!data.schedules || !data.clients || !data.items) {
-        throw new Error('Invalid backup file format');
-      }
-
-      const supabase = createClient();
-
-      // 기존 데이터 삭제 여부 확인
-      const confirmReplace = window.confirm(
-        `백업 파일 정보:\n` +
-        `- 스케줄: ${data.schedules.length}건\n` +
-        `- 거래처: ${data.clients.length}건\n` +
-        `- 품목: ${data.items.length}건\n\n` +
-        `기존 데이터를 모두 삭제하고 가져올까요?\n` +
-        `(취소하면 기존 데이터에 추가됩니다)`
-      );
-
-      if (confirmReplace) {
-        // 기존 데이터 삭제
-        await Promise.all([
-          supabase.from('schedules').delete().neq('id', ''),
-          supabase.from('clients').delete().neq('id', ''),
-          supabase.from('items').delete().neq('id', ''),
-        ]);
-      }
-
-      // 새 데이터 삽입
-      const insertPromises = [];
-      
-      if (data.schedules.length > 0) {
-        insertPromises.push(supabase.from('schedules').upsert(data.schedules));
-      }
-      if (data.clients.length > 0) {
-        insertPromises.push(supabase.from('clients').upsert(data.clients));
-      }
-      if (data.items.length > 0) {
-        insertPromises.push(supabase.from('items').upsert(data.items));
-      }
-
-      await Promise.all(insertPromises);
+      await restoreFromJson(text, file.name);
 
       setSaveStatus('불러오기 완료!');
       setTimeout(() => {
         setSaveStatus('');
-        window.location.reload(); // 페이지 새로고침으로 데이터 반영
+        window.location.reload();
       }, 1500);
     } catch (error) {
       console.error('Import failed:', error);
@@ -134,6 +229,15 @@ export function Header() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  // 불러오기 버튼 클릭 핸들러
+  const handleImportClick = () => {
+    if (isMobile()) {
+      handleMobileImport();
+    } else {
+      fileInputRef.current?.click();
     }
   };
 
@@ -203,7 +307,7 @@ export function Header() {
           <button
             className="sm:hidden flex items-center justify-center rounded-full bg-white/25 active:bg-white/35 shrink-0"
             style={{ width: 32, height: 32 }}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleImportClick}
             disabled={isImporting}
             title="데이터 불러오기"
           >
@@ -232,7 +336,7 @@ export function Header() {
             variant="secondary"
             size="sm"
             className="hidden sm:flex"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleImportClick}
             disabled={isImporting}
           >
             {isImporting ? (
@@ -247,10 +351,42 @@ export function Header() {
             ref={fileInputRef}
             accept=".json"
             className="hidden"
-            onChange={handleImport}
+            onChange={handleWebImport}
           />
         </div>
       </div>
+
+      {/* 모바일 백업 파일 선택 모달 */}
+      {showFileList && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={() => setShowFileList(false)}>
+          <div className="bg-white rounded-xl shadow-2xl mx-4 max-w-sm w-full max-h-[70vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white">
+              <h3 className="font-bold text-base">백업 파일 선택</h3>
+              <p className="text-xs text-white/80">Documents 폴더에서 {backupFiles.length}개 발견</p>
+            </div>
+            <div className="overflow-y-auto max-h-[50vh] divide-y">
+              {backupFiles.map((file, idx) => (
+                <button
+                  key={file}
+                  className="w-full text-left px-4 py-3 hover:bg-blue-50 active:bg-blue-100 flex items-center gap-3 text-gray-800"
+                  onClick={() => loadMobileBackup(file)}
+                >
+                  <span className="text-sm font-bold text-blue-600 shrink-0">{idx + 1}</span>
+                  <span className="text-sm truncate">{file}</span>
+                </button>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t">
+              <button
+                className="w-full py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200"
+                onClick={() => setShowFileList(false)}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

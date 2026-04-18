@@ -135,8 +135,8 @@ export function useUpsertSchedule() {
       const { data, error } = await supabase
         .from('schedules')
         .upsert({
-          ...cleanedInput,
           user_id: TEMP_USER_ID,
+          ...cleanedInput,
         }, { onConflict: 'user_id,date,time_slot' })
         .select()
         .single();

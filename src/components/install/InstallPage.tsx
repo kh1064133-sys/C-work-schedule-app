@@ -561,7 +561,7 @@ export function InstallPage() {
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold flex items-center gap-2">🔨 외주설치 목록</h2>
@@ -682,7 +682,7 @@ export function InstallPage() {
 
       {/* 모바일 하단 플로팅 버튼 */}
       {selectedIds.size > 0 && (
-        <div className="lg:hidden fixed bottom-4 left-4 right-4 z-40 flex gap-2">
+        <div className="lg:hidden fixed bottom-16 left-4 right-4 z-40 flex gap-2">
           <Button variant="outline" size="sm" className="h-10 px-3 bg-white shadow-lg"
             onClick={() => setSelectedIds(new Set())}
           >

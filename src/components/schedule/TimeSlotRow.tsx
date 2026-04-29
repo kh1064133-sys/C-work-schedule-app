@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect, type MutableRefObject } from 'react';
-import { GripVertical, Check, Calendar, RotateCcw } from 'lucide-react';
+import { GripVertical, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatCurrencyInput } from '@/lib/utils/format';
 import type { Schedule, ScheduleType, PaymentMethod, EventIcon, Client, Item } from '@/types';
 import { CompletionPopup } from './CompletionPopup';
 import { DepositPopup } from './DepositPopup';
@@ -16,10 +15,7 @@ interface TimeSlotRowProps {
   clients?: Client[];
   items?: Item[];
   onUpdate: (data: Partial<Schedule>) => void;
-  onToggleDone: () => void;
   onToggleReserved: () => void;
-  onCompletionClick: () => void;
-  onDepositClick: () => void;
   // 드래그 관련 (PC)
   isDragging?: boolean;
   isDragOver?: boolean;
@@ -75,10 +71,7 @@ export function TimeSlotRow({
   clients = [],
   items = [],
   onUpdate,
-  onToggleDone,
   onToggleReserved,
-  onCompletionClick,
-  onDepositClick,
   isDragging = false,
   isDragOver = false,
   onDragStart,
@@ -116,15 +109,11 @@ export function TimeSlotRow({
   // 최신 로컬 값 ref (언마운트 시 flush용)
   const latestValuesRef = useRef({ title: titleValue, memo: memoValue, unit: unitValue });
   const scheduleRef = useRef(schedule);
-  latestValuesRef.current = { title: titleValue, memo: memoValue, unit: unitValue };
-  scheduleRef.current = schedule;
   
   const clientInputRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
 
   // 터치 탭/스크롤 구분용 (모바일 검색 목록)
-  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
-  const isTouchScrollingRef = useRef(false);
   const clientMobileDropdownRef = useRef<HTMLDivElement>(null);
   const itemMobileDropdownRef = useRef<HTMLDivElement>(null);
   const onUpdateRef = useRef(onUpdate);
@@ -167,7 +156,14 @@ export function TimeSlotRow({
 
   // 변경사항 감지: 로컬 상태가 DB 상태와 다르면 상위에 보고
   const onPendingChangeRef = useRef(onPendingChange);
-  onPendingChangeRef.current = onPendingChange;
+  useEffect(() => {
+    latestValuesRef.current = { title: titleValue, memo: memoValue, unit: unitValue };
+    scheduleRef.current = schedule;
+  }, [titleValue, memoValue, unitValue, schedule]);
+
+  useEffect(() => {
+    onPendingChangeRef.current = onPendingChange;
+  }, [onPendingChange]);
 
   useEffect(() => {
     const titlePending = titleValue !== (schedule?.title || '');
@@ -377,6 +373,17 @@ export function TimeSlotRow({
   const [showCompletionPopup, setShowCompletionPopup] = useState(false);
   // 입금 팝업 상태
   const [showDepositPopup, setShowDepositPopup] = useState(false);
+  const [depositAmount, setDepositAmount] = useState<number>(0);
+  const [depositPaymentMethod, setDepositPaymentMethod] = useState<PaymentMethod>('cash');
+  const [depositMemo, setDepositMemo] = useState<string>('');
+
+  const openDepositPopup = () => {
+    const pm = schedule?.payment_method || 'cash';
+    setDepositPaymentMethod(pm);
+    setDepositAmount(pm === 'free' ? 0 : (schedule?.amount || 0));
+    setDepositMemo('');
+    setShowDepositPopup(true);
+  };
 
   // 완료 기록 조회/저장/삭제
   const saveCompletionRecord = useSaveCompletionRecord();
@@ -385,7 +392,15 @@ export function TimeSlotRow({
   const existingRecord = completionRecords?.[0] || null;
 
   // 완료 팝업 확인 핸들러
-  const handleCompletionConfirm = async (data: any) => {
+  const handleCompletionConfirm = async (data: {
+    apartment_name: string;
+    unit_number: string;
+    customer_name: string;
+    phone: string;
+    content: string;
+    amount: number;
+    signature_data: string;
+  }) => {
     // 완료 확인서 데이터 DB 저장
     if (schedule) {
       try {
@@ -413,11 +428,18 @@ export function TimeSlotRow({
   };
 
   // 입금 팝업 확인 핸들러
-  const handleDepositConfirm = (data: any) => {
-    // 입금 처리: 입금 체크, 완료는 원상태
+  const handleDepositConfirm = (data: {
+    amount: number;
+    payment_method: PaymentMethod;
+    deposit_memo: string;
+  }) => {
+    // 입금 처리: 입금 체크, 완료 처리
     onUpdate({
       is_paid: true,
-      // 필요시 추가 데이터 저장
+      is_done: true,
+      amount: data.amount,
+      payment_method: data.payment_method,
+      memo: data.deposit_memo,
     });
     setShowDepositPopup(false);
   };
@@ -498,8 +520,8 @@ export function TimeSlotRow({
                 unit: '',
                 memo: '',
                 amount: 0,
-                schedule_type: null as any,
-                payment_method: null as any,
+                schedule_type: null,
+                payment_method: null,
                 is_done: false,
                 is_reserved: false,
                 is_paid: false,
@@ -730,7 +752,7 @@ export function TimeSlotRow({
                       : 'hover:bg-gray-100'
                   )}
                   onClick={() => {
-                    onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value } as any);
+                    onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value });
                     setShowEventPicker(false);
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
@@ -743,7 +765,7 @@ export function TimeSlotRow({
                 <button
                   className="w-9 h-9 rounded-md flex items-center justify-center text-xs hover:bg-red-50 text-red-400"
                   onClick={() => {
-                    onUpdate({ event_icon: null } as any);
+                    onUpdate({ event_icon: null });
                     setShowEventPicker(false);
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
@@ -790,7 +812,7 @@ export function TimeSlotRow({
             'text-xs font-bold',
             isPaid ? 'bg-amber-500 hover:bg-amber-600' : 'border-amber-400 text-amber-600 hover:bg-amber-50'
           )}
-          onClick={() => setShowDepositPopup(true)}
+          onClick={() => openDepositPopup()}
         >
           {isPaid ? '💰' : '입금'}
         </Button>
@@ -884,8 +906,8 @@ export function TimeSlotRow({
                   unit: '',
                   memo: '',
                   amount: 0,
-                  schedule_type: null as any,
-                  payment_method: null as any,
+                  schedule_type: null,
+                  payment_method: null,
                   is_done: false,
                   is_reserved: false,
                   is_paid: false,
@@ -924,7 +946,7 @@ export function TimeSlotRow({
                           : 'hover:bg-gray-100'
                       )}
                       onClick={() => {
-                        onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value } as any);
+                        onUpdate({ event_icon: eventIcon === ev.value ? null : ev.value });
                         setShowEventPicker(false);
                       }}
                     >
@@ -936,7 +958,7 @@ export function TimeSlotRow({
                     <button
                       className="w-10 h-10 rounded-md flex items-center justify-center text-xs hover:bg-red-50 text-red-400"
                       onClick={() => {
-                        onUpdate({ event_icon: null } as any);
+                        onUpdate({ event_icon: null });
                         setShowEventPicker(false);
                       }}
                     >
@@ -975,7 +997,7 @@ export function TimeSlotRow({
                 'text-xs h-8 px-2',
                 isPaid ? 'bg-amber-500 hover:bg-amber-600' : 'border-amber-400 text-amber-600'
               )}
-              onClick={() => setShowDepositPopup(true)}
+              onClick={() => openDepositPopup()}
             >
               {isPaid ? '💰' : '입금'}
             </Button>
@@ -1244,10 +1266,15 @@ export function TimeSlotRow({
       {/* 입금 팝업 */}
       {schedule && showDepositPopup && (
         <DepositPopup
-          schedule={schedule}
           open={showDepositPopup}
           onClose={() => setShowDepositPopup(false)}
           onConfirm={handleDepositConfirm}
+          amount={depositAmount}
+          setAmount={setDepositAmount}
+          paymentMethod={depositPaymentMethod}
+          setPaymentMethod={setDepositPaymentMethod}
+          memo={depositMemo}
+          setMemo={setDepositMemo}
         />
       )}
     </>

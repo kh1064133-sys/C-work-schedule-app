@@ -111,7 +111,7 @@ export function useToggleSchedulePaid() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, is_paid, date }: { id: string; is_paid: boolean; date: string }) => {
+    mutationFn: async ({ id, is_paid }: { id: string; is_paid: boolean; date: string }) => {
       const { data, error } = await supabase
         .from('schedules')
         .update({ is_paid })

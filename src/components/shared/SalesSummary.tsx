@@ -1,6 +1,5 @@
 'use client';
 
-import { useDateStore } from '@/stores/dateStore';
 import { formatCurrency } from '@/lib/utils/format';
 
 interface SalesData {

@@ -99,10 +99,11 @@ function VehicleContent() {
 }
 
 export default function Home() {
-  const { activeTab, setActiveTab, isSidebarOpen, toggleSidebar } = useUIStore();
+  const { activeTab } = useUIStore();
 
   // 앱 시작 시 오늘 날짜의 월별 달력으로 초기화
   useEffect(() => {
+    const { isSidebarOpen, setActiveTab, toggleSidebar } = useUIStore.getState();
     setActiveTab('calendar');
     // PC(768px 이상)에서는 사이드바 열린 상태로 시작
     if (window.innerWidth >= 768 && !isSidebarOpen) {

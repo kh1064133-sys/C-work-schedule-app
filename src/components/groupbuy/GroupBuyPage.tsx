@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, Link2, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, ChevronLeft, ChevronRight, Download, Upload, Link2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems } from '@/hooks/useItems';
 import { useGroupBuyCustomers, useBatchUpsertGroupBuy, useDeleteGroupBuyCustomer, GroupBuyCustomerDB } from '@/hooks/useGroupBuy';
@@ -336,8 +336,6 @@ function DailyScheduleTable({ customers, selectedId, onSelect }: { customers: Gr
             {paged.map((c, idx) => {
               const seq = startIdx + idx + 1;
               const isNewDate = c.installDate !== prevDate;
-              const groupIdx = dateGroups.indexOf(c.installDate);
-              const bgColor = groupIdx % 2 === 0 ? '#fff' : '#F8FAFC';
               const isWeekend = c.dayOfWeek === '토' || c.dayOfWeek === '일';
               const dayColor = isWeekend ? '#EF4444' : '#333';
               const showBorderTop = isNewDate && seq > 1;
@@ -637,31 +635,55 @@ function loadCustomers(): GroupBuyCustomer[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
 function saveCustomers(customers: GroupBuyCustomer[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(customers));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(customers));
+  } catch {}
 }
 
 function parseExcelDate(val: unknown): string {
   if (!val) return '';
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return val.toISOString().slice(0, 10);
+  }
   if (typeof val === 'number') {
     // Excel serial date
     const d = new Date((val - 25569) * 86400000);
     return d.toISOString().slice(0, 10);
   }
   const s = String(val).trim();
-  // YY/MM/DD or YYYY/MM/DD or YYYY-MM-DD
-  const m = s.match(/(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  // YY/MM/DD or YYYY/MM/DD or YYYY-MM-DD or YYYY.MM.DD
+  const m = s.match(/(\d{2,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
   if (m) {
     const y = m[1].length === 2 ? '20' + m[1] : m[1];
     return `${y}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
   }
   return '';
+}
+
+function normalizeHeader(value: string): string {
+  return value.replace(/\s+/g, '').replace(/[()]/g, '').toLowerCase();
+}
+
+function getExcelValue(row: Record<string, unknown>, aliases: string[]): unknown {
+  for (const alias of aliases) {
+    if (row[alias] !== undefined) return row[alias];
+  }
+
+  const normalizedAliases = aliases.map(normalizeHeader);
+  const foundKey = Object.keys(row).find(key => normalizedAliases.includes(normalizeHeader(key)));
+  return foundKey ? row[foundKey] : undefined;
+}
+
+function getExcelText(row: Record<string, unknown>, aliases: string[]): string {
+  return String(getExcelValue(row, aliases) ?? '').trim();
 }
 
 function importFromExcel(file: File): Promise<GroupBuyCustomer[]> {
@@ -672,25 +694,26 @@ function importFromExcel(file: File): Promise<GroupBuyCustomer[]> {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws);
+        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, { raw: true });
 
         const customers: GroupBuyCustomer[] = rows.map(row => {
-          const installDate = parseExcelDate(row['설치일']);
+          const installDate = parseExcelDate(getExcelValue(row, ['설치일', '설치일자', '설치날짜', '날짜', '일자', '예약일', 'installDate', 'install_date']));
+          const dayOfWeek = getExcelText(row, ['요일', 'dayOfWeek', 'day_of_week']) || getDayOfWeek(installDate);
           return {
             id: crypto.randomUUID(),
             installDate,
-            dayOfWeek: getDayOfWeek(installDate),
-            time: String(row['시간'] ?? '').trim(),
-            dong: String(row['동'] ?? '').trim(),
-            ho: String(row['호수'] ?? row['호'] ?? '').trim(),
-            contact: String(row['연락처'] ?? '').trim(),
-            content: String(row['내용'] ?? '').trim(),
-            amount: Number(row['금액']) || 0,
-            paymentMethod: String(row['결재방법'] ?? row['결제방법'] ?? '').trim(),
-            note: String(row['비고'] ?? '').trim(),
-            reserved: String(row['예약']).toUpperCase() === 'O',
-            completed: String(row['완료']).toUpperCase() === 'O',
-            deposited: String(row['입금']).toUpperCase() === 'O',
+            dayOfWeek,
+            time: getExcelText(row, ['시간', '시각', 'time']),
+            dong: getExcelText(row, ['동', '동명', 'dong']),
+            ho: getExcelText(row, ['호수', '호', '세대', 'room', 'ho']),
+            contact: getExcelText(row, ['연락처', '전화번호', '휴대폰', '핸드폰', 'contact', 'phone']),
+            content: getExcelText(row, ['내용', '품목', '제품', 'content', 'item']),
+            amount: Number(String(getExcelValue(row, ['금액', 'amount', 'price']) ?? '').replace(/[^0-9.-]/g, '')) || 0,
+            paymentMethod: getExcelText(row, ['결재방법', '결제방법', '결제', 'paymentMethod', 'payment_method']),
+            note: getExcelText(row, ['비고', '메모', 'note', 'memo']),
+            reserved: getExcelText(row, ['예약', 'reserved']).toUpperCase() === 'O',
+            completed: getExcelText(row, ['완료', 'completed']).toUpperCase() === 'O',
+            deposited: getExcelText(row, ['입금', 'deposited']).toUpperCase() === 'O',
           };
         }).filter(c => c.dong || c.ho || c.contact);
 
@@ -788,6 +811,55 @@ function exportToExcel(customers: GroupBuyCustomer[]) {
   XLSX.utils.book_append_sheet(wb, ws3, '시간대별 설치일정');
 
   XLSX.writeFile(wb, `공동구매_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+function escapeVCardText(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+
+function formatContactUnit(value: string, suffix: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.endsWith(suffix) ? trimmed : `${trimmed}${suffix}`;
+}
+
+function exportContactsToVcf(customers: GroupBuyCustomer[]) {
+  const contacts = customers.filter(c => c.contact.trim());
+  if (contacts.length === 0) {
+    alert('저장할 연락처가 없습니다.');
+    return;
+  }
+
+  const cards = contacts.map((c) => {
+    const dong = formatContactUnit(c.dong, '동');
+    const ho = formatContactUnit(c.ho, '호');
+    const name = ['(공구)타워1차', dong, ho].filter(Boolean).join(' ');
+    const phone = c.contact.replace(/[^\d+]/g, '');
+    const note = [c.content, c.note].filter(Boolean).join(' / ');
+
+    return [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      `FN:${escapeVCardText(name)}`,
+      `TEL;TYPE=CELL:${phone}`,
+      note ? `NOTE:${escapeVCardText(note)}` : '',
+      'END:VCARD',
+    ].filter(Boolean).join('\n');
+  }).join('\n');
+
+  const blob = new Blob([cards], { type: 'text/vcard;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `공동구매_연락처_${new Date().toISOString().slice(0, 10)}.vcf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 const RESERVE_URL_KEY = 'reserve-base-url';
@@ -1115,6 +1187,16 @@ export function GroupBuyPage() {
             <Download className="h-4 w-4" />
             엑셀
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportContactsToVcf(customers)}
+            className="gap-1 sm:hidden"
+            style={{ background: '#F0FDF4', borderColor: '#86EFAC', color: '#15803D' }}
+          >
+            <Download className="h-4 w-4" />
+            연락처저장(.vcf)
+          </Button>
           <Button variant="outline" size="sm" className="gap-1" onClick={() => document.getElementById('excel-import')?.click()}>
             <Upload className="h-4 w-4" />
             가져오기
@@ -1127,7 +1209,12 @@ export function GroupBuyPage() {
               if (imported.length === 0) { alert('가져올 데이터가 없습니다.'); return; }
               if (!confirm(`${imported.length}명의 고객을 가져오시겠습니까?`)) return;
               setCustomers(prev => [...prev, ...imported]);
-              alert(`${imported.length}명 가져오기 완료!`);
+              const missingDateCount = imported.filter(c => !c.installDate).length;
+              alert(
+                missingDateCount > 0
+                  ? `${imported.length}명 가져오기 완료!\n설치일이 없는 ${missingDateCount}명은 일별/시간대별 설치일정에 표시되지 않습니다.`
+                  : `${imported.length}명 가져오기 완료!`,
+              );
             } catch {
               alert('엑셀 파일을 읽을 수 없습니다.');
             }

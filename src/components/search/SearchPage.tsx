@@ -7,6 +7,7 @@ import { useSearchSchedules } from '@/hooks/useSchedules';
 import { useDateStore } from '@/stores/dateStore';
 import { useUIStore } from '@/stores/uiStore';
 import { cn } from '@/lib/utils';
+import { getScheduleAmountWithTax } from '@/lib/utils/scheduleAmount';
 import { format, subMonths } from 'date-fns';
 import * as XLSX from 'xlsx';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
@@ -195,7 +196,7 @@ export function SearchPage() {
   const stats = useMemo(() => {
     const totalAmount = results
       .filter((s: Schedule) => s.is_done)
-      .reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+      .reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
     const doneCount = results.filter((s: Schedule) => s.is_done).length;
     const pendingCount = results.filter((s: Schedule) => !s.is_done && s.title).length;
     const unpaidCount = results.filter((s: Schedule) => s.is_done && !s.is_paid).length;
@@ -215,7 +216,7 @@ export function SearchPage() {
       '동호수': s.unit || '',
       '내용': s.memo || '',
       '유형': s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '',
-      '금액': s.amount || 0,
+      '금액': getScheduleAmountWithTax(s),
       '결제방법': s.payment_method ? PAYMENT_METHOD_LABELS[s.payment_method] : '',
       '입금': s.is_paid ? 'O' : '',
       '완료': s.is_done ? 'O' : '',
@@ -461,7 +462,7 @@ export function SearchPage() {
                       )}
                     </td>
                     <td style={{ padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: '#059669' }}>
-                      {schedule.amount ? schedule.amount.toLocaleString() : '-'}
+                      {getScheduleAmountWithTax(schedule) ? getScheduleAmountWithTax(schedule).toLocaleString() : '-'}
                     </td>
                     <td style={{ padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {schedule.payment_method && (

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { RotateCcw, Settings, ChevronDown, ChevronUp, MessageSquare, X, Copy, Check } from 'lucide-react';
+import { Settings, ChevronDown, ChevronUp, MessageSquare, X, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useInstallSchedules, useUpsertSchedule } from '@/hooks/useSchedules';
 import { useClients } from '@/hooks/useClients';
@@ -30,12 +30,21 @@ function loadTypePrices(): TypePrices {
   if (typeof window === 'undefined') return {};
   try {
     const saved = localStorage.getItem(TYPE_PRICE_KEY);
-    return saved ? JSON.parse(saved) : {};
+    const parsed = saved ? JSON.parse(saved) : {};
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value))
+    );
   } catch { return {}; }
 }
 
 function saveTypePrices(prices: TypePrices) {
-  localStorage.setItem(TYPE_PRICE_KEY, JSON.stringify(prices));
+  try {
+    localStorage.setItem(TYPE_PRICE_KEY, JSON.stringify(prices));
+  } catch {}
 }
 
 const PAYMENT_METHODS = [
@@ -45,10 +54,6 @@ const PAYMENT_METHODS = [
   { value: 'vat', label: 'VAT' },
   { value: 'free', label: '무상' },
 ];
-
-const PAYMENT_LABELS: Record<string, string> = {
-  cash: '현금', card: '카드', vat: 'VAT', free: '무상',
-};
 
 const paymentStyles: Record<string, string> = {
   cash: 'bg-green-50 border-green-400 text-green-700',
@@ -485,7 +490,8 @@ export function InstallPage() {
     if (typeof window === 'undefined') return new Set();
     try {
       const saved = localStorage.getItem(INSTALL_PAID_KEY);
-      return saved ? new Set(JSON.parse(saved)) : new Set();
+      const parsed = saved ? JSON.parse(saved) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : []);
     } catch { return new Set(); }
   });
 
@@ -493,7 +499,9 @@ export function InstallPage() {
     setInstallPaidIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
-      localStorage.setItem(INSTALL_PAID_KEY, JSON.stringify([...next]));
+      try {
+        localStorage.setItem(INSTALL_PAID_KEY, JSON.stringify([...next]));
+      } catch {}
       return next;
     });
   }, []);

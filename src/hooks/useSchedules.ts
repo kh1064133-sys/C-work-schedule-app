@@ -128,9 +128,26 @@ export function useUpsertSchedule() {
       );
 
       // id가 없으면 새 일정 → id 필드 제거하여 DB가 자동 생성하도록 함
-      if (!input.id) {
-        delete cleanedInput.id;
+      if (input.id) {
+        const updatePayload = { ...cleanedInput };
+        delete updatePayload.id;
+        delete updatePayload.user_id;
+
+        const { data, error } = await supabase
+          .from('schedules')
+          .update(updatePayload)
+          .eq('id', input.id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[schedule update error]', JSON.stringify({ code: error.code, message: error.message, details: error.details, hint: error.hint }), '\n[payload]', JSON.stringify(updatePayload));
+          throw error;
+        }
+        return data as Schedule;
       }
+
+      delete cleanedInput.id;
       
       const { data, error } = await supabase
         .from('schedules')
@@ -141,7 +158,10 @@ export function useUpsertSchedule() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[upsert 400 error]', JSON.stringify({ code: error.code, message: error.message, details: error.details, hint: error.hint }), '\n[payload]', JSON.stringify(cleanedInput));
+        throw error;
+      }
       return data as Schedule;
     },
     onSuccess: (data) => {
@@ -226,7 +246,7 @@ export function useToggleScheduleDone() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, is_done, date }: { id: string; is_done: boolean; date: string }) => {
+    mutationFn: async ({ id, is_done }: { id: string; is_done: boolean; date: string }) => {
       const { data, error } = await supabase
         .from('schedules')
         .update({ is_done })
@@ -250,7 +270,7 @@ export function useToggleScheduleReserved() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, is_reserved, date }: { id: string; is_reserved: boolean; date: string }) => {
+    mutationFn: async ({ id, is_reserved }: { id: string; is_reserved: boolean; date: string }) => {
       const { data, error } = await supabase
         .from('schedules')
         .update({ is_reserved })

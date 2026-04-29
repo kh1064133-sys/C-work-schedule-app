@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useSchedulesByMonth, useSchedulesByYear } from '@/hooks/useSchedules';
+import { getScheduleAmountWithTax } from '@/lib/utils/scheduleAmount';
 import { cn } from '@/lib/utils';
-import { format, getDaysInMonth, startOfMonth, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
 
 const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
@@ -44,7 +45,7 @@ export function AnalyticsPage() {
 
   // 연간 매출 합계
   const yearlyTotal = useMemo(() => {
-    return yearCompletedSchedules.reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+    return yearCompletedSchedules.reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
   }, [yearCompletedSchedules]);
 
   // 연간 결제방법별 통계
@@ -57,7 +58,7 @@ export function AnalyticsPage() {
     yearCompletedSchedules.forEach((s: Schedule) => {
       if (s.payment_method && stats[s.payment_method]) {
         stats[s.payment_method].count += 1;
-        stats[s.payment_method].amount += s.amount || 0;
+        stats[s.payment_method].amount += getScheduleAmountWithTax(s);
       }
     });
     return stats;
@@ -74,21 +75,13 @@ export function AnalyticsPage() {
     yearCompletedSchedules.forEach((s: Schedule) => {
       if (s.schedule_type && stats[s.schedule_type]) {
         stats[s.schedule_type].count += 1;
-        stats[s.schedule_type].amount += s.amount || 0;
+        stats[s.schedule_type].amount += getScheduleAmountWithTax(s);
       }
     });
     return stats;
   }, [yearCompletedSchedules]);
 
   // 월별 데이터 수집 (연간 차트용)
-  const yearlyData = useMemo(() => {
-    const months: { month: number; sales: number; count: number }[] = [];
-    for (let i = 0; i < 12; i++) {
-      months.push({ month: i, sales: 0, count: 0 });
-    }
-    return months;
-  }, [chartYear]);
-
   // 선택된 월의 완료된 스케줄만
   const completedSchedules = useMemo(() => {
     return monthSchedules.filter((s: Schedule) => s.is_done);
@@ -96,7 +89,7 @@ export function AnalyticsPage() {
 
   // 월 매출 합계
   const monthlyTotal = useMemo(() => {
-    return completedSchedules.reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+    return completedSchedules.reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
   }, [completedSchedules]);
 
   // 결제방법별 통계
@@ -109,7 +102,7 @@ export function AnalyticsPage() {
     completedSchedules.forEach((s: Schedule) => {
       if (s.payment_method && stats[s.payment_method]) {
         stats[s.payment_method].count += 1;
-        stats[s.payment_method].amount += s.amount || 0;
+        stats[s.payment_method].amount += getScheduleAmountWithTax(s);
       }
     });
     return stats;
@@ -126,7 +119,7 @@ export function AnalyticsPage() {
     completedSchedules.forEach((s: Schedule) => {
       if (s.schedule_type && stats[s.schedule_type]) {
         stats[s.schedule_type].count += 1;
-        stats[s.schedule_type].amount += s.amount || 0;
+        stats[s.schedule_type].amount += getScheduleAmountWithTax(s);
       }
     });
     return stats;
@@ -141,7 +134,7 @@ export function AnalyticsPage() {
     yearCompletedSchedules.forEach((s: Schedule) => {
       const m = parseInt(s.date.split('-')[1], 10);
       if (m >= 1 && m <= 12) {
-        data[m - 1].amount += s.amount || 0;
+        data[m - 1].amount += getScheduleAmountWithTax(s);
         data[m - 1].count += 1;
       }
     });
@@ -445,7 +438,7 @@ export function AnalyticsPage() {
                       )}
                     </td>
                     <td className="px-2 md:px-4 py-2 md:py-3 text-right font-medium text-emerald-600">
-                      {(schedule.amount || 0).toLocaleString()}원
+                      {getScheduleAmountWithTax(schedule).toLocaleString()}원
                     </td>
                   </tr>
                 ))

@@ -1,13 +1,14 @@
 'use client';
 
-import { useMemo, useState, useRef, useCallback, TouchEvent, MouseEvent } from 'react';
+import { useMemo, useState, useRef, useCallback, TouchEvent } from 'react';
 import { useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDateStore } from '@/stores/dateStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useSchedulesByMonth, useUpsertSchedule, useAllPendingSchedules } from '@/hooks/useSchedules';
 import { formatMonthKorean, getHolidayName, getLunarInfo } from '@/lib/utils/date';
+import { getScheduleAmountWithTax } from '@/lib/utils/scheduleAmount';
 import { cn } from '@/lib/utils';
 import {
   startOfMonth,
@@ -22,7 +23,7 @@ import {
   startOfDay,
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import type { Schedule, ScheduleType, PaymentMethod, EventIcon } from '@/types';
+import type { Schedule, ScheduleType, EventIcon } from '@/types';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -40,13 +41,6 @@ const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
   group: '공동구매',
   install: '외주설치',
   daily: '일당',
-};
-
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  cash: '현금',
-  card: '카드',
-  vat: 'VAT',
-  free: '무상',
 };
 
 // 미결/예약 테이블 렌더 헬퍼
@@ -150,7 +144,7 @@ function PendingTable({
                 <td style={{ ...tdStyle('22%'), fontWeight: 500 }}>{s.title || '-'}</td>
                 <td style={tdStyle('11%')}>{s.unit || '-'}</td>
                 <td style={tdStyle('9%')}>{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
-                <td style={{ ...tdStyle('15%', 'right'), color: amountColor || undefined, fontWeight: 600 }}>{(s.amount || 0).toLocaleString()}</td>
+                <td style={{ ...tdStyle('15%', 'right'), color: amountColor || undefined, fontWeight: 600 }}>{getScheduleAmountWithTax(s).toLocaleString()}</td>
                 <td style={tdStyle('12%', 'center')}>{statusBadge}</td>
                 <td style={tdStyle('6%', 'center')}>
                   {isDone ? (
@@ -263,7 +257,7 @@ export function CalendarPage() {
   };
 
   // 해당 월의 스케줄 데이터
-  const { data: schedules = [], isLoading } = useSchedulesByMonth(year, month);
+  const { data: schedules = [] } = useSchedulesByMonth(year, month);
 
   // 차량 보험/세금 일정 (localStorage) - useEffect로 hydration mismatch 방지
   const [vehicleEvents, setVehicleEvents] = useState<Record<string, string[]>>({});
@@ -272,6 +266,10 @@ export function CalendarPage() {
       const saved = localStorage.getItem('vehicle_insurance');
       if (!saved) { setVehicleEvents({}); return; }
       const info = JSON.parse(saved);
+      if (typeof info !== 'object' || info === null || Array.isArray(info)) {
+        setVehicleEvents({});
+        return;
+      }
       const events: Record<string, string[]> = {};
       const add = (dateStr: string, label: string) => {
         if (!dateStr) return;
@@ -319,7 +317,7 @@ export function CalendarPage() {
     const daySchedules = schedulesByDate[dateKey] || [];
     return daySchedules
       .filter((s: Schedule) => s.is_done)
-      .reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+      .reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
   };
 
   // 날짜별 일정 수 (제목이 있는 일정만 카운트)
@@ -339,7 +337,7 @@ export function CalendarPage() {
     const scheduleDate = startOfDay(date);
     const isOverdue = isBefore(scheduleDate, today);
     const count = pending.length;
-    const amount = pending.reduce((sum: number, s: Schedule) => sum + (s.amount || 0), 0);
+    const amount = pending.reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
     return {
       overdue: isOverdue ? { count, amount } : { count: 0, amount: 0 },
       reserved: !isOverdue ? { count, amount } : { count: 0, amount: 0 },
@@ -401,8 +399,8 @@ export function CalendarPage() {
     return { prevPending: allPrevPending, reservedSchedules: reserved };
   }, [pendingSchedules, allPrevPending, today]);
 
-  const prevPendingAmount = prevPending.reduce((sum, s) => sum + (s.amount || 0), 0);
-  const reservedAmount = reservedSchedules.reduce((sum, s) => sum + (s.amount || 0), 0);
+  const prevPendingAmount = prevPending.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0);
+  const reservedAmount = reservedSchedules.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0);
 
   // 완료 확인 팝업 상태
   const [confirmTarget, setConfirmTarget] = useState<Schedule | null>(null);
@@ -455,20 +453,20 @@ export function CalendarPage() {
   const monthlySalesStats = useMemo(() => {
     const doneSchedules = schedules.filter((s: Schedule) => s.is_done);
     const byType = {
-      sale: doneSchedules.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + (s.amount || 0), 0),
-      as: doneSchedules.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + (s.amount || 0), 0),
-      agency: doneSchedules.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + (s.amount || 0), 0),
-      total: doneSchedules.reduce((sum, s) => sum + (s.amount || 0), 0),
+      sale: doneSchedules.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      as: doneSchedules.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      agency: doneSchedules.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      total: doneSchedules.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
     };
     const byPayment = {
-      cash: doneSchedules.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + (s.amount || 0), 0),
-      card: doneSchedules.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + (s.amount || 0), 0),
-      vat: doneSchedules.filter(s => s.payment_method === 'vat').reduce((sum, s) => sum + (s.amount || 0), 0),
-      free: doneSchedules.filter(s => s.payment_method === 'free').reduce((sum, s) => sum + (s.amount || 0), 0),
+      cash: doneSchedules.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      card: doneSchedules.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      vat: doneSchedules.filter(s => s.payment_method === 'vat').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      free: doneSchedules.filter(s => s.payment_method === 'free').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
     };
     const allPending = schedules.filter((s: Schedule) => s.title && !s.is_done);
     const pendingCount = allPending.length;
-    const pendingAmount = allPending.reduce((sum, s) => sum + (s.amount || 0), 0);
+    const pendingAmount = allPending.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0);
     return { byType, byPayment, pendingCount, pendingAmount };
   }, [schedules]);
 
@@ -700,7 +698,7 @@ export function CalendarPage() {
                     <td style={{ width: '12%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6' }}>{s.time_slot}</td>
                     <td style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 500, textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title || '-'}</td>
                     <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', color: '#9ca3af' }}>{s.unit || '-'}</td>
-                    <td style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #f3f4f6', color: s.is_done ? '#16a34a' : '#f97316' }}>{(s.amount || 0).toLocaleString()}</td>
+                    <td style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #f3f4f6', color: s.is_done ? '#16a34a' : '#f97316' }}>{getScheduleAmountWithTax(s).toLocaleString()}</td>
                     <td style={{ width: '25%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
                       {s.is_done ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', border: '2px solid #16a34a', backgroundColor: 'transparent', color: '#16a34a', fontSize: 12, fontWeight: 700, lineHeight: 1 }}>✓</span>
@@ -871,7 +869,7 @@ export function CalendarPage() {
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <span style={{ color: '#9CA3AF', minWidth: 52 }}>금액</span>
-                  <span style={{ fontWeight: 700, color: '#16a34a' }}>{(confirmTarget.amount || 0).toLocaleString()}원</span>
+                  <span style={{ fontWeight: 700, color: '#16a34a' }}>{getScheduleAmountWithTax(confirmTarget).toLocaleString()}원</span>
                 </div>
               </div>
               <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>
@@ -948,7 +946,7 @@ export function CalendarPage() {
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <span style={{ color: '#9CA3AF', minWidth: 52 }}>금액</span>
-                  <span style={{ fontWeight: 700, color: '#D97706' }}>{(depositTarget.amount || 0).toLocaleString()}원</span>
+                  <span style={{ fontWeight: 700, color: '#D97706' }}>{getScheduleAmountWithTax(depositTarget).toLocaleString()}원</span>
                 </div>
               </div>
               <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginBottom: 20 }}>

@@ -1,11 +1,26 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useRef } from 'react';
-import { Plus, Search, Edit2, Trash2, Package, Image, Camera, FolderOpen } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, Image as ImageIcon, Camera, FolderOpen, Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useItems, useCreateItem, useUpdateItem, useDeleteItem } from '@/hooks/useItems';
-import { cn } from '@/lib/utils';
-import type { Item, ItemInput } from '@/types';
+import type { Item, ItemCategory, ItemInput } from '@/types';
+
+const ITEM_CATEGORY_VALUES: ItemCategory[] = ['product', 'part', 'service', 'etc'];
+
+function isImportRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeItemCategory(value: unknown): ItemCategory | undefined {
+  return ITEM_CATEGORY_VALUES.includes(value as ItemCategory) ? value as ItemCategory : undefined;
+}
+
+function normalizePrice(value: unknown): number {
+  const price = Number(value || 0);
+  return Number.isFinite(price) ? price : 0;
+}
 
 export function ItemsPage() {
   const { data: items = [], isLoading } = useItems();
@@ -16,6 +31,7 @@ export function ItemsPage() {
   // 파일 입력 ref
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // 상태
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,6 +47,79 @@ export function ItemsPage() {
     photo_url: '',
     memo: '',
   });
+
+  const handleExportItems = () => {
+    const exportRows = items.map(({ name, price, category, memo, photo_url }) => ({
+      name,
+      price,
+      category,
+      memo,
+      photo_url,
+    }));
+    const payload = {
+      kind: 'schedule-app-items',
+      exportedAt: new Date().toISOString(),
+      count: exportRows.length,
+      data: exportRows,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `schedule-app-items-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportItems = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text());
+      const rows = Array.isArray(parsed) ? parsed : parsed.data;
+      if (!Array.isArray(rows)) {
+        alert('품목 파일 형식이 올바르지 않습니다.');
+        return;
+      }
+
+      const inputs: ItemInput[] = rows
+        .filter(isImportRecord)
+        .map((row) => ({
+          name: String(row.name || '').trim(),
+          price: normalizePrice(row.price),
+          category: normalizeItemCategory(row.category),
+          memo: String(row.memo || ''),
+          photo_url: String(row.photo_url || ''),
+        }))
+        .filter(row => row.name);
+
+      if (inputs.length === 0) {
+        alert('불러올 품목 데이터가 없습니다.');
+        return;
+      }
+      if (!confirm(`${inputs.length}건의 품목을 기존 데이터에 추가할까요?`)) return;
+
+      let successCount = 0;
+      let failCount = 0;
+      for (const input of inputs) {
+        try {
+          await createItem.mutateAsync(input);
+          successCount += 1;
+        } catch (error) {
+          console.error('품목 항목 불러오기 실패:', input, error);
+          failCount += 1;
+        }
+      }
+      alert(`품목 불러오기 완료\n성공: ${successCount}건\n실패: ${failCount}건`);
+    } catch (error) {
+      console.error('품목 불러오기 실패:', error);
+      alert('품목 불러오기에 실패했습니다.');
+    }
+  };
 
   // 검색
   const filteredItems = items.filter((item: Item) =>
@@ -127,15 +216,32 @@ export function ItemsPage() {
   return (
     <div className="space-y-4">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
           <Package className="h-5 w-5" />
           품목 관리
         </h2>
-        <Button onClick={handleOpenAdd} className="gap-2">
-          <Plus className="h-4 w-4" />
-          품목 등록
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleExportItems} variant="outline" className="gap-1.5" size="sm">
+            <Download className="h-4 w-4" />
+            외부저장
+          </Button>
+          <Button onClick={() => importFileRef.current?.click()} variant="outline" className="gap-1.5" size="sm">
+            <Upload className="h-4 w-4" />
+            불러오기
+          </Button>
+          <Button onClick={handleOpenAdd} className="gap-2" size="sm">
+            <Plus className="h-4 w-4" />
+            품목 등록
+          </Button>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleImportItems}
+          />
+        </div>
       </div>
 
       {/* 검색 */}
@@ -205,7 +311,7 @@ export function ItemsPage() {
                         />
                       ) : (
                         <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                          <Image className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                          <ImageIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" aria-hidden="true" />
                         </div>
                       )}
                     </div>
@@ -356,7 +462,7 @@ export function ItemsPage() {
                       src={previewImage}
                       alt="미리보기"
                       className="w-32 h-32 object-cover rounded-lg"
-                      onError={(e) => {
+                      onError={() => {
                         setPreviewImage(null);
                       }}
                     />

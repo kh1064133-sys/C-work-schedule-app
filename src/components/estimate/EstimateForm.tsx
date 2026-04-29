@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useItems } from "@/hooks/useItems";
@@ -89,21 +90,6 @@ async function saveStampToDB(companyId: number, dataUrl: string | null): Promise
   } catch (e) { console.warn("IndexedDB stamp save failed:", e); }
 }
 
-async function loadStampFromDB(companyId: number): Promise<string | null> {
-  try {
-    const db = await openStampDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STAMP_STORE, "readonly");
-      const req = tx.objectStore(STAMP_STORE).get(`stamp_${companyId}`);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("IndexedDB stamp load failed:", e);
-    return null;
-  }
-}
-
 async function loadAllStampsFromDB(companyIds: number[]): Promise<Record<number, string | null>> {
   const result: Record<number, string | null> = {};
   try {
@@ -150,8 +136,6 @@ function removeWhiteBg(dataUrl: string): Promise<string> {
       }
 
       const d = imageData.data;
-      const total = d.length / 4;
-
       // 1단계: 전체 이미지의 배경색 자동 감지 (가장 많은 색상 = 배경)
       // 모서리 영역 샘플링으로 배경색 추정
       const cornerPixels: [number, number, number][] = [];
@@ -305,6 +289,11 @@ export default function EstimateForm() {
   const [date, setDate] = useState(() => loadFromStorage(`${STORAGE_KEY}_date`, "2026-02-22"));
   const [vatIncluded, setVatIncluded] = useState(() => loadFromStorage(`${STORAGE_KEY}_vat`, true));
   const [note, setNote] = useState(() => loadFromStorage(`${STORAGE_KEY}_note`, "• 본 견적서는 발행일로부터 30일간 유효합니다.\n• 설치비 별도 문의 바랍니다."));
+  const [bankAccount, setBankAccount] = useState(() => loadFromStorage(`${STORAGE_KEY}_bankAccount`, {
+    bank: "은행",
+    accountNo: "",
+    holder: "김기현",
+  }));
 
   // IndexedDB에서 도장 이미지 복원
   const [stampsLoaded, setStampsLoaded] = useState(false);
@@ -339,6 +328,7 @@ export default function EstimateForm() {
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_date`, date); }, [date]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_vat`, vatIncluded); }, [vatIncluded]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_note`, note); }, [note]);
+  useEffect(() => { saveToStorage(`${STORAGE_KEY}_bankAccount`, bankAccount); }, [bankAccount]);
 
   const activeCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
   const updateActiveCompany = (field: keyof Company, value: string | null) =>
@@ -517,6 +507,7 @@ export default function EstimateForm() {
   .est-note textarea { font-size: 10px !important; padding: 5px 10px !important; min-height: 24px !important; height: auto !important; }
   .est-note .est-note-header { padding: 4px 10px !important; font-size: 10.5px !important; }
   .est-note-empty { display: none !important; }
+  .est-bank-account { margin-bottom: 4px !important; font-size: 10px !important; }
   .est-signature { margin-bottom: 4px !important; gap: 10px !important; margin-top: 6px !important; }
   .est-stamp { width: 60px !important; height: 60px !important; }
   .est-signature div[style*="font-size: 13px"] { font-size: 11px !important; }
@@ -568,11 +559,19 @@ ${cloned.outerHTML}
     }
   }, []);
 
-  const inputStyle: React.CSSProperties = {
-    outline: "none", border: "none", background: "transparent",
-    fontFamily: "inherit", fontSize: "inherit", color: "inherit",
-    width: "100%", padding: "0",
-  };
+const inputStyle: React.CSSProperties = {
+  outline: "none", border: "none", background: "transparent",
+  fontFamily: "inherit", fontSize: "inherit", color: "inherit",
+  width: "100%", padding: "0",
+};
+
+const bankInputWidth = (value: string, minCh: number) => {
+  const visualCh = Array.from(value || "").reduce((sum, char) => {
+    return sum + (/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(char) ? 2 : 1);
+  }, 0);
+
+  return `${Math.max(minCh, visualCh + 3)}ch`;
+};
 
   return (
     <div className="estimate-wrapper" style={{
@@ -672,6 +671,7 @@ ${cloned.outerHTML}
           .est-note textarea { font-size: 9px !important; padding: 4px 8px !important; min-height: 20px !important; height: auto !important; }
           .est-note .est-note-header { padding: 3px 8px !important; font-size: 10px !important; }
           .est-note-empty { display: none !important; }
+          .est-bank-account { margin-bottom: 4px !important; font-size: 10px !important; }
 
           /* === 서명+도장 === */
           .est-signature { margin-bottom: 2px !important; gap: 8px !important; margin-top: 4px !important; }
@@ -792,8 +792,8 @@ ${cloned.outerHTML}
           <div className="est-parties" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px", marginBottom: "22px" }}>
 
             {/* 수신처 */}
-            <div style={{ border: "2px solid #1a237e", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ background: "#1a237e", color: "white", padding: "7px 14px", fontSize: "12px", fontWeight: "bold", letterSpacing: "3px" }}>수 신</div>
+            <div style={{ border: "2px solid #1a237e", borderRadius: "8px", overflow: "visible" }}>
+              <div style={{ background: "#1a237e", color: "white", padding: "7px 14px", fontSize: "12px", fontWeight: "bold", letterSpacing: "3px", borderRadius: "6px 6px 0 0" }}>수 신</div>
               <div style={{ padding: "12px 14px" }}>
                 {/* 거래처명 — 검색 가능 */}
                 <div style={{ display: "flex", marginBottom: "5px", fontSize: "12.5px", position: "relative" }}>
@@ -1177,6 +1177,71 @@ ${cloned.outerHTML}
             </div>
             <textarea value={note} onChange={e => setNote(e.target.value)}
               rows={3} style={{ width: "100%", padding: "10px 14px", fontSize: "12.5px", color: "#555", boxSizing: "border-box", lineHeight: 1.7 }} />
+          </div>
+
+          <div className="est-bank-account" style={{
+            width: "fit-content",
+            minWidth: "460px",
+            maxWidth: "none",
+            marginBottom: "12px",
+            padding: "9px 14px",
+            fontSize: "15px",
+            color: "#1d4ed8",
+            background: "#ffe4ec",
+            border: "2px solid #f9a8d4",
+            borderRadius: "4px",
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "nowrap",
+            gap: "10px",
+            overflow: "visible",
+            whiteSpace: "nowrap",
+            boxShadow: "0 2px 8px rgba(244, 114, 182, 0.18)",
+          }}>
+            <span style={{ fontWeight: 800, flexShrink: 0 }}>입금계좌:</span>
+            <input
+              value={bankAccount.bank}
+              onChange={e => setBankAccount(prev => ({ ...prev, bank: e.target.value }))}
+              placeholder="은행"
+              style={{
+                ...inputStyle,
+                color: "#1d4ed8",
+                fontSize: "15px",
+                fontWeight: 800,
+                width: bankInputWidth(bankAccount.bank, 5),
+                flexShrink: 0,
+              }}
+            />
+            <input
+              value={bankAccount.accountNo}
+              onChange={e => setBankAccount(prev => ({ ...prev, accountNo: e.target.value }))}
+              placeholder="계좌번호"
+              style={{
+                ...inputStyle,
+                color: "#1d4ed8",
+                fontSize: "15px",
+                fontWeight: 800,
+                width: bankInputWidth(bankAccount.accountNo, 12),
+                minWidth: "130px",
+                maxWidth: "none",
+                flex: "0 0 auto",
+              }}
+            />
+            <input
+              value={bankAccount.holder}
+              onChange={e => setBankAccount(prev => ({ ...prev, holder: e.target.value }))}
+              placeholder="예금주"
+              style={{
+                ...inputStyle,
+                color: "#1d4ed8",
+                fontSize: "15px",
+                fontWeight: 800,
+                width: bankInputWidth(bankAccount.holder, 8),
+                minWidth: "120px",
+                maxWidth: "none",
+                flex: "0 0 auto",
+              }}
+            />
           </div>
 
           {/* 서명 + 도장 영역 */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Car, Wrench, Fuel, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,13 +15,34 @@ type VehicleTab = 'info' | 'maintenance' | 'fuel' | 'insurance';
 
 const VEHICLE_INFO_KEY = 'vehicle_info';
 const VEHICLE_INSURANCE_KEY = 'vehicle_insurance';
+const DEFAULT_VEHICLE_INFO = { plate: '', model: '' };
+const DEFAULT_INSURANCE_INFO = {
+  insurance_expiry: '', insurance_company: '', insurance_cost: '',
+  car_tax_date: '', inspection_expiry: '', license_inspection_expiry: '',
+};
 
 function loadVehicleInfo() {
-  if (typeof window === 'undefined') return { plate: '', model: '' };
+  if (typeof window === 'undefined') return DEFAULT_VEHICLE_INFO;
   try {
     const saved = localStorage.getItem(VEHICLE_INFO_KEY);
-    return saved ? JSON.parse(saved) : { plate: '', model: '' };
-  } catch { return { plate: '', model: '' }; }
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      plate: typeof parsed?.plate === 'string' ? parsed.plate : '',
+      model: typeof parsed?.model === 'string' ? parsed.model : '',
+    };
+  } catch { return DEFAULT_VEHICLE_INFO; }
+}
+
+function loadInsuranceInfo() {
+  if (typeof window === 'undefined') return DEFAULT_INSURANCE_INFO;
+  try {
+    const saved = localStorage.getItem(VEHICLE_INSURANCE_KEY);
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      ...DEFAULT_INSURANCE_INFO,
+      ...(typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : {}),
+    };
+  } catch { return DEFAULT_INSURANCE_INFO; }
 }
 
 const CATEGORIES: { value: MaintenanceCategory; label: string }[] = [
@@ -76,17 +97,10 @@ function VehicleInfoTab() {
 
 // ===== 보험/세금 탭 =====
 function InsuranceTab() {
-  const [info, setInfo] = useState({
-    insurance_expiry: '', insurance_company: '', insurance_cost: '',
-    car_tax_date: '', inspection_expiry: '', license_inspection_expiry: '',
-  });
+  const [info, setInfo] = useState(DEFAULT_INSURANCE_INFO);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const saved = localStorage.getItem(VEHICLE_INSURANCE_KEY);
-      if (saved) setInfo(JSON.parse(saved));
-    } catch {}
+    setInfo(loadInsuranceInfo());
   }, []);
 
   const save = (field: string, value: string) => {

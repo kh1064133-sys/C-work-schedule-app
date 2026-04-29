@@ -28,9 +28,7 @@ export async function updateSession(request: NextRequest) {
   )
 
   // 세션 갱신 - getUser()는 auth token을 검증함
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  await supabase.auth.getUser()
 
   // 보호된 라우트 체크 (현재는 비활성화 - 인증 없이 사용 가능)
   // if (!user && !request.nextUrl.pathname.startsWith('/login')) {

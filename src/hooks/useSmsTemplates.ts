@@ -21,14 +21,22 @@ export interface SmsTemplateDB {
 function loadLocal(): Record<string, string> {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
+    const parsed = saved ? JSON.parse(saved) : {};
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([, value]) => typeof value === 'string')
+    ) as Record<string, string>;
   } catch { return {}; }
 }
 
 function saveLocal(smsNum: number, text: string) {
   const all = loadLocal();
   all[`shared_${smsNum}`] = text;
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(all));
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(all));
+  } catch {}
 }
 
 function localToTemplates(): SmsTemplateDB[] {

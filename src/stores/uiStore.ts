@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { EventIcon, PaymentMethod, ScheduleType } from '@/types';
 
 type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy' | 'install' | 'vehicle';
 
@@ -6,9 +7,13 @@ export interface CopiedScheduleData {
   title: string | null;
   unit: string | null;
   memo: string | null;
-  schedule_type: string | null;
+  schedule_type: ScheduleType | null;
   amount: number;
-  payment_method: string | null;
+  payment_method: PaymentMethod | null;
+  event_icon?: EventIcon | null;
+  is_done?: boolean;
+  is_reserved?: boolean;
+  is_paid?: boolean;
 }
 
 interface UIState {

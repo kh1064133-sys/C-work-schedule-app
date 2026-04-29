@@ -49,6 +49,8 @@
 
 :root {
   --radius: 0.625rem;
+  --font-geist-sans: "Segoe UI", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-geist-mono: "Consolas", "SFMono-Regular", "Courier New", monospace;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

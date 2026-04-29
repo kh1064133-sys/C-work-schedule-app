@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, Building2, MapPin, X, FileText } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Building2, MapPin, X, FileText, Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '@/hooks/useClients';
-import { cn } from '@/lib/utils';
 import type { Client, ClientType, ClientInput } from '@/types';
 import "@/app/clients-compat.css";
 
@@ -48,11 +47,22 @@ const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   etc: '기타',
 };
 
+const CLIENT_TYPE_VALUES: ClientType[] = ['apt', 'villa', 'officetel', 'house', 'etc'];
+
+function isImportRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeClientType(value: unknown): ClientType | undefined {
+  return CLIENT_TYPE_VALUES.includes(value as ClientType) ? value as ClientType : undefined;
+}
+
 export function ClientsPage() {
   const { data: clients = [], isLoading } = useClients();
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
   const deleteClient = useDeleteClient();
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // 상태
   const [searchTerm, setSearchTerm] = useState('');
@@ -71,6 +81,81 @@ export function ClientsPage() {
     households: '',
     memo: '',
   });
+
+  const handleExportClients = () => {
+    const exportRows = clients.map(({ name, type, address, bunji, households, memo }) => ({
+      name,
+      type,
+      address,
+      bunji,
+      households,
+      memo,
+    }));
+    const payload = {
+      kind: 'schedule-app-clients',
+      exportedAt: new Date().toISOString(),
+      count: exportRows.length,
+      data: exportRows,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `schedule-app-clients-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportClients = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text());
+      const rows = Array.isArray(parsed) ? parsed : parsed.data;
+      if (!Array.isArray(rows)) {
+        alert('거래처 파일 형식이 올바르지 않습니다.');
+        return;
+      }
+
+      const inputs: ClientInput[] = rows
+        .filter(isImportRecord)
+        .map((row) => ({
+          name: String(row.name || '').trim(),
+          type: normalizeClientType(row.type),
+          address: String(row.address || ''),
+          bunji: String(row.bunji || ''),
+          households: String(row.households || ''),
+          memo: String(row.memo || ''),
+        }))
+        .filter(row => row.name);
+
+      if (inputs.length === 0) {
+        alert('불러올 거래처 데이터가 없습니다.');
+        return;
+      }
+      if (!confirm(`${inputs.length}건의 거래처를 기존 데이터에 추가할까요?`)) return;
+
+      let successCount = 0;
+      let failCount = 0;
+      for (const input of inputs) {
+        try {
+          await createClient.mutateAsync(input);
+          successCount += 1;
+        } catch (error) {
+          console.error('거래처 항목 불러오기 실패:', input, error);
+          failCount += 1;
+        }
+      }
+      alert(`거래처 불러오기 완료\n성공: ${successCount}건\n실패: ${failCount}건`);
+    } catch (error) {
+      console.error('거래처 불러오기 실패:', error);
+      alert('거래처 불러오기에 실패했습니다.');
+    }
+  };
 
   // 필터링 및 검색
   const filteredClients = clients.filter((client: Client) => {
@@ -188,10 +273,27 @@ export function ClientsPage() {
           <Building2 className="h-5 w-5" />
           거래처 관리
         </h2>
-        <Button onClick={handleOpenAdd} className="gap-2" size="sm">
-          <Plus className="h-4 w-4" />
-          거래처 등록
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleExportClients} variant="outline" className="gap-1.5" size="sm">
+            <Download className="h-4 w-4" />
+            외부저장
+          </Button>
+          <Button onClick={() => importFileRef.current?.click()} variant="outline" className="gap-1.5" size="sm">
+            <Upload className="h-4 w-4" />
+            불러오기
+          </Button>
+          <Button onClick={handleOpenAdd} className="gap-2" size="sm">
+            <Plus className="h-4 w-4" />
+            거래처 등록
+          </Button>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleImportClients}
+          />
+        </div>
       </div>
 
       {/* 검색 및 필터 */}

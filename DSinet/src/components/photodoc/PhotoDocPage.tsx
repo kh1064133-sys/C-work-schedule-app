@@ -34,6 +34,7 @@ interface DocState {
   date: string;
   companyName?: string;
   logo: string | null;
+  headerLogo: string | null;    // ← 추가
   logoPos: { x: number; y: number };
   logoSize: { w: number; h: number };
   titleBoxPos: { x: number; y: number };
@@ -153,6 +154,7 @@ function normalizeDoc(d: any): DocState {
     date: d.date ?? def.date,
     companyName: d.companyName ?? def.companyName,
     logo: d.logo ?? null,
+    headerLogo: d.headerLogo ?? null,    // ← 추가
     logoPos: d.logoPos ?? def.logoPos,
     logoSize: d.logoSize ?? def.logoSize,
     titleBoxPos: d.titleBoxPos ?? def.titleBoxPos,
@@ -170,6 +172,7 @@ function defaultState(templateType: number = 1): DocState {
     date: templateType === 2 ? `${now.getFullYear()}.  ${String(now.getMonth() + 1).padStart(2, '0')}.` : `${now.getFullYear()}년 ${now.getMonth() + 1}월`,
     companyName: '대성아이넷㈜',
     logo: null,
+    headerLogo: null,    // ← 추가
     logoPos: { x: 250, y: 650 },
     logoSize: { w: 200, h: 80 },
     titleBoxPos: { x: 48, y: 280 },
@@ -180,21 +183,47 @@ function defaultState(templateType: number = 1): DocState {
 }
 
 /* ─────────────── Editable text (click to edit) ─────────────── */
-function EditableText({ value, onChange, className, style, tag }: {
+function EditableText({ value, onChange, className, style, tag, multiline }: {
   value: string; onChange: (v: string) => void;
   className?: string; style?: React.CSSProperties; tag?: 'h1' | 'h2' | 'p' | 'span';
+  multiline?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [tmp, setTmp] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { setTmp(value); }, [value]);
-  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+  useEffect(() => {
+    if (editing) {
+      if (multiline) {
+        textareaRef.current?.focus();
+      } else {
+        inputRef.current?.focus();
+      }
+    }
+  }, [editing, multiline]);
 
   if (editing) {
+    if (multiline) {
+      return (
+        <textarea
+          ref={textareaRef}
+          className={`bg-yellow-50 border-b-2 border-blue-400 outline-none text-center resize-none ${className || ''}`}
+          style={{ ...style, width: '100%', minHeight: '2.5em' }}
+          value={tmp}
+          onChange={e => setTmp(e.target.value)}
+          onBlur={() => { setEditing(false); onChange(tmp); }}
+          onKeyDown={e => { if (e.key === 'Escape') { setEditing(false); onChange(tmp); } }}
+        />
+      );
+    }
     return (
-      <input ref={inputRef} className={`bg-yellow-50 border-b-2 border-blue-400 outline-none text-center ${className || ''}`}
-        style={{ ...style, width: '100%' }} value={tmp}
+      <input
+        ref={inputRef}
+        className={`bg-yellow-50 border-b-2 border-blue-400 outline-none text-center ${className || ''}`}
+        style={{ ...style, width: '100%' }}
+        value={tmp}
         onChange={e => setTmp(e.target.value)}
         onBlur={() => { setEditing(false); onChange(tmp); }}
         onKeyDown={e => { if (e.key === 'Enter') { setEditing(false); onChange(tmp); } }}
@@ -202,7 +231,15 @@ function EditableText({ value, onChange, className, style, tag }: {
     );
   }
   const Tag = tag || 'span';
-  return <Tag className={`cursor-pointer hover:bg-yellow-50/50 transition-colors ${className || ''}`} style={style} onClick={() => setEditing(true)}>{value || '(클릭하여 입력)'}</Tag>;
+  return (
+    <Tag
+      className={`cursor-pointer hover:bg-yellow-50/50 transition-colors ${className || ''}`}
+      style={{ ...style, whiteSpace: 'pre-line' }}
+      onClick={() => setEditing(true)}
+    >
+      {value || '(클릭하여 입력)'}
+    </Tag>
+  );
 }
 
 /* ──────────────── Draggable + Resizable Logo ──────────────── */
@@ -278,8 +315,9 @@ function DraggableBox({ pos, onChangePos, children, style }: {
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // EditableText 클릭 시 드래그 방지
-    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+    // EditableText 클릭 시 드래그 방지 (INPUT, TEXTAREA 모두 예외)
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     e.preventDefault();
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
     const onMove = (ev: MouseEvent) => {
@@ -313,7 +351,7 @@ function CoverPage({ doc, onChange }: { doc: DocState; onChange: (d: Partial<Doc
         style={{ width: 'calc(100% - 96px)' }}>
         <div style={{ border: '3px solid #2563eb', borderRadius: 4, padding: '48px 24px 44px', textAlign: 'center' }}>
           <EditableText value={doc.docTitle ?? '사 진 대 지'} onChange={v => onChange({ docTitle: v })} style={{ fontSize: 42, fontWeight: 700, letterSpacing: 20, color: '#1e3a5f', marginBottom: 28, display: 'block' }} tag="h1" />
-          <EditableText value={doc.projectName} onChange={v => onChange({ projectName: v })} style={{ fontSize: 22, fontWeight: 600, color: '#333', display: 'block' }} />
+          <EditableText value={doc.projectName} onChange={v => onChange({ projectName: v })} multiline style={{ fontSize: 22, fontWeight: 600, color: '#333', display: 'block' }} />
         </div>
       </DraggableBox>
       {/* 날짜 (드래그 가능) */}
@@ -444,14 +482,44 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
   };
 
   return (
-    <div className="photo-page" style={{ width: 720, height: 960, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '80px 32px 40px' }}>
+    <div className="photo-page photo-page-template1" style={{ width: 720, height: 1043, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '80px 32px 30px', boxSizing: 'border-box' }}>
       {/* 헤더 */}
       <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px', border: '2px solid #333', marginBottom: 6 }}>
-        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5, height: 80, overflow: 'hidden' }}>
-          {doc.logo ? <img src={doc.logo} alt="로고" style={{ maxHeight: 60, maxWidth: 108, objectFit: 'contain' }} /> : <span style={{ fontSize: 10, color: '#aaa' }}>로고</span>}
+        <div
+          style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 5, minHeight: 80, cursor: 'pointer', position: 'relative' }}
+          onDoubleClick={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = (e: any) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => onDocChange({ headerLogo: reader.result as string });
+              reader.readAsDataURL(file);
+            };
+            input.click();
+          }}
+        >
+          {(doc.headerLogo ?? doc.logo) ? (
+            <img src={doc.headerLogo ?? doc.logo!} alt="로고" style={{ maxHeight: 60, maxWidth: 108, objectFit: 'contain' }} />
+          ) : (
+            <span style={{ fontSize: 9, color: '#aaa', textAlign: 'center' }}>로고<br/>더블클릭</span>
+          )}
         </div>
-        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
-          <span style={{ fontWeight: 700, fontSize: 18 }}>{doc.projectName}</span>
+        <div style={{ borderRight: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5px 8px', overflow: 'hidden' }}>
+          <EditableText
+            value={doc.projectName}
+            onChange={v => onDocChange({ projectName: v })}
+            multiline
+            style={{
+              fontWeight: 700,
+              fontSize: Math.max(...doc.projectName.split('\n').map(l => l.length)) > 20 ? 14 : 18,
+              lineHeight: 1.4,
+              textAlign: 'center',
+              wordBreak: 'keep-all',
+            }}
+          />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
           <span style={{ fontSize: 16, color: '#555' }}>{doc.date}</span>
@@ -473,7 +541,6 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
         <div style={{ display: 'flex', flex: 1 }}>
           {[0, 1].map(idx => {
             const photo = page.photos[idx];
-            const aspectH = Math.round((page.photos[0] || page.photos[1]) ? 220 : 220);
             return (
               <div key={idx} style={{ borderRight: idx === 0 ? '2px solid #333' : undefined, display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <div style={{ position: 'relative', flex: 1, background: '#fafafa', overflow: 'hidden' }}>
@@ -554,12 +621,12 @@ function PhotoPageView({ page, doc, pageIndex, onPageChange, onDocChange }: {
       </div>
 
       {/* 하단 로고 */}
-      <div style={{ marginTop: 'auto', paddingTop: 8, textAlign: 'center' }}>
+      <div style={{ paddingTop: 8, textAlign: 'center' }}>
         {doc.logo && <img src={doc.logo} alt="로고" style={{ maxHeight: 32, objectFit: 'contain', opacity: 0.6 }} />}
       </div>
 
       {/* 페이지 번호 */}
-      <div style={{ paddingTop: 25, textAlign: 'center', fontSize: 13, color: '#333' }}>
+      <div style={{ paddingTop: 14, textAlign: 'center', fontSize: 13, color: '#333' }}>
         {pageIndex + 1}
       </div>
     </div>
@@ -592,7 +659,7 @@ function PhotoPageView2({ page, doc, pageIndex, onPageChange, onDocChange }: {
   const BD = `2px solid ${NAVY}`;
 
   return (
-    <div className="photo-page" style={{ width: 720, height: 960, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '24px 24px 20px' }}>
+    <div className="photo-page photo-page-template2" style={{ width: 720, height: 1043, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '24px 24px 20px', boxSizing: 'border-box' }}>
       {/* 상단 파란색 라인 */}
       <div style={{ height: 5, background: '#2563eb' }} />
       {/* MODEL : 공사명 */}
@@ -709,7 +776,7 @@ function PhotoPageView3({ page, doc, pageIndex, onPageChange, onDocChange }: {
   const renderPhotoCell = (idx: number) => {
     const photo = page.photos[idx];
     return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: idx % 2 === 0 ? '1px solid #333' : undefined }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderRight: idx % 2 === 0 ? '1px solid #333' : undefined }}>
         {/* 사진 라벨 */}
         <div style={{ borderBottom: '1px solid #333', padding: '4px 6px', textAlign: 'center', background: '#fff' }}>
           <EditableText value={labels[idx]} onChange={v => {
@@ -719,7 +786,7 @@ function PhotoPageView3({ page, doc, pageIndex, onPageChange, onDocChange }: {
           }} style={{ fontSize: 13, fontWeight: 600, color: '#333' }} />
         </div>
         {/* 사진 영역 */}
-        <div style={{ flex: 1, position: 'relative', background: '#fafafa', overflow: 'hidden', minHeight: 200 }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#fafafa', overflow: 'hidden' }}>
           {photo ? (
             <>
               <img src={photo.src} alt="" style={{ position: 'absolute', inset: 5, width: 'calc(100% - 10px)', height: 'calc(100% - 10px)', objectFit: 'cover' }} />
@@ -741,7 +808,7 @@ function PhotoPageView3({ page, doc, pageIndex, onPageChange, onDocChange }: {
   };
 
   return (
-    <div className="photo-page" style={{ width: 720, height: 960, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '32px 32px 24px' }}>
+    <div className="photo-page photo-page-template3" style={{ width: 720, height: 1043, position: 'relative', background: '#fff', margin: '0 auto 32px', boxShadow: '0 2px 16px rgba(0,0,0,.12)', fontFamily: '"Noto Sans KR", sans-serif', display: 'flex', flexDirection: 'column', padding: '32px 32px 24px', boxSizing: 'border-box', overflow: 'hidden' }}>
       {/* 제목 */}
       <div style={{ border: '2px solid #333', borderBottom: '1px solid #333', padding: '14px 16px', textAlign: 'center' }}>
         <EditableText value={page.pageTitle ?? '케이블 포설 작업'} onChange={v => onPageChange({ pageTitle: v })} style={{ fontSize: 22, fontWeight: 700, letterSpacing: 6, color: '#1a1a1a' }} tag="h2" />
@@ -774,19 +841,20 @@ function PhotoPageView3({ page, doc, pageIndex, onPageChange, onDocChange }: {
       </div>
 
       {/* 상단 사진 행 (2장) */}
-      <div style={{ flex: 1, display: 'flex', border: '1px solid #333' }}>
+      <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', border: '1px solid #333', boxSizing: 'border-box' }}>
         {renderPhotoCell(0)}
         {renderPhotoCell(1)}
       </div>
 
       {/* 하단 사진 행 (2장) */}
-      <div style={{ flex: 1, display: 'flex', borderLeft: '1px solid #333', borderRight: '1px solid #333', borderBottom: '1px solid #333' }}>
+      <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', borderLeft: '1px solid #333', borderRight: '1px solid #333', boxSizing: 'border-box' }}>
         {renderPhotoCell(2)}
         {renderPhotoCell(3)}
       </div>
+      <div className="photo-page-template3-bottom-rule" style={{ flexShrink: 0, height: 2, background: '#333' }} />
 
       {/* 페이지 번호 */}
-      <div style={{ paddingTop: 12, textAlign: 'center', fontSize: 13, color: '#333' }}>
+      <div style={{ flexShrink: 0, paddingTop: 12, textAlign: 'center', fontSize: 13, color: '#333' }}>
         {pageIndex + 1}
       </div>
     </div>
@@ -936,6 +1004,15 @@ export function PhotoDocPage() {
     const np = tt === 3 ? newPageT3(prev.pages.length + 1) : tt === 2 ? newPageT2() : newPage();
     return { ...prev, pages: [...prev.pages, np] };
   });
+
+  const insertPageAfter = (index: number) => setDoc(prev => {
+    const tt = prev.templateType ?? 1;
+    const np = tt === 3 ? newPageT3(index + 2) : tt === 2 ? newPageT2() : newPage();
+    const pages = [...prev.pages];
+    pages.splice(index + 1, 0, np);
+    return { ...prev, pages };
+  });
+
   const removePage = (id: string) => {
     if (!confirm('이 페이지를 삭제하시겠습니까?')) return;
     setDoc(prev => ({ ...prev, pages: prev.pages.filter(p => p.id !== id) }));
@@ -1002,9 +1079,38 @@ export function PhotoDocPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
         @media print {
+          @page { size: A4 portrait; margin: 8mm; }
           .no-print, .no-print-edit { display: none !important; }
           .photo-page { box-shadow: none !important; margin: 0 !important; page-break-after: always; }
-          body { margin: 0; padding: 0; }
+          .photo-page-template1 {
+            width: 194mm !important;
+            height: 281mm !important;
+            padding: 20mm 8mm 8mm !important;
+            box-sizing: border-box !important;
+          }
+          .photo-page-template2 {
+            width: 194mm !important;
+            height: 281mm !important;
+            padding: 8mm !important;
+            box-sizing: border-box !important;
+          }
+          .photo-page-template3 {
+            width: 194mm !important;
+            height: 276mm !important;
+            padding: 10mm 8mm 10mm !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+          }
+          .photo-page-template3-bottom-rule {
+            display: block !important;
+            height: 0.5mm !important;
+            min-height: 0.5mm !important;
+            background: #333 !important;
+            flex-shrink: 0 !important;
+          }
+          .photo-doc-bg { background: #fff !important; padding: 0 !important; }
+          body { margin: 0; padding: 0; background: #fff !important; }
+          html { background: #fff !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
@@ -1055,7 +1161,7 @@ export function PhotoDocPage() {
       </div>
 
       {/* 페이지 영역 */}
-      <div style={{ padding: '24px 0', background: '#e2e8f0', minHeight: '100vh' }}>
+      <div className="photo-doc-bg" style={{ padding: '24px 0', background: '#e2e8f0', minHeight: '100vh' }}>
         {/* 표지 */}
         {(doc.templateType ?? 1) === 3 ? null : (doc.templateType ?? 1) === 2 ? (
           <CoverPage2 doc={doc} onChange={updateDoc} />
@@ -1065,26 +1171,44 @@ export function PhotoDocPage() {
 
         {/* 사진 페이지들 */}
         {doc.pages.map((page, i) => (
-          <div key={page.id} style={{ position: 'relative' }}>
-            {/* 페이지 삭제 버튼 */}
-            <div className="no-print" style={{ position: 'absolute', top: -12, right: 'calc(50% - 360px + 8px)', zIndex: 10 }}>
-              <button style={{ fontSize: 11, padding: '2px 8px', border: '1px solid #fca5a5', borderRadius: 4, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}
-                onClick={() => removePage(page.id)}>
-                <Trash2 style={{ width: 12, height: 12, display: 'inline', marginRight: 2 }} /> 삭제
-              </button>
+          <div key={page.id}>
+            <div style={{ position: 'relative' }}>
+              {/* 페이지 삭제 버튼 */}
+              <div className="no-print" style={{ position: 'absolute', top: -12, right: 'calc(50% - 360px + 8px)', zIndex: 10 }}>
+                <button style={{ fontSize: 11, padding: '2px 8px', border: '1px solid #fca5a5', borderRadius: 4, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}
+                  onClick={() => removePage(page.id)}>
+                  <Trash2 style={{ width: 12, height: 12, display: 'inline', marginRight: 2 }} /> 삭제
+                </button>
+              </div>
+              {(doc.templateType ?? 1) === 3 ? (
+                <PhotoPageView3 page={page} doc={doc} pageIndex={i}
+                  onPageChange={p => updatePage(page.id, p)}
+                  onDocChange={updateDoc} />
+              ) : (doc.templateType ?? 1) === 2 ? (
+                <PhotoPageView2 page={page} doc={doc} pageIndex={i}
+                  onPageChange={p => updatePage(page.id, p)}
+                  onDocChange={updateDoc} />
+              ) : (
+                <PhotoPageView page={page} doc={doc} pageIndex={i}
+                  onPageChange={p => updatePage(page.id, p)}
+                  onDocChange={updateDoc} />
+              )}
             </div>
-            {(doc.templateType ?? 1) === 3 ? (
-              <PhotoPageView3 page={page} doc={doc} pageIndex={i}
-                onPageChange={p => updatePage(page.id, p)}
-                onDocChange={updateDoc} />
-            ) : (doc.templateType ?? 1) === 2 ? (
-              <PhotoPageView2 page={page} doc={doc} pageIndex={i}
-                onPageChange={p => updatePage(page.id, p)}
-                onDocChange={updateDoc} />
-            ) : (
-              <PhotoPageView page={page} doc={doc} pageIndex={i}
-                onPageChange={p => updatePage(page.id, p)}
-                onDocChange={updateDoc} />
+            {/* 페이지 사이 삽입 버튼 */}
+            {i < doc.pages.length - 1 && (
+              <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 32, margin: '0 auto', width: 720, gap: 8, opacity: 0.5, transition: 'opacity 0.2s' }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+              >
+                <div style={{ flex: 1, height: 1, background: '#94a3b8' }} />
+                <button
+                  onClick={() => insertPageAfter(i)}
+                  style={{ fontSize: 11, padding: '3px 10px', border: '1px solid #60a5fa', borderRadius: 12, background: '#eff6ff', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontWeight: 600 }}
+                >
+                  <Plus style={{ width: 12, height: 12 }} /> 여기에 페이지 삽입
+                </button>
+                <div style={{ flex: 1, height: 1, background: '#94a3b8' }} />
+              </div>
             )}
           </div>
         ))}

@@ -5,6 +5,15 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { X, RotateCcw, Pencil } from 'lucide-react';
 import type { Schedule, CompletionRecord } from '@/types';
+import { createClient } from '@/lib/supabase/client';
+import { SignaturePad, type SignaturePadHandle } from '@/components/shared/SignaturePad';
+
+type CompletionPhoto = {
+  id: string;
+  url: string;
+  file?: File;
+  saved: boolean;
+};
 
 interface CompletionPopupProps {
   schedule: Schedule;
@@ -18,11 +27,68 @@ interface CompletionPopupProps {
     content: string;
     amount: number;
     signature_data: string;
-  }) => void;
+    photo_urls: string[];
+  }) => void | Promise<void>;
   existingRecord?: CompletionRecord | null;
 }
 
+function formatScheduleMemo(memo: string | null | undefined): string {
+  if (!memo) return '';
+
+  try {
+    const parsed = JSON.parse(memo);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item ?? '')).filter(Boolean).join('\n');
+    }
+  } catch {
+    // Existing rows may still store content as plain text.
+  }
+
+  return memo;
+}
+
+function resizeImageFile(file: File, maxSize = 1280): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject(new Error('Canvas를 초기화할 수 없습니다.'));
+        return;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(image, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('사진 변환에 실패했습니다.'));
+        }
+      }, 'image/jpeg', 0.82);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('사진을 불러올 수 없습니다.'));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
 export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRecord }: CompletionPopupProps) {
+  const supabase = createClient();
   const hasRecord = !!existingRecord;
   const [isEditing, setIsEditing] = useState(false);
 
@@ -30,8 +96,14 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
   const [unitNumber, setUnitNumber] = useState(schedule.unit || '');
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
-  const [content, setContent] = useState(schedule.memo || '');
+  const [content, setContent] = useState(formatScheduleMemo(schedule.memo));
   const [amount, setAmount] = useState(schedule.amount || 0);
+  const [photos, setPhotos] = useState<CompletionPhoto[]>([]);
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photosRef = useRef<CompletionPhoto[]>([]);
+  const signaturePadRef = useRef<SignaturePadHandle>(null);
 
   // 서명 캔버스
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -51,6 +123,12 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
         setPhone(existingRecord.phone || '');
         setContent(existingRecord.content || '');
         setAmount(existingRecord.amount || 0);
+        setPhotos((existingRecord.photo_urls || []).slice(0, 5).map((url, index) => ({
+          id: `saved-${index}-${url}`,
+          url,
+          saved: true,
+        })));
+        setPreviewPhotoUrl(null);
         setShowSavedSignature(!!existingRecord.signature_data);
         setIsEditing(false);
         hasSignatureRef.current = !!existingRecord.signature_data;
@@ -59,14 +137,28 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
         setUnitNumber(schedule.unit || '');
         setCustomerName('');
         setPhone('');
-        setContent(schedule.memo || '');
+        setContent(formatScheduleMemo(schedule.memo));
         setAmount(schedule.amount || 0);
+        setPhotos([]);
+        setPreviewPhotoUrl(null);
         setShowSavedSignature(false);
         setIsEditing(true);
         hasSignatureRef.current = false;
       }
     }
   }, [open, schedule, existingRecord]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    return () => {
+      photosRef.current.forEach((photo) => {
+        if (!photo.saved) URL.revokeObjectURL(photo.url);
+      });
+    };
+  }, []);
 
   const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -194,6 +286,11 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
   }, []);
 
   const clearSignature = useCallback(() => {
+    signaturePadRef.current?.clear();
+    setShowSavedSignature(false);
+    hasSignatureRef.current = false;
+    return;
+
     if (showSavedSignature) {
       // 저장된 서명 이미지 → 캔버스로 전환 후 초기화
       setShowSavedSignature(false);
@@ -207,30 +304,102 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
     }
   }, [showSavedSignature, initCanvas]);
 
-  const handleConfirm = () => {
+  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (selectedFiles.length === 0) return;
+
+    setPhotos((current) => {
+      const remaining = Math.max(0, 5 - current.length);
+      const nextFiles = selectedFiles.slice(0, remaining);
+
+      if (selectedFiles.length > remaining) {
+        alert('사진은 최대 5장까지 첨부할 수 있습니다.');
+      }
+
+      return [
+        ...current,
+        ...nextFiles.map((file, index) => ({
+          id: `new-${Date.now()}-${index}`,
+          url: URL.createObjectURL(file),
+          file,
+          saved: false,
+        })),
+      ];
+    });
+
+    event.target.value = '';
+  };
+
+  const removePhoto = (id: string) => {
+    setPhotos((current) => {
+      const target = current.find((photo) => photo.id === id);
+      if (target && !target.saved) URL.revokeObjectURL(target.url);
+      return current.filter((photo) => photo.id !== id);
+    });
+  };
+
+  const uploadPhotos = async () => {
+    const uploadedUrls: string[] = [];
+    const savedUrls = photos.filter((photo) => photo.saved).map((photo) => photo.url);
+    const newPhotos = photos.filter((photo) => !photo.saved && photo.file);
+    const timestamp = Date.now();
+
+    for (let index = 0; index < newPhotos.length; index += 1) {
+      const photo = newPhotos[index];
+      if (!photo.file) continue;
+
+      const resizedBlob = await resizeImageFile(photo.file);
+      const storageFileName = `${schedule.id}_${timestamp}_${index}.jpg`;
+
+      const { error } = await supabase.storage
+        .from('completion-photos')
+        .upload(storageFileName, resizedBlob, {
+          contentType: 'image/jpeg',
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data } = supabase.storage
+        .from('completion-photos')
+        .getPublicUrl(storageFileName);
+
+      uploadedUrls.push(data.publicUrl);
+    }
+
+    return [...savedUrls, ...uploadedUrls];
+  };
+
+  const handleConfirm = async () => {
     // 서명 확인: 저장된 서명이 있거나 새로 그린 서명이 있어야 함
-    if (!showSavedSignature && !hasSignatureRef.current) {
+    if (!signaturePadRef.current?.hasSignature()) {
       alert('고객 서명이 필요합니다.');
       return;
     }
 
-    let signatureData = '';
-    if (showSavedSignature && existingRecord?.signature_data) {
-      signatureData = existingRecord.signature_data;
-    } else {
-      const canvas = canvasRef.current;
-      signatureData = canvas ? canvas.toDataURL('image/png') : '';
-    }
+    setIsSaving(true);
 
-    onConfirm({
-      apartment_name: apartmentName,
-      unit_number: unitNumber,
-      customer_name: customerName,
-      phone,
-      content,
-      amount,
-      signature_data: signatureData,
-    });
+    const signatureData = signaturePadRef.current?.getDataUrl() || '';
+
+    try {
+      const photoUrls = await uploadPhotos();
+
+      await onConfirm({
+        apartment_name: apartmentName,
+        unit_number: unitNumber,
+        customer_name: customerName,
+        phone,
+        content,
+        amount,
+        signature_data: signatureData,
+        photo_urls: photoUrls,
+      });
+    } catch (error) {
+      console.error('완료 확인서 저장 실패:', error);
+      alert('완료 확인서 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // 수정 모드 전환
@@ -332,6 +501,91 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
               />
             </div>
 
+            {/* 사진 촬영 */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoSelect}
+                style={{ display: 'none' }}
+                disabled={hasRecord && !isEditing}
+              />
+              {(isEditing || !hasRecord) && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={photos.length >= 5 || isSaving}
+                  style={{
+                    width: '100%',
+                    height: 42,
+                    border: '1px solid #16a34a',
+                    borderRadius: 8,
+                    background: photos.length >= 5 || isSaving ? '#f3f4f6' : '#f0fdf4',
+                    color: photos.length >= 5 || isSaving ? '#9ca3af' : '#15803d',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: photos.length >= 5 || isSaving ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  📷 사진 촬영 ({photos.length}/5)
+                </button>
+              )}
+              {photos.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginTop: 8 }}>
+                  {photos.map((photo) => (
+                    <div
+                      key={photo.id}
+                      onClick={() => setPreviewPhotoUrl(photo.url)}
+                      style={{
+                        position: 'relative',
+                        aspectRatio: '1 / 1',
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        border: '1px solid #e5e7eb',
+                        background: '#f9fafb',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <img
+                        src={photo.url}
+                        alt="완료 사진"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                      {(isEditing || !hasRecord) && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removePhoto(photo.id);
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: 3,
+                            right: 3,
+                            width: 22,
+                            height: 22,
+                            border: 'none',
+                            borderRadius: 999,
+                            background: 'rgba(220,38,38,0.92)',
+                            color: '#fff',
+                            fontSize: 14,
+                            fontWeight: 700,
+                            lineHeight: '22px',
+                            cursor: 'pointer',
+                          }}
+                          aria-label="사진 삭제"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* 금액 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">금액</label>
@@ -367,22 +621,24 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
                 )}
               </div>
               <div className="border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
-                {showSavedSignature && existingRecord?.signature_data ? (
+                {false ? (
                   /* 저장된 서명 이미지 표시 */
                   <img
-                    src={existingRecord.signature_data}
+                    src={existingRecord?.signature_data || ''}
                     alt="고객 서명"
                     className="w-full h-[120px] lg:h-[150px] object-contain bg-gray-50"
                   />
                 ) : (
                   /* 서명 캔버스 */
-                  <canvas
-                    ref={canvasRef}
-                    className="cursor-crosshair touch-none"
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
+                  <SignaturePad
+                    ref={signaturePadRef}
+                    initialDataUrl={showSavedSignature ? existingRecord?.signature_data : null}
+                    disabled={hasRecord && !isEditing}
+                    height={typeof window !== 'undefined' && window.innerWidth < 1024 ? 120 : 150}
+                    onChange={(hasSignature) => {
+                      hasSignatureRef.current = hasSignature;
+                      if (hasSignature) setShowSavedSignature(false);
+                    }}
                   />
                 )}
               </div>
@@ -402,13 +658,69 @@ export function CompletionPopup({ schedule, open, onClose, onConfirm, existingRe
               <Button
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                 onClick={handleConfirm}
+                disabled={isSaving}
               >
-                ✅ {hasRecord ? '수정 저장' : '완료 확인'}
+                ✅ {isSaving ? '저장 중...' : (hasRecord ? '수정 저장' : '완료 확인')}
               </Button>
             )}
           </div>
         </div>
       </div>
+      {previewPhotoUrl && (
+        <div
+          onClick={() => setPreviewPhotoUrl(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10050,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setPreviewPhotoUrl(null);
+            }}
+            style={{
+              position: 'fixed',
+              top: 16,
+              right: 16,
+              width: 42,
+              height: 42,
+              border: 'none',
+              borderRadius: 999,
+              background: 'rgba(255,255,255,0.18)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 10051,
+            }}
+            aria-label="사진 닫기"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <img
+            src={previewPhotoUrl}
+            alt="완료 사진 확대"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        </div>
+      )}
     </>
   );
 }

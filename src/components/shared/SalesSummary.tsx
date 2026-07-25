@@ -5,8 +5,13 @@ import { formatCurrency } from '@/lib/utils/format';
 interface SalesData {
   sale: number;
   as: number;
+  wholesale: number;
   agency: number;
+  group: number;
+  install: number;
+  purchase: number;
   total: number;
+  netProfit: number;
   cash: number;
   card: number;
   vat: number;
@@ -42,15 +47,35 @@ function SalesCard({
           <span className="font-semibold">{formatCurrency(data.as)}</span>
         </div>
         <div className="flex justify-between items-center">
+          <span className="bg-white/90 px-2 py-0.5 rounded-full text-xs font-bold" style={{ color: '#0F766E' }}>총판</span>
+          <span className="font-semibold">{formatCurrency(data.wholesale)}</span>
+        </div>
+        <div className="flex justify-between items-center">
           <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
           <span className="font-semibold">{formatCurrency(data.agency)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="bg-white/90 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-bold">공동구매</span>
+          <span className="font-semibold">{formatCurrency(data.group)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="bg-white/90 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold">외주설치</span>
+          <span className="font-semibold">{formatCurrency(data.install)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="bg-white/90 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">외주매입</span>
+          <span className="font-semibold">{formatCurrency(data.purchase)}</span>
         </div>
         
         <div className="border-t border-white/20 my-2" />
         
         <div className="flex justify-between items-center font-bold">
-          <span>합계</span>
+          <span>매출 합계</span>
           <span className="text-lg">{formatCurrency(data.total)}</span>
+        </div>
+        <div className="flex justify-between items-center font-bold">
+          <span>순이익</span>
+          <span className="text-lg">{formatCurrency(data.netProfit)}</span>
         </div>
         
         <div className="border-t border-white/20 my-2" />
@@ -106,8 +131,13 @@ export function SalesSummary({ daily, monthly, yearly }: SalesSummaryProps) {
 export const emptySalesData: SalesData = {
   sale: 0,
   as: 0,
+  wholesale: 0,
   agency: 0,
+  group: 0,
+  install: 0,
+  purchase: 0,
   total: 0,
+  netProfit: 0,
   cash: 0,
   card: 0,
   vat: 0,

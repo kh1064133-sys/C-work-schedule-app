@@ -34,6 +34,7 @@ export function useSaveCompletionRecord() {
             content: input.content,
             amount: input.amount,
             signature_data: input.signature_data,
+            photo_urls: input.photo_urls,
             payment_method: input.payment_method,
             memo: input.memo,
           })

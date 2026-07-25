@@ -24,6 +24,12 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { Schedule, ScheduleType, EventIcon } from '@/types';
+import {
+  EXPENSE_SCHEDULE_TYPES,
+  SCHEDULE_TYPE_COLORS,
+  SCHEDULE_TYPE_LABELS,
+  SCHEDULE_TYPE_OPTIONS,
+} from '@/types';
 
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -32,15 +38,6 @@ const EVENT_ICON_EMOJI: Record<EventIcon, string> = {
   birthday: '🎂',
   meeting: '🤝',
   install: '🔨',
-};
-
-const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
-  sale: '판매',
-  as: 'AS',
-  agency: '대리점',
-  group: '공동구매',
-  install: '외주설치',
-  daily: '일당',
 };
 
 // 미결/예약 테이블 렌더 헬퍼
@@ -121,6 +118,7 @@ function PendingTable({
           {items.map((s) => {
             const isDone = s.is_done;
             const isPaid = s.is_paid;
+            const typeColor = s.schedule_type ? SCHEDULE_TYPE_COLORS[s.schedule_type] : null;
             // 상태 뱃지
             let statusBadge: React.ReactNode;
             if (isDone && isPaid) {
@@ -136,14 +134,39 @@ function PendingTable({
                 key={s.id}
                 onClick={() => handleRowTap(s)}
                 onDoubleClick={() => onRowDoubleClick?.(s)}
-                style={{ cursor: 'pointer', backgroundColor: isDone && !isPaid ? '#FFFBEB' : undefined }}
+                style={{
+                  cursor: 'pointer',
+                  backgroundColor: typeColor?.background || (isDone && !isPaid ? '#FFFBEB' : undefined),
+                  borderLeft: typeColor ? `3px solid ${typeColor.border}` : undefined,
+                }}
                 title="더블탭하면 해당일 스케줄로 이동"
               >
                 <td style={tdStyle('9%')}>{s.date.slice(5)}</td>
                 <td style={tdStyle('9%')}>{s.time_slot}</td>
                 <td style={{ ...tdStyle('22%'), fontWeight: 500 }}>{s.title || '-'}</td>
                 <td style={tdStyle('11%')}>{s.unit || '-'}</td>
-                <td style={tdStyle('9%')}>{s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : '-'}</td>
+                <td style={tdStyle('9%')}>
+                  {s.schedule_type ? (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        padding: '1px 4px',
+                        borderRadius: 9999,
+                        backgroundColor: SCHEDULE_TYPE_COLORS[s.schedule_type].badgeBackground,
+                        color: SCHEDULE_TYPE_COLORS[s.schedule_type].badgeText,
+                        border: `1px solid ${SCHEDULE_TYPE_COLORS[s.schedule_type].border}`,
+                        fontSize: 'clamp(7px, 1.6vw, 10px)',
+                        fontWeight: 700,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {SCHEDULE_TYPE_LABELS[s.schedule_type]}
+                    </span>
+                  ) : '-'}
+                </td>
                 <td style={{ ...tdStyle('15%', 'right'), color: amountColor || undefined, fontWeight: 600 }}>{getScheduleAmountWithTax(s).toLocaleString()}</td>
                 <td style={tdStyle('12%', 'center')}>{statusBadge}</td>
                 <td style={tdStyle('6%', 'center')}>
@@ -316,7 +339,7 @@ export function CalendarPage() {
     const dateKey = format(date, 'yyyy-MM-dd');
     const daySchedules = schedulesByDate[dateKey] || [];
     return daySchedules
-      .filter((s: Schedule) => s.is_done)
+      .filter((s: Schedule) => s.is_done && !EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType))
       .reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
   };
 
@@ -449,25 +472,40 @@ export function CalendarPage() {
       .sort((a, b) => a.time_slot.localeCompare(b.time_slot));
   }, [selectedDate, schedulesByDate]);
 
+  const selectedDateTypeStats = useMemo(() => {
+    return SCHEDULE_TYPE_OPTIONS.map((option) => {
+      const typeSchedules = selectedDateSchedules.filter((s) => s.schedule_type === option.value);
+      return {
+        ...option,
+        count: typeSchedules.length,
+        amount: typeSchedules.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      };
+    }).filter((item) => item.count > 0);
+  }, [selectedDateSchedules]);
+
   // ===== 월 매출현황 계산 =====
   const monthlySalesStats = useMemo(() => {
     const doneSchedules = schedules.filter((s: Schedule) => s.is_done);
-    const byType = {
-      sale: doneSchedules.filter(s => s.schedule_type === 'sale').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-      as: doneSchedules.filter(s => s.schedule_type === 'as').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-      agency: doneSchedules.filter(s => s.schedule_type === 'agency').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-      total: doneSchedules.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-    };
+    const byType = SCHEDULE_TYPE_OPTIONS.reduce((acc, option) => {
+      acc[option.value] = doneSchedules
+        .filter((s) => s.schedule_type === option.value)
+        .reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0);
+      return acc;
+    }, {} as Record<ScheduleType, number>);
+    const purchase = byType.purchase || 0;
+    const total = SCHEDULE_TYPE_OPTIONS
+      .filter((option) => !EXPENSE_SCHEDULE_TYPES.includes(option.value))
+      .reduce((sum, option) => sum + (byType[option.value] || 0), 0);
     const byPayment = {
-      cash: doneSchedules.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-      card: doneSchedules.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-      vat: doneSchedules.filter(s => s.payment_method === 'vat').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
-      free: doneSchedules.filter(s => s.payment_method === 'free').reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      cash: doneSchedules.filter(s => s.payment_method === 'cash' && !EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType)).reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      card: doneSchedules.filter(s => s.payment_method === 'card' && !EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType)).reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      vat: doneSchedules.filter(s => s.payment_method === 'vat' && !EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType)).reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
+      free: doneSchedules.filter(s => s.payment_method === 'free' && !EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType)).reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0),
     };
     const allPending = schedules.filter((s: Schedule) => s.title && !s.is_done);
     const pendingCount = allPending.length;
     const pendingAmount = allPending.reduce((sum, s) => sum + getScheduleAmountWithTax(s), 0);
-    return { byType, byPayment, pendingCount, pendingAmount };
+    return { byType: { ...byType, total, purchase, netProfit: total - purchase }, byPayment, pendingCount, pendingAmount };
   }, [schedules]);
 
   // 선택 날짜 포맷
@@ -519,6 +557,10 @@ export function CalendarPage() {
             const lunar = getLunarInfo(date);
             const isSun = date.getDay() === 0;
             const isSat = date.getDay() === 6;
+            const dateKey = format(date, 'yyyy-MM-dd');
+            const dayTypeSchedules = (schedulesByDate[dateKey] || [])
+              .filter((s: Schedule) => s.title && s.title.trim() !== '' && s.schedule_type)
+              .slice(0, 3);
 
             return (
               <div
@@ -568,6 +610,36 @@ export function CalendarPage() {
                 {/* 건수 (회색) */}
                 {scheduleCount > 0 && (
                   <span style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.2, flexShrink: 0 }}>{scheduleCount}건</span>
+                )}
+                {dayTypeSchedules.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0, width: '100%', marginTop: 1 }}>
+                    {dayTypeSchedules.map((s) => {
+                      const typeColor = s.schedule_type ? SCHEDULE_TYPE_COLORS[s.schedule_type] : null;
+                      return (
+                        <span
+                          key={s.id}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '1px 3px',
+                            borderRadius: 3,
+                            backgroundColor: typeColor?.background || '#F3F4F6',
+                            color: typeColor?.text || '#374151',
+                            border: `1px solid ${typeColor?.border || '#E5E7EB'}`,
+                            fontSize: 'clamp(7px, 1.5vw, 9px)',
+                            fontWeight: 700,
+                            lineHeight: 1.15,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          {s.schedule_type ? SCHEDULE_TYPE_LABELS[s.schedule_type] : ''} {s.title}
+                        </span>
+                      );
+                    })}
+                  </div>
                 )}
                 {/* 이벤트 아이콘 */}
                 {(() => {
@@ -682,24 +754,58 @@ export function CalendarPage() {
           </div>
         ) : (
           <div className="p-1 md:p-3" style={{ width: '100%', overflowX: 'hidden' }}>
+            {selectedDateTypeStats.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {selectedDateTypeStats.map((stat) => (
+                  <span
+                    key={stat.value}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '3px 7px',
+                      borderRadius: 9999,
+                      backgroundColor: SCHEDULE_TYPE_COLORS[stat.value].badgeBackground,
+                      color: SCHEDULE_TYPE_COLORS[stat.value].badgeText,
+                      border: `1px solid ${SCHEDULE_TYPE_COLORS[stat.value].border}`,
+                      fontSize: 'clamp(9px, 2vw, 12px)',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {stat.label} {stat.count}건 / {stat.amount.toLocaleString()}원
+                  </span>
+                ))}
+              </div>
+            )}
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '12%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>시간</th>
-                  <th style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>거래처</th>
-                  <th style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>동호수</th>
-                  <th style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>금액</th>
-                  <th style={{ width: '25%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>상태</th>
+                  <th style={{ width: '10%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>시간</th>
+                  <th style={{ width: '22%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>거래처</th>
+                  <th style={{ width: '13%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>동호수</th>
+                  <th style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>유형</th>
+                  <th style={{ width: '17%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>금액</th>
+                  <th style={{ width: '23%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 600, textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>상태</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedDateSchedules.map((s) => (
-                  <tr key={s.id}>
-                    <td style={{ width: '12%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6' }}>{s.time_slot}</td>
-                    <td style={{ width: '28%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 500, textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title || '-'}</td>
-                    <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', color: '#9ca3af' }}>{s.unit || '-'}</td>
-                    <td style={{ width: '20%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #f3f4f6', color: s.is_done ? '#16a34a' : '#f97316' }}>{getScheduleAmountWithTax(s).toLocaleString()}</td>
-                    <td style={{ width: '25%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                {selectedDateSchedules.map((s) => {
+                  const typeColor = s.schedule_type ? SCHEDULE_TYPE_COLORS[s.schedule_type] : null;
+                  return (
+                  <tr key={s.id} style={{ backgroundColor: typeColor?.background || undefined, borderLeft: typeColor ? `3px solid ${typeColor.border}` : undefined }}>
+                    <td style={{ width: '10%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6' }}>{s.time_slot}</td>
+                    <td style={{ width: '22%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 500, textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title || '-'}</td>
+                    <td style={{ width: '13%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'left', borderBottom: '1px solid #f3f4f6', overflow: 'hidden', textOverflow: 'ellipsis', color: '#9ca3af' }}>{s.unit || '-'}</td>
+                    <td style={{ width: '15%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
+                      {s.schedule_type ? (
+                        <span style={{ display: 'inline-block', maxWidth: '100%', padding: '1px 5px', borderRadius: 9999, backgroundColor: SCHEDULE_TYPE_COLORS[s.schedule_type].badgeBackground, color: SCHEDULE_TYPE_COLORS[s.schedule_type].badgeText, border: `1px solid ${SCHEDULE_TYPE_COLORS[s.schedule_type].border}`, fontSize: 'clamp(8px, 1.8vw, 11px)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {SCHEDULE_TYPE_LABELS[s.schedule_type]}
+                        </span>
+                      ) : '-'}
+                    </td>
+                    <td style={{ width: '17%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid #f3f4f6', color: s.schedule_type === 'purchase' ? SCHEDULE_TYPE_COLORS.purchase.text : s.is_done ? '#16a34a' : '#f97316' }}>{getScheduleAmountWithTax(s).toLocaleString()}</td>
+                    <td style={{ width: '23%', padding: '2px 3px', whiteSpace: 'nowrap', fontSize: 'clamp(9px, 2vw, 13px)', textAlign: 'center', borderBottom: '1px solid #f3f4f6' }}>
                       {s.is_done ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', border: '2px solid #16a34a', backgroundColor: 'transparent', color: '#16a34a', fontSize: 12, fontWeight: 700, lineHeight: 1 }}>✓</span>
                       ) : isBefore(startOfDay(new Date(s.date)), today) ? (
@@ -709,7 +815,8 @@ export function CalendarPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -768,24 +875,31 @@ export function CalendarPage() {
         <div className="bg-white/15 rounded-xl mx-1 md:mx-4 mb-4 p-2 md:p-4 backdrop-blur-sm">
           <div className="space-y-2 text-sm">
             {/* 유형별 매출 */}
-            <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-green-600 px-2 py-0.5 rounded-full text-xs font-bold">판매</span>
-              <span className="font-semibold">{monthlySalesStats.byType.sale.toLocaleString()}원</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-orange-500 px-2 py-0.5 rounded-full text-xs font-bold">AS</span>
-              <span className="font-semibold">{monthlySalesStats.byType.as.toLocaleString()}원</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="bg-white/90 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">대리점</span>
-              <span className="font-semibold">{monthlySalesStats.byType.agency.toLocaleString()}원</span>
-            </div>
+            {SCHEDULE_TYPE_OPTIONS.map((option) => (
+              <div key={option.value} className="flex justify-between items-center">
+                <span
+                  className="bg-white/90 px-2 py-0.5 rounded-full text-xs font-bold"
+                  style={{ color: SCHEDULE_TYPE_COLORS[option.value].text }}
+                >
+                  {option.label}
+                </span>
+                <span className="font-semibold">{(monthlySalesStats.byType[option.value] || 0).toLocaleString()}원</span>
+              </div>
+            ))}
 
             <div className="border-t border-white/20 my-2" />
 
             <div className="flex justify-between items-center font-bold">
-              <span>합계</span>
+              <span>매출 합계</span>
               <span className="text-lg">{monthlySalesStats.byType.total.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center font-bold">
+              <span>매입</span>
+              <span className="text-lg" style={{ color: '#FED7AA' }}>{monthlySalesStats.byType.purchase.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center font-bold">
+              <span>순이익</span>
+              <span className="text-lg">{monthlySalesStats.byType.netProfit.toLocaleString()}원</span>
             </div>
 
             <div className="border-t border-white/20 my-2" />

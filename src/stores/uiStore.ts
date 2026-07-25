@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { EventIcon, PaymentMethod, ScheduleType } from '@/types';
 
-type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy' | 'install' | 'vehicle';
+type Tab = 'schedule' | 'calendar' | 'analytics' | 'clients' | 'items' | 'search' | 'estimate' | 'groupbuy' | 'install' | 'vehicle' | 'doorVerification';
 
 export interface CopiedScheduleData {
   title: string | null;

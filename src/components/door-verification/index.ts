@@ -1,0 +1,1 @@
+export { DoorVerificationPage } from './DoorVerificationPage';

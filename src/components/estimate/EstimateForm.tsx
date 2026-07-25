@@ -24,6 +24,15 @@ interface Company {
   tel: string;
   email: string;
   stampImg: string | null;
+  bank: string;
+  accountNo: string;
+  holder: string;
+}
+
+interface BankAccount {
+  bank: string;
+  accountNo: string;
+  holder: string;
 }
 
 interface Client {
@@ -41,6 +50,7 @@ const initialItems: Item[] = [
 
 const newCompany = (id: number): Company => ({
   id, name: "", ceo: "", bizNo: "", address: "", tel: "", email: "", stampImg: null,
+  bank: "", accountNo: "", holder: "",
 });
 
 const STORAGE_KEY = "estimate_form_data";
@@ -276,24 +286,43 @@ function ImageUploadBox({ label, value, onChange }: { label: string; value: stri
 }
 
 const defaultCompanies: Company[] = [
-  { id: 1, name: "(주)서통시큐리티", ceo: "홍길동", bizNo: "123-45-67890", address: "서울시 강남구 도곡동 467", tel: "02-1234-5678", email: "info@seotong.co.kr", stampImg: null },
+  { id: 1, name: "(주)서통시큐리티", ceo: "홍길동", bizNo: "123-45-67890", address: "서울시 강남구 도곡동 467", tel: "02-1234-5678", email: "info@seotong.co.kr", stampImg: null, bank: "은행", accountNo: "", holder: "김기현" },
 ];
 const defaultClient: Client = { name: "(서통)타워1차_ABCD", address: "서울시 강남구 도곡동 467", contact: "김담당", tel: "010-1234-5678" };
 
+const defaultBankAccount: BankAccount = {
+  bank: "은행",
+  accountNo: "",
+  holder: "김기현",
+};
+
+function loadCompaniesFromStorage(): Company[] {
+  const legacyBankAccount = loadFromStorage<BankAccount>(`${STORAGE_KEY}_bankAccount`, defaultBankAccount);
+  const storedCompanies = loadFromStorage<Array<Partial<Company>>>(`${STORAGE_KEY}_companies`, defaultCompanies);
+
+  return storedCompanies.map((company, index) => {
+    const base = newCompany(typeof company.id === "number" ? company.id : Date.now() + index);
+
+    return {
+      ...base,
+      ...company,
+      bank: typeof company.bank === "string" ? company.bank : legacyBankAccount.bank,
+      accountNo: typeof company.accountNo === "string" ? company.accountNo : legacyBankAccount.accountNo,
+      holder: typeof company.holder === "string" ? company.holder : legacyBankAccount.holder,
+      stampImg: company.stampImg === "__STAMP_IN_IDB__" ? null : company.stampImg ?? null,
+    };
+  });
+}
+
 export default function EstimateForm() {
   const [items, setItems] = useState<Item[]>(() => loadFromStorage(`${STORAGE_KEY}_items`, initialItems));
-  const [companies, setCompanies] = useState<Company[]>(() => loadFromStorage(`${STORAGE_KEY}_companies`, defaultCompanies));
+  const [companies, setCompanies] = useState<Company[]>(() => loadCompaniesFromStorage());
   const [activeCompanyId, setActiveCompanyId] = useState<number>(() => loadFromStorage(`${STORAGE_KEY}_activeId`, 1));
   const [client, setClient] = useState<Client>(() => loadFromStorage(`${STORAGE_KEY}_client`, defaultClient));
   const [estimateNo, setEstimateNo] = useState(() => loadFromStorage(`${STORAGE_KEY}_estimateNo`, "2026-001"));
   const [date, setDate] = useState(() => loadFromStorage(`${STORAGE_KEY}_date`, "2026-02-22"));
   const [vatIncluded, setVatIncluded] = useState(() => loadFromStorage(`${STORAGE_KEY}_vat`, true));
   const [note, setNote] = useState(() => loadFromStorage(`${STORAGE_KEY}_note`, "• 본 견적서는 발행일로부터 30일간 유효합니다.\n• 설치비 별도 문의 바랍니다."));
-  const [bankAccount, setBankAccount] = useState(() => loadFromStorage(`${STORAGE_KEY}_bankAccount`, {
-    bank: "은행",
-    accountNo: "",
-    holder: "김기현",
-  }));
 
   // IndexedDB에서 도장 이미지 복원
   const [stampsLoaded, setStampsLoaded] = useState(false);
@@ -328,7 +357,6 @@ export default function EstimateForm() {
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_date`, date); }, [date]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_vat`, vatIncluded); }, [vatIncluded]);
   useEffect(() => { saveToStorage(`${STORAGE_KEY}_note`, note); }, [note]);
-  useEffect(() => { saveToStorage(`${STORAGE_KEY}_bankAccount`, bankAccount); }, [bankAccount]);
 
   const activeCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
   const updateActiveCompany = (field: keyof Company, value: string | null) =>
@@ -1200,43 +1228,43 @@ const bankInputWidth = (value: string, minCh: number) => {
           }}>
             <span style={{ fontWeight: 800, flexShrink: 0 }}>입금계좌:</span>
             <input
-              value={bankAccount.bank}
-              onChange={e => setBankAccount(prev => ({ ...prev, bank: e.target.value }))}
+              value={activeCompany.bank}
+              onChange={e => updateActiveCompany("bank", e.target.value)}
               placeholder="은행"
               style={{
                 ...inputStyle,
                 color: "#1d4ed8",
                 fontSize: "15px",
                 fontWeight: 800,
-                width: bankInputWidth(bankAccount.bank, 5),
+                width: bankInputWidth(activeCompany.bank, 5),
                 flexShrink: 0,
               }}
             />
             <input
-              value={bankAccount.accountNo}
-              onChange={e => setBankAccount(prev => ({ ...prev, accountNo: e.target.value }))}
+              value={activeCompany.accountNo}
+              onChange={e => updateActiveCompany("accountNo", e.target.value)}
               placeholder="계좌번호"
               style={{
                 ...inputStyle,
                 color: "#1d4ed8",
                 fontSize: "15px",
                 fontWeight: 800,
-                width: bankInputWidth(bankAccount.accountNo, 12),
+                width: bankInputWidth(activeCompany.accountNo, 12),
                 minWidth: "130px",
                 maxWidth: "none",
                 flex: "0 0 auto",
               }}
             />
             <input
-              value={bankAccount.holder}
-              onChange={e => setBankAccount(prev => ({ ...prev, holder: e.target.value }))}
+              value={activeCompany.holder}
+              onChange={e => updateActiveCompany("holder", e.target.value)}
               placeholder="예금주"
               style={{
                 ...inputStyle,
                 color: "#1d4ed8",
                 fontSize: "15px",
                 fontWeight: 800,
-                width: bankInputWidth(bankAccount.holder, 8),
+                width: bankInputWidth(activeCompany.holder, 8),
                 minWidth: "120px",
                 maxWidth: "none",
                 flex: "0 0 auto",

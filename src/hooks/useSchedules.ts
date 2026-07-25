@@ -185,7 +185,7 @@ export function useInstallSchedules() {
         .from('schedules')
         .select('*')
         .eq('event_icon', 'install')
-        .order('date', { ascending: true })
+        .order('date', { ascending: false })
         .order('sort_order', { ascending: true });
 
       if (error) throw error;

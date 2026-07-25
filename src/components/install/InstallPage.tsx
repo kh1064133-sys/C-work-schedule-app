@@ -465,6 +465,11 @@ export function InstallPage() {
   // 체크박스 선택 & SMS
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showSmsPopup, setShowSmsPopup] = useState(false);
+  const currentMonthKey = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set([currentMonthKey]));
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -518,7 +523,7 @@ export function InstallPage() {
   };
 
   const installSchedules = useMemo(() => {
-    return [...allInstallSchedules].sort((a, b) => a.date.localeCompare(b.date) || a.time_slot.localeCompare(b.time_slot));
+    return [...allInstallSchedules].sort((a, b) => b.date.localeCompare(a.date) || a.time_slot.localeCompare(b.time_slot));
   }, [allInstallSchedules]);
 
   const stats = useMemo(() => {
@@ -539,8 +544,20 @@ export function InstallPage() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     });
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
   }, [installSchedules]);
+
+  const toggleMonth = useCallback((monthKey: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) {
+        next.delete(monthKey);
+      } else {
+        next.add(monthKey);
+      }
+      return next;
+    });
+  }, []);
 
   const handleSave = useCallback((id: string, data: Partial<Schedule>) => {
     const target = allInstallSchedules.find(sc => sc.id === id);
@@ -661,22 +678,49 @@ export function InstallPage() {
             const [y, m] = monthKey.split('-').map(Number);
             const monthDone = monthSchedules.filter(s => s.is_done);
             const monthTotal = monthDone.reduce((sum, s) => sum + (s.install_amount || 0), 0);
+            const isExpanded = expandedMonths.has(monthKey);
             return (
               <div key={monthKey}>
-                <div className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg mb-1">
-                  <span className="font-semibold text-sm">{y}년 {m}월</span>
-                  <span className="text-xs text-gray-500">
-                    {monthSchedules.length}건 · 완료 {monthDone.length}건 · {monthTotal.toLocaleString()}원
+                <button
+                  type="button"
+                  onClick={() => toggleMonth(monthKey)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    backgroundColor: isExpanded ? '#EFF6FF' : '#F9FAFB',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: isExpanded ? '8px 8px 0 0' : 8,
+                    padding: '10px 12px',
+                    marginBottom: isExpanded ? 0 : 8,
+                    cursor: 'pointer',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span style={{ color: '#2563EB', fontSize: 13, fontWeight: 700, width: 16, flexShrink: 0 }}>
+                      {isExpanded ? '▼' : '▶'}
+                    </span>
+                    <span style={{ color: '#111827', fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {y}년 {m}월 ({monthSchedules.length}건)
+                    </span>
                   </span>
-                </div>
-                <div className="border rounded-lg lg:rounded-t-none lg:border-t-0 overflow-hidden mb-3">
-                  {monthSchedules.map((s) => (
-                    <InstallRow key={s.id} schedule={s} clients={clients} items={items} onSave={handleSave} typePrices={typePrices}
-                      isSelected={selectedIds.has(s.id)} onToggleSelect={toggleSelect}
-                      installPaid={installPaidIds.has(s.id)} onToggleInstallPaid={toggleInstallPaid}
-                      onNavigateToDate={handleNavigateToDate} />
-                  ))}
-                </div>
+                  <span style={{ color: '#6B7280', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    완료 {monthDone.length}건 · {monthTotal.toLocaleString()}원
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="border rounded-b-lg overflow-hidden mb-3" style={{ borderTop: 0 }}>
+                    {monthSchedules.map((s) => (
+                      <InstallRow key={s.id} schedule={s} clients={clients} items={items} onSave={handleSave} typePrices={typePrices}
+                        isSelected={selectedIds.has(s.id)} onToggleSelect={toggleSelect}
+                        installPaid={installPaidIds.has(s.id)} onToggleInstallPaid={toggleInstallPaid}
+                        onNavigateToDate={handleNavigateToDate} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

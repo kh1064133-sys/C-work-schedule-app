@@ -1,0 +1,16 @@
+
+> schedule-app@0.1.0 dev
+> next dev -p 3002
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://192.168.0.3:3002
+- Environments: .env.local
+
+✓ Starting...
+Creating turbopack project { dir: 'C:\\work\\schedule-app', testMode: true }
+✓ Ready in 4.5s
+○ Compiling /door-manual ...
+ GET /door-manual/ 200 in 6.2s (compile: 5.9s, render: 315ms)
+ GET /door-manual/ 200 in 54ms (compile: 7ms, render: 47ms)
+ GET /door-manual/ 200 in 138ms (compile: 8ms, render: 131ms)

@@ -1,20 +1,34 @@
 'use client';
 
-import { useState, useRef, useEffect, type MutableRefObject } from 'react';
+import { useCallback, useState, useRef, useEffect, type MutableRefObject } from 'react';
 import { GripVertical, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Schedule, ScheduleType, PaymentMethod, EventIcon, Client, Item } from '@/types';
+import { SCHEDULE_TYPE_COLORS, SCHEDULE_TYPE_OPTIONS } from '@/types';
 import { CompletionPopup } from './CompletionPopup';
 import { DepositPopup } from './DepositPopup';
 import { useSaveCompletionRecord, useCompletionRecords, useDeleteCompletionRecords } from '@/hooks/useCompletionRecords';
+
+type DiscountAmountField = 'dc_amount' | 'discount_amount' | 'discount_price' | 'dc_price' | 'dc' | 'discount';
+type ItemWithDiscountAmount = Item & Partial<Record<DiscountAmountField, number | string | null>>;
+type ScheduleUpdatePayload = Partial<Schedule> & Partial<Record<DiscountAmountField, number>>;
+
+const DISCOUNT_AMOUNT_FIELDS: DiscountAmountField[] = [
+  'dc_amount',
+  'discount_amount',
+  'discount_price',
+  'dc_price',
+  'dc',
+  'discount',
+];
 
 interface TimeSlotRowProps {
   timeSlot: string;
   schedule: Schedule | null;
   clients?: Client[];
   items?: Item[];
-  onUpdate: (data: Partial<Schedule>) => void;
+  onUpdate: (data: ScheduleUpdatePayload) => void;
   onToggleReserved: () => void;
   // 드래그 관련 (PC)
   isDragging?: boolean;
@@ -43,11 +57,7 @@ interface TimeSlotRowProps {
 
 const SCHEDULE_TYPES = [
   { value: '', label: '유형 선택' },
-  { value: 'sale', label: '판매' },
-  { value: 'as', label: 'AS' },
-  { value: 'agency', label: '대리점' },
-  { value: 'group', label: '공동구매' },
-  { value: 'install', label: '외주설치' },
+  ...SCHEDULE_TYPE_OPTIONS,
 ];
 
 const PAYMENT_METHODS = [
@@ -64,6 +74,93 @@ const EVENT_ICONS: { value: EventIcon; label: string; emoji: string }[] = [
   { value: 'meeting', label: '미팅', emoji: '🤝' },
   { value: 'install', label: '설치', emoji: '🔨' },
 ];
+
+function parseMemoValues(value: string | null | undefined): string[] {
+  if (!value) return [''];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      const values = parsed.map((item) => String(item ?? ''));
+      return values.length > 0 ? values : [''];
+    }
+  } catch {
+    // Existing rows may still store content as plain text.
+  }
+
+  return [value];
+}
+
+function serializeMemoValues(values: string[]): string {
+  const normalized = values.length > 0 ? values : [''];
+  return normalized.length === 1 ? normalized[0] : JSON.stringify(normalized);
+}
+
+function normalizeForMatch(value: string): string {
+  return value
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '');
+}
+
+function parseAmountValue(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/[^0-9.-]/g, '');
+    const parsed = normalized ? Number(normalized) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
+function getItemDiscountAmount(item: Item): { amount: number; hasDiscountAmount: boolean } {
+  const itemWithDiscount = item as ItemWithDiscountAmount;
+
+  for (const field of DISCOUNT_AMOUNT_FIELDS) {
+    if (itemWithDiscount[field] !== undefined && itemWithDiscount[field] !== null) {
+      return {
+        amount: Math.abs(parseAmountValue(itemWithDiscount[field])),
+        hasDiscountAmount: true,
+      };
+    }
+  }
+
+  const price = parseAmountValue(item.price);
+  if (price < 0 || item.name.toUpperCase().includes('DC')) {
+    return { amount: Math.abs(price), hasDiscountAmount: true };
+  }
+
+  return { amount: 0, hasDiscountAmount: false };
+}
+
+function findMemoItem(items: Item[], value: string): Item | undefined {
+  const normalizedName = normalizeForMatch(value);
+  if (!normalizedName) return undefined;
+
+  const matches = items.filter((candidate) =>
+    normalizeForMatch(candidate.name) === normalizedName
+  );
+  if (matches.length <= 1) return matches[0];
+
+  const discountMatches = matches.filter((item) => {
+    const discountAmount = getItemDiscountAmount(item);
+    return discountAmount.hasDiscountAmount;
+  });
+
+  if (discountMatches.length > 0) {
+    return discountMatches.reduce((selected, item) =>
+      Math.abs(parseAmountValue(item.price)) > Math.abs(parseAmountValue(selected.price)) ? item : selected,
+    );
+  }
+
+  return matches[0];
+}
 
 export function TimeSlotRow({
   timeSlot,
@@ -101,10 +198,12 @@ export function TimeSlotRow({
   
   // 로컬 입력 상태 (한글 IME 문제 해결 - PC/모바일 공통)
   const [titleValue, setTitleValue] = useState(schedule?.title || '');
-  const [memoValue, setMemoValue] = useState(schedule?.memo || '');
+  const [memoValues, setMemoValues] = useState<string[]>(() => parseMemoValues(schedule?.memo));
   const [scheduleTypeValue, setScheduleTypeValue] = useState(schedule?.schedule_type || '');
   const [paymentMethodValue, setPaymentMethodValue] = useState(schedule?.payment_method || '');
+  const [activeMemoIndex, setActiveMemoIndex] = useState(0);
   const isComposingRef = useRef(false);
+  const memoValue = serializeMemoValues(memoValues);
 
   // 최신 로컬 값 ref (언마운트 시 flush용)
   const latestValuesRef = useRef({ title: titleValue, memo: memoValue, unit: unitValue });
@@ -117,6 +216,8 @@ export function TimeSlotRow({
   const clientMobileDropdownRef = useRef<HTMLDivElement>(null);
   const itemMobileDropdownRef = useRef<HTMLDivElement>(null);
   const onUpdateRef = useRef(onUpdate);
+  const itemPickerHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const itemPickerMobileHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 그립 핸들 ref (passive: false 터치 이벤트 등록용)
   const pcGripRef = useRef<HTMLDivElement>(null);
@@ -140,7 +241,8 @@ export function TimeSlotRow({
   }, [schedule?.title]);
   
   useEffect(() => {
-    setMemoValue(schedule?.memo || '');
+    setMemoValues(parseMemoValues(schedule?.memo));
+    setActiveMemoIndex(0);
   }, [schedule?.memo]);
   
   useEffect(() => {
@@ -153,6 +255,96 @@ export function TimeSlotRow({
 
   // onUpdate 콜백 최신 참조 유지
   useEffect(() => { onUpdateRef.current = onUpdate; });
+
+  const cancelItemPickerHide = useCallback(() => {
+    if (itemPickerHideTimerRef.current) {
+      clearTimeout(itemPickerHideTimerRef.current);
+      itemPickerHideTimerRef.current = null;
+    }
+  }, []);
+
+  const cancelItemPickerMobileHide = useCallback(() => {
+    if (itemPickerMobileHideTimerRef.current) {
+      clearTimeout(itemPickerMobileHideTimerRef.current);
+      itemPickerMobileHideTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleItemPickerHide = useCallback(() => {
+    cancelItemPickerHide();
+    itemPickerHideTimerRef.current = setTimeout(() => {
+      setShowItemPicker(false);
+      itemPickerHideTimerRef.current = null;
+    }, 150);
+  }, [cancelItemPickerHide]);
+
+  const scheduleItemPickerMobileHide = useCallback(() => {
+    cancelItemPickerMobileHide();
+    itemPickerMobileHideTimerRef.current = setTimeout(() => {
+      setShowItemPickerMobile(false);
+      itemPickerMobileHideTimerRef.current = null;
+    }, 150);
+  }, [cancelItemPickerMobileHide]);
+
+  const getMemoAmount = useCallback((values: string[]) => {
+    return values.reduce(
+      (result, value) => {
+        const item = findMemoItem(items, value);
+        if (!item) return result;
+        const discountAmount = getItemDiscountAmount(item);
+        const price = parseAmountValue(item.price);
+        const amount = discountAmount.hasDiscountAmount ? 0 : price;
+
+        return {
+          amount: result.amount + amount,
+          dcAmount: result.dcAmount + discountAmount.amount,
+          hasDiscountAmount: result.hasDiscountAmount || discountAmount.hasDiscountAmount,
+          matchedCount: result.matchedCount + 1,
+        };
+      },
+      { amount: 0, dcAmount: 0, hasDiscountAmount: false, matchedCount: 0 },
+    );
+  }, [items]);
+
+  const saveMemoValues = useCallback((values: string[], syncAmount: 'ifMatched' | 'always' = 'ifMatched') => {
+    if (!blockSaveRef?.current) {
+      const memoAmount = getMemoAmount(values);
+      const payload: ScheduleUpdatePayload = { memo: serializeMemoValues(values) };
+
+      if (syncAmount === 'always' || memoAmount.matchedCount > 0) {
+        payload.amount = Math.max(memoAmount.amount - memoAmount.dcAmount, 0);
+        payload.dc_amount = memoAmount.dcAmount;
+      }
+
+      onUpdateRef.current(payload);
+    }
+  }, [blockSaveRef, getMemoAmount]);
+
+  const updateMemoValueAt = useCallback((index: number, value: string, saveNow = false) => {
+    setMemoValues((current) => {
+      const next = [...current];
+      next[index] = value;
+      if (saveNow) saveMemoValues(next, 'always');
+      return next;
+    });
+  }, [saveMemoValues]);
+
+  const addMemoRow = useCallback(() => {
+    setMemoValues((current) => {
+      const next = [...current, ''];
+      saveMemoValues(next);
+      return next;
+    });
+  }, [saveMemoValues]);
+
+  const removeMemoRow = useCallback((index: number) => {
+    setMemoValues((current) => {
+      const next = current.filter((_, itemIndex) => itemIndex !== index);
+      const normalized = next.length > 0 ? next : [''];
+      saveMemoValues(normalized, 'always');
+      return normalized;
+    });
+  }, [saveMemoValues]);
 
   // 변경사항 감지: 로컬 상태가 DB 상태와 다르면 상위에 보고
   const onPendingChangeRef = useRef(onPendingChange);
@@ -299,12 +491,7 @@ export function TimeSlotRow({
       const target = (e.target as HTMLElement).closest('[data-item-name]') as HTMLElement | null;
       if (target?.dataset.itemName) {
         const name = target.dataset.itemName;
-        const price = parseInt(target.dataset.itemPrice || '0', 10);
-        setMemoValue(name);
-        onUpdateRef.current({
-          memo: name,
-          amount: price || schedule?.amount || 0,
-        });
+        updateMemoValueAt(activeMemoIndex, name, true);
         setShowItemPickerMobile(false);
       }
     };
@@ -320,7 +507,7 @@ export function TimeSlotRow({
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('scroll', onScroll);
     };
-  }, [showItemPickerMobile, schedule?.amount]);
+  }, [activeMemoIndex, showItemPickerMobile, updateMemoValueAt]);
 
   const isDone = schedule?.is_done || false;
   const isReserved = schedule?.is_reserved || false;
@@ -331,6 +518,39 @@ export function TimeSlotRow({
   const eventPickerMobileRef = useRef<HTMLDivElement>(null);
   const hasTitle = (schedule?.title || '').trim() !== '';
   const isPending = hasTitle && !isDone;
+  const memoAmountSummary = getMemoAmount(memoValues);
+  const finalMemoAmount = memoAmountSummary.matchedCount > 0
+    ? Math.max(memoAmountSummary.amount - memoAmountSummary.dcAmount, 0)
+    : (schedule?.amount || 0);
+  const scheduleTypeLabel = scheduleTypeValue ? SCHEDULE_TYPES.find((type) => type.value === scheduleTypeValue)?.label || '' : '';
+  const paymentMethodLabel = paymentMethodValue ? PAYMENT_METHODS.find((method) => method.value === paymentMethodValue)?.label || '' : '';
+  const amountSummaryText = finalMemoAmount > 0
+    ? [
+        scheduleTypeLabel,
+        paymentMethodLabel,
+        `${finalMemoAmount.toLocaleString('ko-KR')} 원`,
+      ].filter(Boolean).join(' / ')
+    : '';
+  const getMemoItemAmountText = useCallback((value: string) => {
+    const item = findMemoItem(items, value);
+    if (!item) return '';
+
+    const discountAmount = getItemDiscountAmount(item);
+    const displayAmount = discountAmount.hasDiscountAmount
+      ? -discountAmount.amount
+      : parseAmountValue(item.price);
+
+    return displayAmount.toLocaleString('ko-KR');
+  }, [items]);
+  const scheduleTypeColor = scheduleTypeValue ? SCHEDULE_TYPE_COLORS[scheduleTypeValue as ScheduleType] : null;
+  const rowBackgroundColor = isDragging || isMobileDragging
+    ? '#DBEAFE'
+    : isDragOver || isMobileDragOver
+      ? '#EFF6FF'
+      : scheduleTypeValue
+        ? scheduleTypeColor?.background || '#FFFFFF'
+        : '#FFFFFF';
+  const rowBorderLeftColor = scheduleTypeColor?.border || (isPending ? '#EF4444' : isDone ? '#16A34A' : 'transparent');
 
   // 이벤트 팝업 외부 클릭 닫기
   useEffect(() => {
@@ -356,9 +576,10 @@ export function TimeSlotRow({
   );
 
   // 필터된 품목 목록
-  const filteredItems = items.filter(i =>
-    i.name.toLowerCase().includes(itemSearch.toLowerCase())
-  );
+  const normalizedItemSearch = normalizeForMatch(itemSearch);
+  const filteredItems = normalizedItemSearch
+    ? items.filter((item) => normalizeForMatch(item.name).includes(normalizedItemSearch))
+    : items;
 
   // 결제방법에 따른 스타일
   const paymentStyles: Record<string, string> = {
@@ -377,19 +598,20 @@ export function TimeSlotRow({
   const [depositPaymentMethod, setDepositPaymentMethod] = useState<PaymentMethod>('cash');
   const [depositMemo, setDepositMemo] = useState<string>('');
 
-  const openDepositPopup = () => {
-    const pm = schedule?.payment_method || 'cash';
-    setDepositPaymentMethod(pm);
-    setDepositAmount(pm === 'free' ? 0 : (schedule?.amount || 0));
-    setDepositMemo('');
-    setShowDepositPopup(true);
-  };
-
   // 완료 기록 조회/저장/삭제
   const saveCompletionRecord = useSaveCompletionRecord();
   const deleteCompletionRecords = useDeleteCompletionRecords();
   const { data: completionRecords } = useCompletionRecords(schedule?.id);
-  const existingRecord = completionRecords?.[0] || null;
+  const existingRecord = completionRecords?.find((record) => record.record_type === 'completion') || null;
+  const existingDepositRecord = completionRecords?.find((record) => record.record_type === 'deposit') || null;
+
+  const openDepositPopup = () => {
+    const pm = schedule?.payment_method || existingDepositRecord?.payment_method as PaymentMethod | null || 'cash';
+    setDepositPaymentMethod(pm);
+    setDepositAmount(pm === 'free' ? 0 : (schedule?.amount || existingDepositRecord?.amount || 0));
+    setDepositMemo(existingDepositRecord?.memo || '');
+    setShowDepositPopup(true);
+  };
 
   // 완료 팝업 확인 핸들러
   const handleCompletionConfirm = async (data: {
@@ -400,6 +622,7 @@ export function TimeSlotRow({
     content: string;
     amount: number;
     signature_data: string;
+    photo_urls: string[];
   }) => {
     // 완료 확인서 데이터 DB 저장
     if (schedule) {
@@ -413,10 +636,12 @@ export function TimeSlotRow({
           content: data.content,
           amount: data.amount,
           signature_data: data.signature_data,
+          photo_urls: data.photo_urls,
           record_type: 'completion',
         });
       } catch (e) {
         console.error('완료 기록 저장 실패:', e);
+        throw e;
       }
     }
     // 완료 처리: 완료 체크, 예약 해제
@@ -428,20 +653,66 @@ export function TimeSlotRow({
   };
 
   // 입금 팝업 확인 핸들러
-  const handleDepositConfirm = (data: {
+  const handleDepositConfirm = async (data: {
     amount: number;
     payment_method: PaymentMethod;
     deposit_memo: string;
   }) => {
+    if (schedule) {
+      try {
+        await saveCompletionRecord.mutateAsync({
+          schedule_id: schedule.id,
+          amount: data.amount,
+          payment_method: data.payment_method,
+          memo: data.deposit_memo,
+          record_type: 'deposit',
+        });
+      } catch (e) {
+        console.error('입금 기록 저장 실패:', e);
+      }
+    }
+
     // 입금 처리: 입금 체크, 완료 처리
     onUpdate({
       is_paid: true,
       is_done: true,
       amount: data.amount,
       payment_method: data.payment_method,
-      memo: data.deposit_memo,
     });
     setShowDepositPopup(false);
+  };
+
+  const resetSchedule = () => {
+    if (!confirm('해당 일정을 리셋하시겠습니까?')) return;
+
+    // 로컬 상태도 초기화
+    setTitleValue('');
+    setMemoValues(['']);
+    setUnitValue('');
+    setScheduleTypeValue('');
+    setPaymentMethodValue('');
+
+    // 완료 기록 삭제
+    if (schedule?.id) {
+      deleteCompletionRecords.mutate(schedule.id);
+    }
+
+    onUpdate({
+      title: '',
+      unit: '',
+      memo: '',
+      amount: 0,
+      dc_amount: 0,
+      schedule_type: null,
+      payment_method: null,
+      install_type: null,
+      install_amount: 0,
+      install_paid: false,
+      is_done: false,
+      is_reserved: false,
+      is_paid: false,
+      event_icon: null,
+    });
   };
 
   return (
@@ -460,6 +731,10 @@ export function TimeSlotRow({
           isMobileDragOver && 'border-t-2 border-t-blue-500 bg-blue-50',
           isSelected && 'ring-2 ring-blue-500 ring-inset'
         )}
+        style={{
+          backgroundColor: rowBackgroundColor,
+          borderLeftColor: rowBorderLeftColor,
+        }}
         onClick={() => onSelect?.()}
         draggable
         onDragStart={(e) => {
@@ -504,30 +779,7 @@ export function TimeSlotRow({
           </span>
           <button
             className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-            onClick={() => {
-              // 로컬 상태도 초기화
-              setTitleValue('');
-              setMemoValue('');
-              setUnitValue('');
-              setScheduleTypeValue('');
-              setPaymentMethodValue('');
-              // 완료 기록 삭제
-              if (schedule?.id) {
-                deleteCompletionRecords.mutate(schedule.id);
-              }
-              onUpdate({
-                title: '',
-                unit: '',
-                memo: '',
-                amount: 0,
-                schedule_type: null,
-                payment_method: null,
-                is_done: false,
-                is_reserved: false,
-                is_paid: false,
-                event_icon: null,
-              });
-            }}
+            onClick={resetSchedule}
             title="초기화"
           >
             <RotateCcw className="h-3 w-3" />
@@ -566,7 +818,10 @@ export function TimeSlotRow({
           
           {/* 거래처 드롭다운 */}
           {showClientPicker && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}>
+            <div
+              style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
               {filteredClients.length === 0 ? (
                 <div style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
                   {clients.length === 0 ? '등록된 거래처가 없습니다' : '검색 결과가 없습니다'}
@@ -607,38 +862,60 @@ export function TimeSlotRow({
         />
 
         {/* 내용 (품목 선택) */}
-        <div className="relative">
-          <input
-            ref={itemInputRef}
-            type="text"
-            className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            placeholder="내용 🔍"
-            value={memoValue}
-            onChange={(e) => {
-              setMemoValue(e.target.value);
-              // 항상 검색 업데이트 (한글 조합 중에도 실시간 검색)
-              setItemSearch(e.target.value);
-            }}
-            onCompositionStart={() => { isComposingRef.current = true; }}
-            onCompositionEnd={(e) => {
-              isComposingRef.current = false;
-              setItemSearch((e.target as HTMLInputElement).value);
-            }}
-            onFocus={() => {
-              setShowItemPicker(true);
-              setItemSearch('');
-            }}
-            onBlur={(e) => {
-              setTimeout(() => setShowItemPicker(false), 150);
-              if (!blockSaveRef?.current && e.target.value !== schedule?.memo) {
-                onUpdate({ memo: e.target.value });
-              }
-            }}
-          />
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {memoValues.map((value, index) => (
+            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+              <input
+                ref={index === 0 ? itemInputRef : undefined}
+                type="text"
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                style={{ paddingRight: getMemoItemAmountText(value) ? 92 : undefined }}
+                placeholder="내용 🔍"
+                value={value}
+                onChange={(e) => {
+                  updateMemoValueAt(index, e.target.value);
+                  setItemSearch(e.target.value);
+                }}
+                onCompositionStart={() => { isComposingRef.current = true; }}
+                onCompositionEnd={(e) => {
+                  isComposingRef.current = false;
+                  setItemSearch((e.target as HTMLInputElement).value);
+                }}
+                onFocus={() => {
+                  cancelItemPickerHide();
+                  setActiveMemoIndex(index);
+                  setShowItemPicker(true);
+                  setItemSearch(value);
+                }}
+                onBlur={() => {
+                  scheduleItemPickerHide();
+                  const nextMemo = serializeMemoValues(memoValues);
+                  if (!blockSaveRef?.current && nextMemo !== schedule?.memo) {
+                    saveMemoValues(memoValues, 'always');
+                  }
+                }}
+              />
+              {getMemoItemAmountText(value) && (
+                <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 12, pointerEvents: 'none' }}>
+                  {getMemoItemAmountText(value)}
+                </span>
+              )}
+              </div>
+              {index === 0 ? (
+                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addMemoRow} style={{ width: 32, height: 32, border: '1px solid #2563eb', borderRadius: 6, background: '#eff6ff', color: '#2563eb', fontSize: 20, lineHeight: '28px', fontWeight: 700, flexShrink: 0 }} title="내용 추가">+</button>
+              ) : (
+                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => removeMemoRow(index)} style={{ width: 32, height: 32, border: '1px solid #dc2626', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: 20, lineHeight: '28px', fontWeight: 700, flexShrink: 0 }} title="내용 삭제">-</button>
+              )}
+            </div>
+          ))}
           
           {/* 품목 드롭다운 */}
           {showItemPicker && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}>
+            <div
+              style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: 4, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
               {filteredItems.length === 0 ? (
                 <div style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', textAlign: 'center' }}>
                   {items.length === 0 ? '등록된 품목이 없습니다' : '검색 결과가 없습니다'}
@@ -649,11 +926,7 @@ export function TimeSlotRow({
                     key={item.id}
                     style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}
                     onMouseDown={() => {
-                      setMemoValue(item.name);
-                      onUpdate({ 
-                        memo: item.name,
-                        amount: item.price || schedule?.amount || 0,
-                      });
+                      updateMemoValueAt(activeMemoIndex, item.name, true);
                       setShowItemPicker(false);
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = '#F3F4F6'; }}
@@ -701,6 +974,11 @@ export function TimeSlotRow({
               onUpdate({ amount: stored });
             }}
           />
+          {amountSummaryText && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 2, color: '#4B5563', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', zIndex: 20, background: 'rgba(255,255,255,0.9)', padding: '1px 2px', borderRadius: 3 }}>
+              {amountSummaryText}
+            </div>
+          )}
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">원</span>
         </div>
 
@@ -830,6 +1108,10 @@ export function TimeSlotRow({
           isMobileDragOver && 'border-t-2 border-t-blue-500 bg-blue-50',
           isSelected && 'ring-2 ring-blue-500 ring-inset'
         )}
+        style={{
+          backgroundColor: rowBackgroundColor,
+          borderLeftColor: rowBorderLeftColor,
+        }}
         onTouchStart={(e) => {
           // 인터랙티브 요소에서는 롱프레스 시작 안함
           const target = e.target as HTMLElement;
@@ -890,30 +1172,7 @@ export function TimeSlotRow({
             </span>
             <button
               className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-              onClick={() => {
-                // 로컬 상태도 초기화
-                setTitleValue('');
-                setMemoValue('');
-                setUnitValue('');
-                setScheduleTypeValue('');
-                setPaymentMethodValue('');
-                // 완료 기록 삭제
-                if (schedule?.id) {
-                  deleteCompletionRecords.mutate(schedule.id);
-                }
-                onUpdate({
-                  title: '',
-                  unit: '',
-                  memo: '',
-                  amount: 0,
-                  schedule_type: null,
-                  payment_method: null,
-                  is_done: false,
-                  is_reserved: false,
-                  is_paid: false,
-                  event_icon: null,
-                });
-              }}
+              onClick={resetSchedule}
               title="초기화"
             >
               <RotateCcw className="h-4 w-4" />
@@ -1088,33 +1347,52 @@ export function TimeSlotRow({
           </div>
 
           {/* 내용 */}
-          <div className="relative">
-            <input
-              type="text"
-              className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              placeholder="내용 🔍"
-              value={memoValue}
-              onChange={(e) => {
-                setMemoValue(e.target.value);
-                // 항상 검색 업데이트 (한글 조합 중에도 실시간 검색)
-                setItemSearch(e.target.value);
-              }}
-              onCompositionStart={() => { isComposingRef.current = true; }}
-              onCompositionEnd={(e) => {
-                isComposingRef.current = false;
-                setItemSearch((e.target as HTMLInputElement).value);
-              }}
-              onFocus={() => {
-                setShowItemPickerMobile(true);
-                setItemSearch('');
-              }}
-              onBlur={(e) => {
-                setTimeout(() => setShowItemPickerMobile(false), 150);
-                if (!blockSaveRef?.current && e.target.value !== schedule?.memo) {
-                  onUpdate({ memo: e.target.value });
-                }
-              }}
-            />
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {memoValues.map((value, index) => (
+              <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  style={{ paddingRight: getMemoItemAmountText(value) ? 92 : undefined }}
+                  placeholder="내용 🔍"
+                  value={value}
+                  onChange={(e) => {
+                    updateMemoValueAt(index, e.target.value);
+                    setItemSearch(e.target.value);
+                  }}
+                  onCompositionStart={() => { isComposingRef.current = true; }}
+                  onCompositionEnd={(e) => {
+                    isComposingRef.current = false;
+                    setItemSearch((e.target as HTMLInputElement).value);
+                  }}
+                  onFocus={() => {
+                    cancelItemPickerMobileHide();
+                    setActiveMemoIndex(index);
+                    setShowItemPickerMobile(true);
+                    setItemSearch(value);
+                  }}
+                  onBlur={() => {
+                    scheduleItemPickerMobileHide();
+                    const nextMemo = serializeMemoValues(memoValues);
+                    if (!blockSaveRef?.current && nextMemo !== schedule?.memo) {
+                      saveMemoValues(memoValues, 'always');
+                    }
+                  }}
+                />
+                {getMemoItemAmountText(value) && (
+                  <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: 12, pointerEvents: 'none' }}>
+                    {getMemoItemAmountText(value)}
+                  </span>
+                )}
+                </div>
+                {index === 0 ? (
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addMemoRow} style={{ width: 34, height: 34, border: '1px solid #2563eb', borderRadius: 6, background: '#eff6ff', color: '#2563eb', fontSize: 20, lineHeight: '30px', fontWeight: 700, flexShrink: 0 }} title="내용 추가">+</button>
+                ) : (
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => removeMemoRow(index)} style={{ width: 34, height: 34, border: '1px solid #dc2626', borderRadius: 6, background: '#fef2f2', color: '#dc2626', fontSize: 20, lineHeight: '30px', fontWeight: 700, flexShrink: 0 }} title="내용 삭제">-</button>
+                )}
+              </div>
+            ))}
             
             {/* 모바일 품목 드롭다운 */}
             {showItemPickerMobile && (
@@ -1141,11 +1419,7 @@ export function TimeSlotRow({
                           background: 'white', touchAction: 'pan-y pinch-zoom',
                         }}
                         onMouseDown={() => {
-                          setMemoValue(item.name);
-                          onUpdate({
-                            memo: item.name,
-                            amount: item.price || schedule?.amount || 0,
-                          });
+                          updateMemoValueAt(activeMemoIndex, item.name, true);
                           setShowItemPickerMobile(false);
                         }}
                       >
@@ -1208,6 +1482,11 @@ export function TimeSlotRow({
                   onUpdate({ amount: stored });
                 }}
               />
+              {amountSummaryText && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 2, color: '#4B5563', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', zIndex: 20, background: 'rgba(255,255,255,0.9)', padding: '1px 2px', borderRadius: 3 }}>
+                  {amountSummaryText}
+                </div>
+              )}
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">원</span>
             </div>
           </div>

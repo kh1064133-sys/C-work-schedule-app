@@ -15,6 +15,7 @@ import { EstimateForm } from '@/components/estimate';
 import { GroupBuyPage } from '@/components/groupbuy';
 import { InstallPage } from '@/components/install';
 import { VehiclePage } from '@/components/vehicle';
+import { DoorVerificationPage } from '@/components/door-verification';
 import { useUIStore } from '@/stores/uiStore';
 
 // 탭별 콘텐츠 컴포넌트
@@ -94,6 +95,14 @@ function VehicleContent() {
   return (
     <div className="bg-white rounded-xl shadow-sm p-1 md:p-6">
       <VehiclePage />
+    </div>
+  );
+}
+
+function DoorVerificationContent() {
+  return (
+    <div style={{ width: '100%' }}>
+      <DoorVerificationPage />
     </div>
   );
 }
@@ -198,6 +207,8 @@ export default function Home() {
         return <InstallContent />;
       case 'vehicle':
         return <VehicleContent />;
+      case 'doorVerification':
+        return <DoorVerificationContent />;
       default:
         return <ScheduleContent />;
     }

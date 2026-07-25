@@ -17,32 +17,16 @@ export function useItems() {
       const { data, error } = await supabase
         .from('items')
         .select('*')
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
       if (error) throw error;
       return data as Item[];
     },
-  });
-}
-
-// 품목 검색
-export function useSearchItems(query: string) {
-  const supabase = createClient();
-
-  return useQuery({
-    queryKey: ['items', 'search', query],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('items')
-        .select('*')
-        .ilike('name', `%${query}%`)
-        .order('name', { ascending: true })
-        .limit(20);
-
-      if (error) throw error;
-      return data as Item[];
-    },
-    enabled: query.length > 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
@@ -115,27 +99,56 @@ export function useDeleteItem() {
   });
 }
 
-// 이미지 업로드 (Supabase Storage)
-export function useUploadItemPhoto() {
+// 품목 순서 저장
+export function useUpdateItemSortOrder() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (items: Array<{ id: string; sort_order: number }>) => {
+      const updates = items.map(({ id, sort_order }) =>
+        supabase
+          .from('items')
+          .update({ sort_order })
+          .eq('id', id)
+          .select('id, sort_order')
+          .single(),
+      );
+
+      const results = await Promise.all(updates);
+      const errorResult = results.find((result) => result.error);
+      if (errorResult?.error) throw errorResult.error;
+
+      return results.map((result) => result.data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+    },
+  });
+}
+
+// 제품 매뉴얼 업로드 (Supabase Storage)
+export function useUploadItemManual() {
   const supabase = createClient();
 
   return useMutation({
-    mutationFn: async (file: File) => {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `items/${fileName}`;
+    mutationFn: async ({ file, itemId, kind = 'manual' }: { file: File; itemId: string; kind?: 'manual' | 'spec' }) => {
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
+      const fileName = `${itemId}_${Date.now()}.${fileExt}`;
+      const filePath = `${kind === 'spec' ? 'specs' : 'manuals'}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('photos')
+        .from('item-manuals')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false,
+          contentType: file.type || undefined,
         });
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('photos')
+        .from('item-manuals')
         .getPublicUrl(filePath);
 
       return publicUrl;

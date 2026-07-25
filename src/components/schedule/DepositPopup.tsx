@@ -68,12 +68,8 @@ export function DepositPopup({
       return;
     }
 
-    const saveAmount = paymentMethod === 'card' || paymentMethod === 'vat'
-      ? vatIncluded
-      : amount;
-
     onConfirm({
-      amount: saveAmount,
+      amount,
       payment_method: paymentMethod,
       deposit_memo: memo,
     });

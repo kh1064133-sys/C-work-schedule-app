@@ -13,6 +13,10 @@ import { formatDate, formatDateKorean, getHolidayName, isSunday } from '@/lib/ut
 import { getScheduleAmountWithTax } from '@/lib/utils/scheduleAmount';
 import { cn } from '@/lib/utils';
 import type { PaymentMethod, Schedule, ScheduleInput, ScheduleType } from '@/types';
+import { EXPENSE_SCHEDULE_TYPES, SCHEDULE_TYPE_COLORS, SCHEDULE_TYPE_OPTIONS } from '@/types';
+
+type ScheduleWithDiscountAmount = Schedule & { dc_amount?: number | null };
+type ScheduleInputWithDiscountAmount = ScheduleInput & { dc_amount?: number | null };
 
 function getDayOfWeek(date: Date): string {
   const days = ['일', '월', '화', '수', '목', '금', '토'];
@@ -36,6 +40,21 @@ const DEFAULT_TIME_SLOTS = [
   '09:00', '10:00', '11:00', '12:00', '13:00',
   '14:00', '15:00', '16:00', '17:00', '18:00', '19:00',
 ];
+
+function formatScheduleMemo(memo: string | null | undefined): string {
+  if (!memo) return '';
+
+  try {
+    const parsed = JSON.parse(memo);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item ?? '')).filter(Boolean).join(', ');
+    }
+  } catch {
+    // Existing rows may still store content as plain text.
+  }
+
+  return memo;
+}
 
 export function SchedulePage() {
   const { selectedDate, moveDay, goToToday } = useDateStore();
@@ -67,7 +86,7 @@ export function SchedulePage() {
   const selectedSlotRef = useRef<string | null>(null);
   const copiedScheduleRef = useRef<CopiedScheduleData | null>(null);
   const scheduleMapRef = useRef<Record<string, Schedule>>({});
-  const handleUpdateRef = useRef<((timeSlot: string, data: Partial<Schedule>) => Promise<void>) | null>(null);
+  const handleUpdateRef = useRef<((timeSlot: string, data: Partial<ScheduleWithDiscountAmount>) => Promise<void>) | null>(null);
 
   const mobileDragSourceRef = useRef<string | null>(null);
   const mobileDragOverRef = useRef<string | null>(null);
@@ -105,24 +124,46 @@ export function SchedulePage() {
 
   const dayInfo = getDayInfo(selectedDate);
 
-  const normalizeScheduleType = (value: Schedule['schedule_type'] | '' | undefined) =>
-    value === '' ? null : value ?? undefined;
+  const normalizeScheduleType = (value: Schedule['schedule_type'] | '' | null | undefined) =>
+    value === '' ? null : value === undefined ? undefined : value;
 
-  const normalizePaymentMethod = (value: Schedule['payment_method'] | '' | undefined) =>
-    value === '' ? null : value ?? undefined;
+  const normalizePaymentMethod = (value: Schedule['payment_method'] | '' | null | undefined) =>
+    value === '' ? null : value === undefined ? undefined : value;
 
-  const handleUpdate = useCallback(async (timeSlot: string, data: Partial<Schedule>) => {
+  const handleUpdate = useCallback(async (timeSlot: string, data: Partial<ScheduleWithDiscountAmount>) => {
     try {
       const existing = scheduleMapRef.current[timeSlot];
       const scheduleType = normalizeScheduleType(data.schedule_type);
       const paymentMethod = normalizePaymentMethod(data.payment_method);
+      const isResetPayload =
+        data.title === '' &&
+        data.unit === '' &&
+        data.memo === '' &&
+        data.amount === 0 &&
+        data.dc_amount === 0 &&
+        data.schedule_type === null &&
+        data.payment_method === null &&
+        data.install_type === null &&
+        data.install_amount === 0 &&
+        data.install_paid === false &&
+        data.is_done === false &&
+        data.is_reserved === false &&
+        data.is_paid === false &&
+        data.event_icon === null;
+
+      console.log('[SchedulePage.handleUpdate] request', {
+        timeSlot,
+        existingId: existing?.id ?? null,
+        isResetPayload,
+        data,
+      });
 
       if (data.event_icon === 'install') {
         setInstallTargetDate(dateStr);
       }
 
       if (existing) {
-        const updateData: ScheduleInput & { id: string; user_id?: string } = {
+        const updateData: ScheduleInputWithDiscountAmount & { id: string; user_id?: string } = {
           id: existing.id,
           date: dateStr,
           time_slot: timeSlot,
@@ -132,33 +173,50 @@ export function SchedulePage() {
         if ('memo' in data) updateData.memo = data.memo ?? '';
         if ('unit' in data) updateData.unit = data.unit ?? '';
         if ('amount' in data) updateData.amount = data.amount ?? 0;
+        if ('dc_amount' in data) updateData.dc_amount = data.dc_amount ?? 0;
         if ('is_done' in data) updateData.is_done = data.is_done ?? false;
         if ('is_reserved' in data) updateData.is_reserved = data.is_reserved ?? false;
         if ('is_paid' in data) updateData.is_paid = data.is_paid ?? false;
+        if ('install_paid' in data) updateData.install_paid = data.install_paid ?? false;
         if ('schedule_type' in data) updateData.schedule_type = scheduleType as ScheduleType | null | undefined;
         if ('payment_method' in data) updateData.payment_method = paymentMethod as PaymentMethod | null | undefined;
+        if ('install_type' in data) updateData.install_type = normalizeScheduleType(data.install_type) as ScheduleType | null | undefined;
+        if ('install_amount' in data) updateData.install_amount = data.install_amount ?? 0;
+        if ('sort_order' in data || isResetPayload) updateData.sort_order = data.sort_order ?? allTimeSlots.indexOf(timeSlot);
         if ('event_icon' in data) updateData.event_icon = data.event_icon ?? null;
 
-        await upsertSchedule.mutateAsync(updateData);
+        console.log('[SchedulePage.handleUpdate] update payload', updateData);
+        const saved = await upsertSchedule.mutateAsync(updateData);
+        console.log('[SchedulePage.handleUpdate] update saved', saved);
         return;
       }
 
-      if (data.title || data.memo || data.amount || data.event_icon) {
-        await upsertSchedule.mutateAsync({
+      if (data.title || data.memo || data.amount || data.event_icon || isResetPayload) {
+        const createData: ScheduleInputWithDiscountAmount = {
           date: dateStr,
           time_slot: timeSlot,
           title: data.title ?? '',
           memo: data.memo ?? '',
           unit: data.unit ?? '',
           amount: data.amount ?? 0,
+          dc_amount: 'dc_amount' in data ? data.dc_amount ?? 0 : undefined,
           schedule_type: 'schedule_type' in data ? (scheduleType as ScheduleType | null | undefined) : undefined,
           payment_method: 'payment_method' in data ? (paymentMethod as PaymentMethod | null | undefined) : undefined,
+          install_type: 'install_type' in data ? (normalizeScheduleType(data.install_type) as ScheduleType | null | undefined) : undefined,
+          install_amount: 'install_amount' in data ? data.install_amount ?? 0 : undefined,
+          install_paid: 'install_paid' in data ? data.install_paid ?? false : undefined,
           event_icon: 'event_icon' in data ? data.event_icon ?? null : undefined,
           is_done: data.is_done ?? false,
           is_reserved: data.is_reserved ?? false,
           is_paid: data.is_paid ?? false,
           sort_order: allTimeSlots.indexOf(timeSlot),
-        });
+        };
+
+        console.log('[SchedulePage.handleUpdate] create payload', createData);
+        const saved = await upsertSchedule.mutateAsync(createData);
+        console.log('[SchedulePage.handleUpdate] create saved', saved);
+      } else {
+        console.log('[SchedulePage.handleUpdate] skipped empty create payload', { timeSlot, data });
       }
     } catch (error) {
       console.error('일정 저장 실패:', error);
@@ -197,11 +255,12 @@ export function SchedulePage() {
           is_paid: schedule.is_paid ?? false,
         });
 
+        const memoText = formatScheduleMemo(schedule.memo);
         const lines = [
           `일정 ${formatDate(useDateStore.getState().selectedDate)} ${slot}`,
           `거래처 ${schedule.title}`,
           schedule.unit ? `동호수 ${schedule.unit}` : '',
-          schedule.memo ? `내용 ${schedule.memo}` : '',
+          memoText ? `내용 ${memoText}` : '',
           getScheduleAmountWithTax(schedule) ? `금액 ${getScheduleAmountWithTax(schedule).toLocaleString()}원` : '',
         ].filter(Boolean);
 
@@ -257,11 +316,12 @@ export function SchedulePage() {
       is_paid: schedule.is_paid ?? false,
     });
 
+    const memoText = formatScheduleMemo(schedule.memo);
     navigator.clipboard?.writeText([
       `일정 ${dateStr} ${timeSlot}`,
       `거래처 ${schedule.title}`,
       schedule.unit ? `동호수 ${schedule.unit}` : '',
-      schedule.memo ? `내용 ${schedule.memo}` : '',
+      memoText ? `내용 ${memoText}` : '',
       getScheduleAmountWithTax(schedule) ? `금액 ${getScheduleAmountWithTax(schedule).toLocaleString()}원` : '',
     ].filter(Boolean).join('\n')).catch(() => {});
 
@@ -559,22 +619,36 @@ export function SchedulePage() {
     setNewMinute('00');
   }, [allTimeSlots, dateStr, newHour, newMinute, upsertSchedule]);
 
-  const todaySales = useMemo(
-    () => schedules.filter((schedule) => schedule.is_done).reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0),
-    [schedules],
-  );
-
   const salesByType = useMemo(() => {
     const doneSchedules = schedules.filter((schedule) => schedule.is_done);
+    const result = SCHEDULE_TYPE_OPTIONS.reduce((acc, option) => {
+      acc[option.value] = doneSchedules
+        .filter((schedule) => schedule.schedule_type === option.value)
+        .reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0);
+      return acc;
+    }, {} as Record<ScheduleType, number>);
+
+    const purchase = result.purchase || 0;
+    const total = SCHEDULE_TYPE_OPTIONS
+      .filter((option) => !EXPENSE_SCHEDULE_TYPES.includes(option.value))
+      .reduce((sum, option) => sum + (result[option.value] || 0), 0);
+
     return {
-      sale: doneSchedules.filter((schedule) => schedule.schedule_type === 'sale').reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0),
-      as: doneSchedules.filter((schedule) => schedule.schedule_type === 'as').reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0),
-      agency: doneSchedules.filter((schedule) => schedule.schedule_type === 'agency').reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0),
+      ...result,
+      total,
+      purchase,
+      netProfit: total - purchase,
     };
   }, [schedules]);
 
+  const todaySales = salesByType.total;
+  const todayPurchase = salesByType.purchase;
+  const todayNetProfit = salesByType.netProfit;
+
   const salesByPayment = useMemo(() => {
-    const doneSchedules = schedules.filter((schedule) => schedule.is_done);
+    const doneSchedules = schedules.filter(
+      (schedule) => schedule.is_done && !EXPENSE_SCHEDULE_TYPES.includes(schedule.schedule_type as ScheduleType),
+    );
     return {
       cash: doneSchedules.filter((schedule) => schedule.payment_method === 'cash').reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0),
       card: doneSchedules.filter((schedule) => schedule.payment_method === 'card').reduce((sum, schedule) => sum + getScheduleAmountWithTax(schedule), 0),
@@ -637,6 +711,16 @@ export function SchedulePage() {
           <div className="rounded-lg bg-green-100 px-2 py-1 font-medium text-green-700 lg:px-3 lg:py-1.5">
             매출: <span className="font-bold">{todaySales.toLocaleString()}원</span>
           </div>
+          {todayPurchase > 0 && (
+            <div className="rounded-lg px-2 py-1 font-medium lg:px-3 lg:py-1.5" style={{ backgroundColor: SCHEDULE_TYPE_COLORS.purchase.badgeBackground, color: SCHEDULE_TYPE_COLORS.purchase.badgeText }}>
+              매입: <span className="font-bold">{todayPurchase.toLocaleString()}원</span>
+            </div>
+          )}
+          {todayPurchase > 0 && (
+            <div className="rounded-lg bg-slate-100 px-2 py-1 font-medium text-slate-700 lg:px-3 lg:py-1.5">
+              순이익: <span className="font-bold">{todayNetProfit.toLocaleString()}원</span>
+            </div>
+          )}
           {pendingCount > 0 && (
             <div className="rounded-lg bg-red-100 px-2 py-1 font-medium text-red-700 lg:px-3 lg:py-1.5">
               미완료: <span className="font-bold">{pendingCount}건</span>
@@ -786,17 +870,25 @@ export function SchedulePage() {
         {showSalesSummary && (
           <div className="mx-3 mb-3 rounded-xl bg-white/15 p-3 backdrop-blur-sm">
             <div className="space-y-1.5 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-bold text-green-600">판매</span>
-                <span className="font-semibold">{salesByType.sale.toLocaleString()}원</span>
+              {SCHEDULE_TYPE_OPTIONS.map((option) => (
+                <div key={option.value} className="flex items-center justify-between">
+                  <span
+                    className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-bold"
+                    style={{ color: SCHEDULE_TYPE_COLORS[option.value].text }}
+                  >
+                    {option.label}
+                  </span>
+                  <span className="font-semibold">{(salesByType[option.value] || 0).toLocaleString()}원</span>
+                </div>
+              ))}
+              <div className="my-1 border-t border-white/20" />
+              <div className="flex items-center justify-between font-bold">
+                <span>매출 합계</span>
+                <span>{todaySales.toLocaleString()}원</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-bold text-orange-500">AS</span>
-                <span className="font-semibold">{salesByType.as.toLocaleString()}원</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-bold text-indigo-600">대리점</span>
-                <span className="font-semibold">{salesByType.agency.toLocaleString()}원</span>
+              <div className="flex items-center justify-between font-bold">
+                <span>순이익</span>
+                <span>{todayNetProfit.toLocaleString()}원</span>
               </div>
               <div className="my-1 border-t border-white/20" />
               <div className="flex items-center justify-between">

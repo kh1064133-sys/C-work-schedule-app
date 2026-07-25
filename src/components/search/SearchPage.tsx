@@ -11,23 +11,17 @@ import { getScheduleAmountWithTax } from '@/lib/utils/scheduleAmount';
 import { format, subMonths } from 'date-fns';
 import * as XLSX from 'xlsx';
 import type { Schedule, ScheduleType, PaymentMethod } from '@/types';
+import {
+  EXPENSE_SCHEDULE_TYPES,
+  SCHEDULE_TYPE_COLORS,
+  SCHEDULE_TYPE_LABELS,
+  SCHEDULE_TYPE_OPTIONS,
+} from '@/types';
 
 const SCHEDULE_TYPES = [
   { value: '', label: '전체' },
-  { value: 'sale', label: '판매' },
-  { value: 'as', label: 'AS' },
-  { value: 'agency', label: '대리점' },
-  { value: 'group', label: '공동구매' },
+  ...SCHEDULE_TYPE_OPTIONS,
 ];
-
-const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
-  sale: '판매',
-  as: 'AS',
-  agency: '대리점',
-  group: '공동구매',
-  install: '외주설치',
-  daily: '일당',
-};
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: '현금',
@@ -194,14 +188,18 @@ export function SearchPage() {
 
   // 통계 계산
   const stats = useMemo(() => {
-    const totalAmount = results
-      .filter((s: Schedule) => s.is_done)
+    const doneSchedules = results.filter((s: Schedule) => s.is_done);
+    const totalAmount = doneSchedules
+      .filter((s: Schedule) => !EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType))
       .reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
-    const doneCount = results.filter((s: Schedule) => s.is_done).length;
+    const purchaseAmount = doneSchedules
+      .filter((s: Schedule) => EXPENSE_SCHEDULE_TYPES.includes(s.schedule_type as ScheduleType))
+      .reduce((sum: number, s: Schedule) => sum + getScheduleAmountWithTax(s), 0);
+    const doneCount = doneSchedules.length;
     const pendingCount = results.filter((s: Schedule) => !s.is_done && s.title).length;
     const unpaidCount = results.filter((s: Schedule) => s.is_done && !s.is_paid).length;
     
-    return { totalAmount, doneCount, pendingCount, unpaidCount, totalCount: results.length };
+    return { totalAmount, purchaseAmount, netProfit: totalAmount - purchaseAmount, doneCount, pendingCount, unpaidCount, totalCount: results.length };
   }, [results]);
 
   // 엑셀 다운로드
@@ -365,6 +363,16 @@ export function SearchPage() {
               <span className="text-gray-600 whitespace-nowrap">
                 매출합계: <span className="font-bold text-emerald-600">{stats.totalAmount.toLocaleString()}원</span>
               </span>
+              {stats.purchaseAmount > 0 && (
+                <span className="text-gray-600 whitespace-nowrap">
+                  매입: <span className="font-bold" style={{ color: SCHEDULE_TYPE_COLORS.purchase.text }}>{stats.purchaseAmount.toLocaleString()}원</span>
+                </span>
+              )}
+              {stats.purchaseAmount > 0 && (
+                <span className="text-gray-600 whitespace-nowrap">
+                  순이익: <span className="font-bold text-slate-700">{stats.netProfit.toLocaleString()}원</span>
+                </span>
+              )}
             </>
           )}
         </div>
@@ -426,13 +434,16 @@ export function SearchPage() {
                   </td>
                 </tr>
               ) : (
-                results.map((schedule: Schedule) => (
+                results.map((schedule: Schedule) => {
+                  const typeColor = schedule.schedule_type ? SCHEDULE_TYPE_COLORS[schedule.schedule_type] : null;
+                  return (
                   <tr
                     key={schedule.id}
                     style={{
                       borderBottom: '1px solid #f3f4f6',
                       cursor: 'pointer',
-                      backgroundColor: checkedIds.has(schedule.id) ? 'rgba(219,234,254,0.5)' : schedule.is_done ? 'rgba(240,253,244,0.5)' : undefined,
+                      backgroundColor: checkedIds.has(schedule.id) ? 'rgba(219,234,254,0.5)' : typeColor?.background || (schedule.is_done ? 'rgba(240,253,244,0.5)' : undefined),
+                      borderLeft: typeColor ? `3px solid ${typeColor.border}` : undefined,
                     }}
                     onClick={() => handleDateClick(schedule.date)}
                   >
@@ -450,18 +461,20 @@ export function SearchPage() {
                     <td style={{ padding: '4px 3px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{schedule.memo || '-'}</td>
                     <td style={{ padding: '4px 3px', whiteSpace: 'nowrap' }}>
                       {schedule.schedule_type && (
-                        <span className={cn(
-                          'px-1 py-0.5 rounded-full font-bold',
-                          schedule.schedule_type === 'sale' && 'bg-green-100 text-green-700',
-                          schedule.schedule_type === 'as' && 'bg-orange-100 text-orange-700',
-                          schedule.schedule_type === 'agency' && 'bg-indigo-100 text-indigo-700',
-                          schedule.schedule_type === 'group' && 'bg-pink-100 text-pink-700',
-                        )} style={{ fontSize: 'clamp(8px, 1.8vw, 12px)' }}>
+                        <span
+                          className="px-1 py-0.5 rounded-full font-bold"
+                          style={{
+                            fontSize: 'clamp(8px, 1.8vw, 12px)',
+                            backgroundColor: SCHEDULE_TYPE_COLORS[schedule.schedule_type].badgeBackground,
+                            color: SCHEDULE_TYPE_COLORS[schedule.schedule_type].badgeText,
+                            border: `1px solid ${SCHEDULE_TYPE_COLORS[schedule.schedule_type].border}`,
+                          }}
+                        >
                           {SCHEDULE_TYPE_LABELS[schedule.schedule_type]}
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: '#059669' }}>
+                    <td style={{ padding: '4px 3px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: schedule.schedule_type === 'purchase' ? SCHEDULE_TYPE_COLORS.purchase.text : '#059669' }}>
                       {getScheduleAmountWithTax(schedule) ? getScheduleAmountWithTax(schedule).toLocaleString() : '-'}
                     </td>
                     <td style={{ padding: '4px 3px', textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -493,7 +506,8 @@ export function SearchPage() {
                       ) : null}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
